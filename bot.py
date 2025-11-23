@@ -1,81 +1,118 @@
 import os
 import logging
 import requests
-from datetime import datetime
+from bs4 import BeautifulSoup
 from telegram.ext import Updater, CommandHandler
 
+# ---------------- إعداد اللوج ----------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
+# ---------------- التوكن ----------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# API غير رسمي داخل TradingView (يستخدمه الموقع نفسه)
-TV_API = "https://www.tradingview.com/ideas-page/?page=1"
+# --------------------------------------------------------------------
+#   جلب أفكار TradingView (Chart Ideas)
+# --------------------------------------------------------------------
 
-def fetch_tv_ideas(limit=5):
+def fetch_tradingview(limit=5):
+    url = "https://www.tradingview.com/ideas/cryptocurrency/"
+    ideas = []
+
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://www.tradingview.com/ideas/"
-        }
-        r = requests.get("https://www.tradingview.com/ideas/", headers=headers)
-        if r.status_code != 200:
-            return []
+        r = requests.get(url, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
 
-        # الأفكار داخل الـ HTML كـ JSON داخل window.__INITIAL_STATE__
-        import re, json
-        match = re.search(r"\"ideas\":({.*?\"authors\"", r.text)
-        if not match:
-            return []
+        cards = soup.select("div.tv-card-container")
+        for card in cards[:limit]:
+            title_tag = card.select_one("a.tv-widget-idea__title")
+            desc_tag = card.select_one("p.tv-widget-idea__description-row")
+            img_tag = card.select_one("img")
 
-        json_data = json.loads(match.group(1)[:-10] + "}")
+            title = title_tag.text.strip() if title_tag else "No Title"
+            link = "https://www.tradingview.com" + title_tag["href"] if title_tag else ""
+            desc = desc_tag.text.strip() if desc_tag else ""
+            img = img_tag["src"] if img_tag else None
 
-        ideas = json_data.get("results", [])[:limit]
-        return ideas
+            ideas.append({
+                "source": "TradingView",
+                "title": title,
+                "summary": desc,
+                "url": link,
+                "image": img
+            })
+
     except Exception as e:
-        logger.error(f"TV Fetch Error: {e}")
-        return []
+        logger.error(f"TradingView error: {e}")
 
-def format_tv_message(idea):
-    title = idea.get("title", "")
-    desc = idea.get("description", "")
-    author = idea.get("author_username", "")
-    img = idea.get("thumb_url", "")
-    url = "https://www.tradingview.com" + idea.get("short_url", "")
-    time = datetime.fromtimestamp(idea.get("published_timestamp")).strftime("%Y-%m-%d %H:%M")
+    return ideas
 
-    msg = f"📊 *{title}*\n"
-    msg += f"✍️ المحلل: _{author}_\n"
-    msg += f"🕒 {time}\n"
-    if desc:
-        msg += f"📝 {desc[:250]}...\n"
-    msg += f"🔗 {url}\n"
 
-    return msg, img
+# --------------------------------------------------------------------
+#   إرسال نتائج TradingView
+# --------------------------------------------------------------------
+
+def send_idea(update, idea):
+    chat_id = update.message.chat_id
+
+    # لو فيه صورة – ابعتها
+    if idea.get("image"):
+        try:
+            update.message.bot.send_photo(
+                chat_id=chat_id,
+                photo=idea["image"],
+                caption=f"📊 {idea['title']}\n\n{idea['summary']}\n\n🔗 {idea['url']}"
+            )
+            return
+        except Exception as e:
+            logger.warning(f"Image send error: {e}")
+
+    # لو الصورة فشلت أو مش موجودة
+    update.message.reply_text(
+        f"📊 *{idea['title']}*\n\n"
+        f"{idea['summary']}\n\n"
+        f"🔗 {idea['url']}",
+        parse_mode="Markdown"
+    )
+
+
+# --------------------------------------------------------------------
+#  أوامر البوت
+# --------------------------------------------------------------------
+
+def start_cmd(update, context):
+    update.message.reply_text(
+        "أهلاً بك 👋\n\n"
+        "أنا بوت يجلب لك أحدث *تحليلات TradingView* فقط.\n\n"
+        "استخدم:\n"
+        "/ideas — لعرض أفضل 5 تحليلات الآن 🔥"
+    )
+
 
 def ideas_cmd(update, context):
-    chat_id = update.message.chat_id
-    msg = update.message.reply_text("⏳ جاري جلب أحدث أفكار TradingView...")
+    update.message.reply_text("⏳ جاري جمع أحدث تحليلات TradingView...")
 
-    ideas = fetch_tv_ideas(limit=5)
+    ideas = fetch_tradingview(limit=5)
+
     if not ideas:
-        update.message.reply_text("⚠ لا يوجد أفكار حالياً.")
+        update.message.reply_text("⚠️ لا توجد بيانات من TradingView الآن.")
         return
 
     for idea in ideas:
-        message, photo = format_tv_message(idea)
-        if photo:
-            context.bot.send_photo(chat_id=chat_id, photo=photo, caption=message, parse_mode="Markdown")
-        else:
-            context.bot.send_message(chat_id, message, parse_mode="Markdown")
+        try:
+            send_idea(update, idea)
+        except Exception as e:
+            logger.warning(f"Error sending idea: {e}")
 
-    context.bot.delete_message(chat_id, msg.message_id)
+    update.message.reply_text("⚠️ التحليلات ليست نصيحة استثمارية.")
 
-def start_cmd(update, context):
-    update.message.reply_text("أهلاً 👋\nاستخدم /ideas لعرض أحدث أفكار TradingView.")
+
+# --------------------------------------------------------------------
+#   MAIN
+# --------------------------------------------------------------------
 
 def main():
     if not TELEGRAM_TOKEN:
@@ -89,6 +126,7 @@ def main():
 
     updater.start_polling()
     updater.idle()
+
 
 if __name__ == "__main__":
     main()
