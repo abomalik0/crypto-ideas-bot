@@ -1,0 +1,1 @@
+hereworker: python bot.py
