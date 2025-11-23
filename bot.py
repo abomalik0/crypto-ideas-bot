@@ -1,7 +1,7 @@
 import os
-import time
 import logging
-from typing import Optional, Dict, List, Tuple
+import time
+from typing import List, Dict
 
 import requests
 from bs4 import BeautifulSoup
@@ -15,224 +15,210 @@ from telegram.ext import (
     filters,
 )
 
-# ---------- إعداد اللوج ----------
+# -------------------- الإعدادات العامة --------------------
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("⚠️ متنساش تضيف BOT_TOKEN كـ Environment Variable في Koyeb")
+
+TV_BASE = "https://www.tradingview.com"
+MAX_IDEAS = 15          # أقصى عدد أفكار ترجع لكل طلب
+RATE_LIMIT_SECONDS = 10  # ثواني بين كل طلب وطلب لنفس الشخص
+
+# user_id -> last_timestamp
+last_request_time: Dict[int, float] = {}
+
+# -------------------- اللوجينج --------------------
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# ---------- التوكن من المتغيرات ----------
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise RuntimeError("Environment variable BOT_TOKEN is missing!")
-
-TV_BASE = "https://www.tradingview.com"
-
-MAX_IDEAS = 10          # عدد الأفكار لكل رمز
-CACHE_TTL = 120         # مدة الكاش بالثواني
-RATE_LIMIT_SECONDS = 5   # أقل وقت بين طلبين لنفس اليوزر
-
-# كاش للأفكار: symbol -> (timestamp, ideas-list)
-ideas_cache: Dict[str, Tuple[float, List[Dict]]] = {}
-
-# آخر طلب لكل يوزر: user_id -> timestamp
-user_last_request: Dict[int, float] = {}
+# -------------------- دوال مساعدة --------------------
 
 
-# ---------- دالة سحب الأفكار من TradingView ----------
-def fetch_ideas(symbol: str, max_ideas: int = MAX_IDEAS) -> List[Dict]:
+def is_rate_limited(user_id: int) -> bool:
+    """منع السبام: كل يوزر له طلب كل X ثواني."""
+    now = time.time()
+    last = last_request_time.get(user_id, 0)
+    if now - last < RATE_LIMIT_SECONDS:
+        return True
+    last_request_time[user_id] = now
+    return False
+
+
+def fetch_ideas(symbol: str, max_ideas: int = MAX_IDEAS) -> List[Dict[str, str]]:
+    """
+    سكراب بسيط لأفكار TradingView لزوج معين.
+    يرجع قائمة من dict فيها: title, image, link
+    """
     url = f"{TV_BASE}/symbols/{symbol}/ideas/"
-    logger.info("Fetching ideas for %s -> %s", symbol, url)
+    logger.info(f"Fetching ideas from: {url}")
 
     try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        r = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; CryptoIdeasBot/1.0)"},
+            timeout=15,
+        )
     except Exception as e:
-        logger.exception("Request error: %s", e)
+        logger.exception("Network error while fetching ideas: %s", e)
         return []
 
     if r.status_code != 200:
-        logger.warning("TradingView returned %s for %s", r.status_code, url)
+        logger.warning("TradingView returned status %s", r.status_code)
         return []
 
     soup = BeautifulSoup(r.text, "html.parser")
     cards = soup.find_all("article")
 
-    ideas: List[Dict] = []
+    ideas: List[Dict[str, str]] = []
     for c in cards:
         a = c.find("a", href=True)
         if not a:
             continue
 
         link = TV_BASE + a["href"]
+
         img = c.find("img")
-        image = img["src"] if img and img.get("src") else None
+        image = img["src"] if img and img.has_attr("src") else None
+
         title_tag = c.find("span") or c.find("h2") or c.find("h3")
-        title = title_tag.get_text(strip=True) if title_tag else "TradingView idea"
+        title = title_tag.get_text(strip=True) if title_tag else "TradingView Idea"
 
         ideas.append({"title": title, "image": image, "link": link})
+
         if len(ideas) >= max_ideas:
             break
 
     return ideas
 
 
+def normalize_symbol(raw: str) -> str:
+    """تظبيط البير: remove spaces + upper case."""
+    return raw.replace(" ", "").upper()
+
+
 WELCOME = (
-    "أهلاً 👋\n\n"
-    "هذا البوت يجيب لك آخر أفكار TradingView لأي زوج كريبتو أو ذهب.\n\n"
-    "استخدم مثلاً:\n"
-    "/ideas BTCUSDT\n"
-    "أو مباشرةً:\n"
-    "/BTCUSDT\n\n"
-    "سيتم إرسال حتى 10 أفكار في رسائل منفصلة مع العنوان والرابط."
+    "أهلاً بيك 👋\n\n"
+    "أنا بوت بيجيب لك أحدث الأفكار (Ideas) من TradingView لرموز الكريبتو وغيرها.\n\n"
+    "طريقة الاستخدام:\n"
+    "• اكتب الأمر:\n"
+    "  `/ideas BTCUSDT`\n"
+    "• أو اختصاراً اكتب:\n"
+    "  `/BTCUSDT`\n\n"
+    "كل أمر بيرجع لك آخر الأفكار المنشورة للرمز اللي كتبته ✅"
 )
 
 
-# ---------- هاندلر /start ----------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
-        return
+# -------------------- Handlers --------------------
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(WELCOME)
 
 
-# ---------- استخراج الرمز من النص ----------
-def extract_symbol(text: str) -> Optional[str]:
-    text = text.strip()
-
-    if text.startswith("/ideas"):
-        parts = text.split()
-        if len(parts) > 1:
-            return parts[1].upper()
-        return None
-
-    if text.startswith("/") and len(text) > 1:
-        return text[1:].upper()
-
-    return None
-
-
-# ---------- Rate limit ----------
-def check_rate_limit(user_id: int) -> int:
-    """
-    يرجع 0 لو مسموح
-    أو عدد الثواني اللي لازم ينتظرها لو مستعجل
-    """
-    now = time.time()
-    last = user_last_request.get(user_id, 0)
-    diff = now - last
-
-    if diff < RATE_LIMIT_SECONDS:
-        return int(RATE_LIMIT_SECONDS - diff)
-
-    user_last_request[user_id] = now
-    return 0
-
-
-# ---------- الكاش ----------
-def get_cached_ideas(symbol: str) -> Optional[List[Dict]]:
-    now = time.time()
-    entry = ideas_cache.get(symbol)
-
-    if not entry:
-        return None
-
-    ts, ideas = entry
-    if now - ts > CACHE_TTL:
-        return None
-
-    return ideas
-
-
-def set_cached_ideas(symbol: str, ideas: List[Dict]) -> None:
-    ideas_cache[symbol] = (time.time(), ideas)
-
-
-# ---------- هاندلر /ideas ----------
-async def ideas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ideas_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """هاندلر /ideas BTCUSDT"""
     if not update.message:
         return
 
-    user_id = update.effective_user.id if update.effective_user else 0
+    user_id = update.effective_user.id
 
-    # Rate limit
-    wait = check_rate_limit(user_id)
-    if wait > 0:
-        await update.message.reply_text(
-            f"⏳ من فضلك انتظر {wait} ثواني قبل طلب جديد 🙂"
-        )
+    if is_rate_limited(user_id):
+        await update.message.reply_text("⏳ من فضلك استنى ثواني بين كل طلب و التاني.")
         return
 
-    txt = update.message.text
-    symbol = extract_symbol(txt)
-
-    if not symbol:
-        await update.message.reply_text("استخدم الأمر بهذا الشكل:\n/ideas BTCUSDT")
+    if not context.args:
+        await update.message.reply_text("اكتب الأمر كده:\n/ideas BTCUSDT")
         return
 
-    # جرب الكاش أولاً
-    ideas = get_cached_ideas(symbol)
+    symbol = normalize_symbol(context.args[0])
+    await handle_symbol(symbol, update, context)
 
-    if ideas is None:
-        loading = await update.message.reply_text(
-            f"⏳ جاري جلب أفكار {symbol} من TradingView..."
-        )
 
-        # تشغيل scrape في thread منفصل (عشان ما يوقفش البوت)
-        ideas = await context.application.run_in_executor(
-            None, fetch_ideas, symbol
-        )
+async def shortcut_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    أي أمر بالشكل /BTCUSDT /ETHUSDT ... الخ
+    ماعدا الأوامر المحجوزة (start, ideas).
+    """
+    if not update.message or not update.message.text:
+        return
 
-        if not ideas:
-            await loading.edit_text(f"لم أجد أفكار حالياً لـ {symbol} 😔")
-            return
+    user_id = update.effective_user.id
 
-        set_cached_ideas(symbol, ideas)
-        await loading.delete()
+    if is_rate_limited(user_id):
+        await update.message.reply_text("⏳ من فضلك استنى ثواني بين كل طلب و التاني.")
+        return
 
-    # إرسال الأفكار
+    raw = update.message.text[1:]  # شيل الـ /
+    symbol = normalize_symbol(raw)
+
+    # لو حد كتب /start أو /ideas بالغلط هنا
+    if symbol.upper() in ("START", "IDEAS"):
+        return
+
+    await handle_symbol(symbol, update, context)
+
+
+async def handle_symbol(symbol: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """الكود المشترك بين /ideas و /BTCUSDT."""
+    chat_id = update.effective_chat.id
+
+    loading_msg = await update.message.reply_text(f"⏳ بيتم جلب أفكار **{symbol}** من TradingView ...")
+
+    # شغّل السكراب في thread منفصل عشان مبلوكش البوت
+    loop = context.application.loop
+    ideas = await loop.run_in_executor(None, fetch_ideas, symbol)
+
+    if not ideas:
+        await loading_msg.edit_text(f"⚠️ لا يوجد أفكار حالياً للرمز: {symbol}")
+        return
+
+    await loading_msg.delete()
+
     for idea in ideas:
         caption = f"{idea['title']}\n\n🔗 {idea['link']}"
+        image = idea.get("image")
 
-        if idea["image"]:
+        if image:
             try:
-                await update.message.bot.send_photo(
-                    chat_id=update.effective_chat.id,
-                    photo=idea["image"],
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=image,
                     caption=caption,
                 )
                 continue
             except Exception as e:
-                logger.warning("Failed to send photo: %s", e)
+                logger.warning("Failed to send photo, fallback to text. Error: %s", e)
 
-        # لو مافيش صورة أو فشل إرسالها → نص فقط
-        await update.message.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=caption,
+        await context.bot.send_message(chat_id=chat_id, text=caption)
+
+
+# -------------------- Main --------------------
+
+
+def main() -> None:
+    """نقطة البداية – بنستخدم polling عشان نريح دماغنا من الـ Webhook."""
+    application = Application.builder().token(BOT_TOKEN).build()
+
+    # أوامر قياسية
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("ideas", ideas_command))
+
+    # أي أمر بالشكل /BTCUSDT /ETH ... إلخ
+    application.add_handler(
+        MessageHandler(
+            filters.COMMAND & filters.Regex(r"^/[A-Za-z0-9]+$"),
+            shortcut_command,
         )
+    )
 
-
-# ---------- شورت كات /BTCUSDT ----------
-async def shortcut(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
-        return
-
-    # نحول /BTCUSDT -> "/ideas BTCUSDT"
-    update.message.text = f"/ideas {update.message.text[1:]}"
-    await ideas_cmd(update, context)
-
-
-# ---------- main ----------
-def main():
-    logger.info("Starting bot in POLLING mode...")
-
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ideas", ideas_cmd))
-    app.add_handler(MessageHandler(filters.Regex(r"^/[A-Za-z0-9]+$"), shortcut))
-
-    # أهم حاجة: تشغيل الـ polling فقط
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("Bot is starting with polling...")
+    # Run forever
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
