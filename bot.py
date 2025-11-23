@@ -1,8 +1,25 @@
 import os
 import logging
-import feedparser
+import re
 from datetime import datetime
-from telegram.ext import Updater, CommandHandler
+from typing import Dict, List, Any, Optional
+
+import requests
+from telegram import (
+    Bot,
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+)
+from telegram.ext import (
+    Updater,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    Filters,
+    CallbackContext,
+)
 
 # ---------------- إعداد اللوج ----------------
 logging.basicConfig(
@@ -11,132 +28,273 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ---------------- إعداد التوكن ----------------
+# ---------------- توكن البوت ----------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN env var not set")
 
-# ---------------- جلب أفكار TradingView فقط ----------------
+# ---------------- إعدادات TradingView ----------------
+TV_BASE = "https://www.tradingview.com"
+TV_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/121.0 Safari/537.36"
+    )
+}
 
-def parse_rss(url, source_name, limit=5):
-    feed = feedparser.parse(url)
-    items = []
-
-    for entry in feed.entries[:limit]:
-        title = entry.get("title", "No title")
-        summary = entry.get("summary", "")
-        link = entry.get("link", "")
-        published = entry.get("published", "")
-
-        pub_dt = None
-        if "published_parsed" in entry and entry.published_parsed:
-            pub_dt = datetime(*entry.published_parsed[:6])
-
-        items.append(
-            {
-                "source": source_name,
-                "title": title,
-                "summary": summary,
-                "url": link,
-                "published": published,
-                "published_dt": pub_dt,
-            }
-        )
-
-    return items
+# حالة كل شات (الزوج + الأفكار + رقم الفكرة الحالي)
+user_state: Dict[int, Dict[str, Any]] = {}
 
 
-def fetch_tradingview_only():
-    sources = {
-        "TradingView BTC": "https://www.tradingview.com/ideas/bitcoin/rss/",
-        "TradingView ETH": "https://www.tradingview.com/ideas/ethereum/rss/",
-        "TradingView XRP": "https://www.tradingview.com/ideas/xrp/rss/",
-        "TradingView SOL": "https://www.tradingview.com/ideas/solana/rss/",
-    }
+# ---------- جلب اللينكات لكل الأفكار لزوج معيّن ----------
+def fetch_symbol_ideas(symbol: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    يجلب قائمة أفكار لزوج معيّن من TradingView.
+    مثال: https://www.tradingview.com/symbols/BTCUSDT/ideas/
+    """
+    url = f"{TV_BASE}/symbols/{symbol}/ideas/"
+    logger.info("Fetching ideas page: %s", url)
+    try:
+        resp = requests.get(url, headers=TV_HEADERS, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.error("Error fetching ideas page: %s", e)
+        return []
 
-    items = []
-    for name, url in sources.items():
-        try:
-            items.extend(parse_rss(url, name, limit=3))
-        except Exception as e:
-            logger.error(f"Error fetching {name}: {e}")
+    html = resp.text
+    idea_paths: List[str] = []
 
-    return items
+    # نبحث عن لينكات /chart/xxxxx/slug/
+    for match in re.finditer(r'href="(/chart/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+/?)"', html):
+        path = match.group(1)
+        if path not in idea_paths:
+            idea_paths.append(path)
+        # ناخد شوية زيادة تحسّبًا لو بعض الصفحات فيها مشاكل
+        if len(idea_paths) >= limit * 2:
+            break
+
+    ideas: List[Dict[str, Any]] = []
+    for path in idea_paths:
+        full_url = TV_BASE + path
+        details = fetch_idea_details(full_url)
+        if details:
+            ideas.append(details)
+        if len(ideas) >= limit:
+            break
+
+    return ideas
 
 
-def build_tv_message(items):
-    if not items:
-        return "⚠️ لا توجد أفكار من TradingView حاليًا."
+def _search_meta(content: str, prop: str) -> Optional[str]:
+    """مساعدة: نقرأ meta property / name من الـ HTML"""
+    # property="..."
+    m = re.search(
+        rf'<meta\s+[^>]*property=["\']{re.escape(prop)}["\'][^>]*content=["\']([^"\']+)["\']',
+        content,
+        re.IGNORECASE,
+    )
+    if m:
+        return m.group(1)
+    # name="..."
+    m = re.search(
+        rf'<meta\s+[^>]*name=["\']{re.escape(prop)}["\'][^>]*content=["\']([^"\']+)["\']',
+        content,
+        re.IGNORECASE,
+    )
+    if m:
+        return m.group(1)
+    return None
 
-    # ترتيب حسب التاريخ
-    items = sorted(
-        items,
-        key=lambda x: x.get("published_dt") or datetime.min,
-        reverse=True
+
+def fetch_idea_details(url: str) -> Optional[Dict[str, Any]]:
+    """نجيب بيانات فكرة واحدة: العنوان + الصورة + وقت النشر + الكاتب"""
+    logger.info("Fetching idea detail: %s", url)
+    try:
+        resp = requests.get(url, headers=TV_HEADERS, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.error("Error fetching idea detail %s: %s", url, e)
+        return None
+
+    html = resp.text
+
+    title = _search_meta(html, "og:title") or _search_meta(html, "twitter:title")
+    image = _search_meta(html, "og:image") or _search_meta(html, "twitter:image")
+    published_raw = (
+        _search_meta(html, "article:published_time")
+        or _search_meta(html, "publish_date")
+        or ""
     )
 
-    lines = ["📊 *أحدث أفكار TradingView:*", ""]
+    published_dt: Optional[datetime] = None
+    if published_raw:
+        for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z"):
+            try:
+                published_dt = datetime.strptime(published_raw, fmt)
+                break
+            except Exception:
+                continue
 
-    for idx, it in enumerate(items[:5], start=1):
-        title = it["title"]
-        src = it["source"]
-        url = it["url"]
+    author = _search_meta(html, "article:author") or ""
 
-        pub = it.get("published_dt")
-        if pub:
-            pub = pub.strftime("%Y-%m-%d %H:%M")
-        else:
-            pub = it.get("published", "")
+    if not title or not image:
+        logger.warning("Idea %s missing title or image, skipping", url)
+        return None
 
-        summary = it.get("summary", "")
-        summary = summary.replace("<p>", "").replace("</p>", "")
+    return {
+        "title": title,
+        "image": image,
+        "url": url,
+        "author": author,
+        "published_raw": published_raw,
+        "published_dt": published_dt,
+    }
 
-        if len(summary) > 200:
-            summary = summary[:200] + "..."
 
-        block = (
-            f"{idx}. *{title}*\n"
-            f"📍 _{src}_\n"
-            f"🕒 {pub}\n"
-            f"📝 {summary}\n"
-            f"🔗 {url}\n"
-        )
-        lines.append(block)
-
+# ---------- شكل الكابشن تحت الصورة ----------
+def build_caption(symbol: str, idea: Dict[str, Any], index: int, total: int) -> str:
+    lines = [f"*{idea['title']}*"]
+    if idea.get("author"):
+        lines.append(f"✍️ {idea['author']}")
+    if idea.get("published_dt"):
+        dt = idea["published_dt"].astimezone()
+        lines.append("🕒 " + dt.strftime("%Y-%m-%d %H:%M"))
+    elif idea.get("published_raw"):
+        lines.append(f"🕒 {idea['published_raw']}")
+    lines.append("")
+    lines.append(f"رمز الزوج: `{symbol}`")
+    lines.append(f"الفكرة رقم {index + 1} من {total}")
+    lines.append("")
+    lines.append(f"[فتح الفكرة على TradingView]({idea['url']})")
+    lines.append("")
+    lines.append("⚠️ هذه الأفكار من TradingView وليست نصيحة استثمارية.")
     return "\n".join(lines)
 
 
-# ---------------- أوامر Telegram ----------------
+# ---------- إرسال / تحديث الكارد ----------
+def send_idea(update: Update, context: CallbackContext, symbol: str, move: int = 0) -> None:
+    chat_id = update.effective_chat.id
+    state = user_state.get(chat_id)
 
-def start_cmd(update, context):
-    update.message.reply_text(
-        "👋 أهلاً بك!\n"
-        "هذا البوت يعرض أحدث *أفكار وتحليلات TradingView* فقط.\n\n"
-        "استخدم:\n/ideas – للحصول على آخر الأفكار."
+    # أول مرة أو غيّرنا الزوج → نحمّل أفكار جديدة
+    if state is None or state.get("symbol") != symbol or not state.get("ideas"):
+        msg = update.effective_message.reply_text(
+            f"⏳ جاري جلب أحدث أفكار TradingView لزوج `{symbol}` ...",
+            parse_mode="Markdown",
+        )
+        ideas = fetch_symbol_ideas(symbol, limit=10)
+        if not ideas:
+            msg.edit_text(f"⚠️ لا توجد أفكار متاحة حالياً على TradingView لزوج `{symbol}`.")
+            return
+        state = {"symbol": symbol, "ideas": ideas, "index": 0, "message_id": None}
+        user_state[chat_id] = state
+    else:
+        # تنقّل بين الأفكار
+        state["index"] = (state["index"] + move) % len(state["ideas"])
+
+    ideas = state["ideas"]
+    idx = state["index"]
+    idea = ideas[idx]
+    caption = build_caption(symbol, idea, idx, len(ideas))
+
+    keyboard = [
+        [
+            InlineKeyboardButton("⬅️ السابق", callback_data=f"prev|{symbol}"),
+            InlineKeyboardButton(f"{idx + 1}/{len(ideas)}", callback_data="page"),
+            InlineKeyboardButton("التالي ➡️", callback_data=f"next|{symbol}"),
+        ]
+    ]
+    markup = InlineKeyboardMarkup(keyboard)
+
+    bot: Bot = context.bot
+    if state.get("message_id"):
+        # نعدّل نفس الرسالة (الصورة + الكابشن + الأزرار)
+        try:
+            bot.edit_message_media(
+                chat_id=chat_id,
+                message_id=state["message_id"],
+                media=InputMediaPhoto(idea["image"], caption=caption, parse_mode="Markdown"),
+                reply_markup=markup,
+            )
+        except Exception as e:
+            logger.warning("Failed to edit message media: %s", e)
+            bot.edit_message_caption(
+                chat_id=chat_id,
+                message_id=state["message_id"],
+                caption=caption,
+                parse_mode="Markdown",
+                reply_markup=markup,
+            )
+    else:
+        msg = bot.send_photo(
+            chat_id=chat_id,
+            photo=idea["image"],
+            caption=caption,
+            parse_mode="Markdown",
+            reply_markup=markup,
+        )
+        state["message_id"] = msg.message_id
+
+
+# ---------- /start ----------
+def start_cmd(update: Update, context: CallbackContext) -> None:
+    text = (
+        "أهلاً بك 👋\n\n"
+        "هذا البوت يعرض لك *أفكار وتحليلات TradingView* لأي زوج كريبتو.\n\n"
+        "اكتب اسم الزوج بهذا الشكل:\n"
+        "`/BTCUSDT`\n"
+        "`/ETHUSDT`\n"
+        "`/SOLUSDT`\n"
+        "وهكذا...\n\n"
+        "سيتم جلب آخر الأفكار مع الصورة، ويمكنك التنقل بينها من خلال أزرار ⬅️ / ➡️.\n"
     )
+    update.message.reply_text(text, parse_mode="Markdown")
 
 
-def ideas_cmd(update, context):
-    msg = update.message.reply_text("⏳ جاري جلب أحدث أفكار TradingView...")
+# ---------- أي كوماند غير /start نعتبره زوج ----------
+def generic_pair_cmd(update: Update, context: CallbackContext) -> None:
+    cmd = update.message.text.strip()
+    symbol = cmd[1:].upper()
 
-    items = fetch_tradingview_only()
-    text = build_tv_message(items)
+    # لو حد كتب /start هنا بالغلط نطنّش
+    if symbol in {"START", "HELP"}:
+        return
 
-    context.bot.edit_message_text(
-        chat_id=update.message.chat_id,
-        message_id=msg.message_id,
-        text=text,
-        parse_mode="Markdown",
-    )
+    send_idea(update, context, symbol, move=0)
 
 
-def main():
-    if not TELEGRAM_TOKEN:
-        raise RuntimeError("TELEGRAM_TOKEN env var not set")
+# ---------- أزرار ⬅️ / ➡️ ----------
+def nav_callback(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    data = query.data or ""
+    if data == "page":
+        query.answer()
+        return
 
+    parts = data.split("|", 1)
+    if len(parts) != 2:
+        query.answer()
+        return
+    action, symbol = parts
+    query.answer()
+
+    dummy_update = Update(update.update_id, callback_query=query)
+    if action == "next":
+        send_idea(dummy_update, context, symbol, move=1)
+    elif action == "prev":
+        send_idea(dummy_update, context, symbol, move=-1)
+
+
+# ---------- main ----------
+def main() -> None:
     updater = Updater(TELEGRAM_TOKEN, use_context=True)
-
     dp = updater.dispatcher
+
     dp.add_handler(CommandHandler("start", start_cmd))
-    dp.add_handler(CommandHandler("ideas", ideas_cmd))
+    dp.add_handler(CallbackQueryHandler(nav_callback))
+    # أي أمر /XXXX نعتبره زوج ونجلب له أفكار
+    dp.add_handler(MessageHandler(Filters.command, generic_pair_cmd))
 
     updater.start_polling()
     updater.idle()
