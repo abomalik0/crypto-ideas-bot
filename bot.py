@@ -1,99 +1,115 @@
 import os
 import requests
 from datetime import datetime
-from telegram import Update, InputMediaPhoto
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# ========================
+# 🔑 BOT TOKEN
+# ========================
+TOKEN = os.getenv("BOT_TOKEN")
+APP_NAME = os.getenv("KOYEB_APP_NAME")
 
-if not BOT_TOKEN:
-    raise Exception("❌ ERROR: BOT_TOKEN is missing in environment variables!")
+if not TOKEN:
+    raise Exception("❌ ERROR: BOT_TOKEN is missing!")
 
+if not APP_NAME:
+    raise Exception("❌ ERROR: KOYEB_APP_NAME is missing!")
+
+
+# ========================
+# 🔥 TradingView Hidden API
+# ========================
 API_URL = "https://www.tradingview.com/ideas-page/?symbol={symbol}"
 
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/123.0.0.0 Safari/537.36"
+        "Chrome/123 Safari/537.36"
     )
 }
 
-# ============================
-# 🔥 Fetch ideas from TradingView Hidden API
-# ============================
-def fetch_tv_ideas(symbol: str):
+def get_tv_ideas(symbol: str):
     url = API_URL.format(symbol=symbol.upper())
 
     try:
         r = requests.get(url, headers=HEADERS, timeout=15)
         r.raise_for_status()
         data = r.json()
-    except Exception:
+    except:
         return []
 
     ideas = []
     for i in data.get("ideas", []):
-        try:
-            idea = {
-                "title": i.get("headline", "بدون عنوان"),
-                "author": i.get("author", {}).get("username", "غير معروف"),
-                "image": i.get("thumb_url", None),
-                "published": i.get("published_datetime", None),
-                "url": f"https://www.tradingview.com{i.get('public_id','')}",
-            }
+        idea = {
+            "title": i.get("headline", "No title"),
+            "author": i.get("author", {}).get("username", "Unknown"),
+            "image": i.get("thumb_url", None),
+            "published": i.get("published_datetime", None),
+            "url": f"https://www.tradingview.com{i.get('public_id','')}",
+        }
 
-            # Convert timestamp
-            if idea["published"]:
-                try:
-                    idea["published"] = datetime.fromtimestamp(
-                        idea["published"]
-                    ).strftime("%Y-%m-%d %H:%M")
-                except:
-                    idea["published"] = "غير معروف"
+        # Convert timestamp
+        if idea["published"]:
+            try:
+                idea["published"] = datetime.fromtimestamp(
+                    idea["published"]
+                ).strftime("%Y-%m-%d %H:%M")
+            except:
+                idea["published"] = "Unknown"
 
-            ideas.append(idea)
-        except:
-            continue
+        ideas.append(idea)
 
     return ideas
 
 
-# ============================
+# ========================
 # /start
-# ============================
+# ========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "👋 أهلاً! أرسل لي رمز العملة مثل:\n"
-        "`/ideas BTCUSDT`\n\n"
-        "وسأجلب لك أحدث الأفكار من TradingView 🔥"
+    msg = (
+        "👋 أهلاً بك!\n\n"
+        "أرسل:\n"
+        "`/ideas BTCUSDT`\n"
+        "وسأجلب لك أحدث أفكار TradingView مع الصورة والعنوان والكاتب.\n\n"
+        "English:\n"
+        "Send `/ideas BTCUSDT` to get the latest TradingView ideas."
     )
-    await update.message.reply_markdown(text)
+    await update.message.reply_markdown(msg)
 
 
-# ============================
+# ========================
 # /ideas BTCUSDT
-# ============================
+# ========================
 async def ideas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) == 0:
-        await update.message.reply_text("⚠️ استخدم: `/ideas BTCUSDT`", parse_mode="Markdown")
+    if not context.args:
+        await update.message.reply_text(
+            "⚠️ استخدم:\n/ideas BTCUSDT\n\nUse: /ideas SYMBOL"
+        )
         return
 
     symbol = context.args[0].upper()
 
-    await update.message.reply_text(f"⏳ جاري جلب أحدث الأفكار لـ *{symbol}* ...", parse_mode="Markdown")
+    await update.message.reply_text(f"⏳ Fetching ideas for *{symbol}* ...", parse_mode="Markdown")
 
-    ideas = fetch_tv_ideas(symbol)
+    ideas = get_tv_ideas(symbol)
 
     if not ideas:
-        await update.message.reply_text(
-            f"⚠️ لا توجد أفكار متاحة حاليًا على TradingView لزوج *{symbol}*.",
-            parse_mode="Markdown"
+        msg = (
+            f"⚠️ لا توجد أفكار متاحة حالياً على TradingView للزوج {symbol}.\n"
+            f"No ideas found on TradingView right now for {symbol}."
         )
+        await update.message.reply_text(msg)
         return
 
-    # Send up to 3 ideas
+    # ارسال أول 3 أفكار
     for idea in ideas[:3]:
+
         caption = (
             f"🔥 *{idea['title']}*\n"
             f"✍️ الكاتب: `{idea['author']}`\n"
@@ -102,27 +118,31 @@ async def ideas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if idea["image"]:
-            await update.message.reply_photo(idea["image"], caption=caption, parse_mode="Markdown")
+            await update.message.reply_photo(
+                idea["image"],
+                caption=caption,
+                parse_mode="Markdown"
+            )
         else:
             await update.message.reply_markdown(caption)
 
 
-# ============================
-# 🚀 Run Bot (Webhook Mode)
-# ============================
+# ========================
+# 🚀 Webhook Mode (Koyeb)
+# ========================
 async def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("ideas", ideas))
 
-    print("✅ Bot is running via Webhook on Koyeb...")
+    print("🚀 Bot is running on Koyeb Webhook...")
 
     await app.run_webhook(
         listen="0.0.0.0",
         port=8080,
-        url_path=BOT_TOKEN,
-        webhook_url=f"https://{os.getenv('KOYEB_APP_NAME')}.koyeb.app/{BOT_TOKEN}",
+        url_path=TOKEN,
+        webhook_url=f"https://{APP_NAME}.koyeb.app/{TOKEN}",
     )
 
 import asyncio
