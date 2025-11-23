@@ -1,10 +1,10 @@
 import os
-import logging
 import re
+import logging
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, List, Optional
 
-import requests
+import feedparser
 from telegram import (
     Bot,
     Update,
@@ -28,212 +28,207 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ---------------- توكن البوت ----------------
+# ---------------- التوكن ----------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN env var not set")
 
-# ---------------- إعدادات TradingView ----------------
-TV_BASE = "https://www.tradingview.com"
-TV_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/121.0 Safari/537.36"
-    )
-}
-
-# حالة كل شات (الزوج + الأفكار + رقم الفكرة الحالي)
+# حالة كل شات (الزوج + القائمة + رقم الفكرة الحالية + message_id)
 user_state: Dict[int, Dict[str, Any]] = {}
 
 
-# ---------- جلب اللينكات لكل الأفكار لزوج معيّن ----------
-def fetch_symbol_ideas(symbol: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """
-    يجلب قائمة أفكار لزوج معيّن من TradingView.
-    مثال: https://www.tradingview.com/symbols/BTCUSDT/ideas/
-    """
-    url = f"{TV_BASE}/symbols/{symbol}/ideas/"
-    logger.info("Fetching ideas page: %s", url)
-    try:
-        resp = requests.get(url, headers=TV_HEADERS, timeout=15)
-        resp.raise_for_status()
-    except Exception as e:
-        logger.error("Error fetching ideas page: %s", e)
-        return []
-
-    html = resp.text
-    idea_paths: List[str] = []
-
-    # نبحث عن لينكات /chart/xxxxx/slug/
-    for match in re.finditer(r'href="(/chart/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+/?)"', html):
-        path = match.group(1)
-        if path not in idea_paths:
-            idea_paths.append(path)
-        # ناخد شوية زيادة تحسّبًا لو بعض الصفحات فيها مشاكل
-        if len(idea_paths) >= limit * 2:
-            break
-
-    ideas: List[Dict[str, Any]] = []
-    for path in idea_paths:
-        full_url = TV_BASE + path
-        details = fetch_idea_details(full_url)
-        if details:
-            ideas.append(details)
-        if len(ideas) >= limit:
-            break
-
-    return ideas
-
-
-def _search_meta(content: str, prop: str) -> Optional[str]:
-    """مساعدة: نقرأ meta property / name من الـ HTML"""
-    # property="..."
-    m = re.search(
-        rf'<meta\s+[^>]*property=["\']{re.escape(prop)}["\'][^>]*content=["\']([^"\']+)["\']',
-        content,
-        re.IGNORECASE,
-    )
-    if m:
-        return m.group(1)
-    # name="..."
-    m = re.search(
-        rf'<meta\s+[^>]*name=["\']{re.escape(prop)}["\'][^>]*content=["\']([^"\']+)["\']',
-        content,
-        re.IGNORECASE,
-    )
+# ---------- دوال مساعدة على RSS / النص ----------
+def extract_image(summary_html: str) -> Optional[str]:
+    """يحاول يجيب أول صورة من الـ <img src="..."> جوه الملخص"""
+    if not summary_html:
+        return None
+    m = re.search(r'<img[^>]+src="([^"]+)"', summary_html)
     if m:
         return m.group(1)
     return None
 
 
-def fetch_idea_details(url: str) -> Optional[Dict[str, Any]]:
-    """نجيب بيانات فكرة واحدة: العنوان + الصورة + وقت النشر + الكاتب"""
-    logger.info("Fetching idea detail: %s", url)
-    try:
-        resp = requests.get(url, headers=TV_HEADERS, timeout=15)
-        resp.raise_for_status()
-    except Exception as e:
-        logger.error("Error fetching idea detail %s: %s", url, e)
-        return None
-
-    html = resp.text
-
-    title = _search_meta(html, "og:title") or _search_meta(html, "twitter:title")
-    image = _search_meta(html, "og:image") or _search_meta(html, "twitter:image")
-    published_raw = (
-        _search_meta(html, "article:published_time")
-        or _search_meta(html, "publish_date")
-        or ""
+def clean_html(text: str) -> str:
+    """تنضيف HTML من النص"""
+    if not text:
+        return ""
+    # إزالة التاجات
+    text = re.sub(r"<.*?>", "", text)
+    # شوية محارف معروفة
+    text = (
+        text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&quot;", '"')
+        .replace("&#39;", "'")
     )
-
-    published_dt: Optional[datetime] = None
-    if published_raw:
-        for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z"):
-            try:
-                published_dt = datetime.strptime(published_raw, fmt)
-                break
-            except Exception:
-                continue
-
-    author = _search_meta(html, "article:author") or ""
-
-    if not title or not image:
-        logger.warning("Idea %s missing title or image, skipping", url)
-        return None
-
-    return {
-        "title": title,
-        "image": image,
-        "url": url,
-        "author": author,
-        "published_raw": published_raw,
-        "published_dt": published_dt,
-    }
+    return text.strip()
 
 
-# ---------- شكل الكابشن تحت الصورة ----------
-def build_caption(symbol: str, idea: Dict[str, Any], index: int, total: int) -> str:
-    lines = [f"*{idea['title']}*"]
+# ---------- جلب 20 فكرة من TradingView لزوج معين ----------
+def fetch_symbol_ideas(symbol: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    يجلب حتى 20 فكرة من TradingView لزوج معيّن عن طريق RSS الرسمي:
+    https://www.tradingview.com/ideas/{SYMBOL}/rss/
+    """
+    symbol = symbol.upper()
+    url = f"https://www.tradingview.com/ideas/{symbol}/rss/"
+    logger.info("Fetching TV RSS for %s: %s", symbol, url)
+
+    feed = feedparser.parse(url)
+    ideas: List[Dict[str, Any]] = []
+
+    if not feed.entries:
+        logger.warning("No entries in RSS for %s", symbol)
+        return ideas
+
+    for entry in feed.entries[:limit]:
+        title = entry.get("title", "No title")
+        summary_html = entry.get("summary", "") or entry.get("description", "")
+        link = entry.get("link", "")
+        # بعض الـ RSS فيها author
+        author = getattr(entry, "author", "") or ""
+        # وقت النشر
+        pub_dt = None
+        if getattr(entry, "published_parsed", None):
+            pub_dt = datetime(*entry.published_parsed[:6])
+
+        img = extract_image(summary_html)
+        summary_clean = clean_html(summary_html)
+        if len(summary_clean) > 260:
+            summary_clean = summary_clean[:260] + "..."
+
+        ideas.append(
+            {
+                "symbol": symbol,
+                "title": title,
+                "summary": summary_clean,
+                "url": link,
+                "author": author,
+                "published_dt": pub_dt,
+                "image": img,
+            }
+        )
+
+    # ترتيب الأحدث أولاً
+    ideas.sort(
+        key=lambda x: x["published_dt"] if x["published_dt"] else datetime.min,
+        reverse=True,
+    )
+    return ideas
+
+
+# ---------- تجهيز الكابشن تحت الصورة ----------
+def build_caption(idea: Dict[str, Any], index: int, total: int) -> str:
+    lines = []
+    lines.append(f"*{idea['title']}*")
+
     if idea.get("author"):
         lines.append(f"✍️ {idea['author']}")
+
     if idea.get("published_dt"):
-        dt = idea["published_dt"].astimezone()
+        dt = idea["published_dt"]
         lines.append("🕒 " + dt.strftime("%Y-%m-%d %H:%M"))
-    elif idea.get("published_raw"):
-        lines.append(f"🕒 {idea['published_raw']}")
+
     lines.append("")
-    lines.append(f"رمز الزوج: `{symbol}`")
+    lines.append(f"زوج العملة: `{idea['symbol']}`")
     lines.append(f"الفكرة رقم {index + 1} من {total}")
     lines.append("")
+    if idea["summary"]:
+        lines.append("📝 " + idea["summary"])
+        lines.append("")
     lines.append(f"[فتح الفكرة على TradingView]({idea['url']})")
     lines.append("")
     lines.append("⚠️ هذه الأفكار من TradingView وليست نصيحة استثمارية.")
     return "\n".join(lines)
 
 
-# ---------- إرسال / تحديث الكارد ----------
-def send_idea(update: Update, context: CallbackContext, symbol: str, move: int = 0) -> None:
+def build_keyboard(symbol: str, index: int, total: int) -> InlineKeyboardMarkup:
+    keyboard = [
+        [
+            InlineKeyboardButton("⬅️ السابق", callback_data=f"prev|{symbol}"),
+            InlineKeyboardButton(f"{index + 1}/{total}", callback_data="page"),
+            InlineKeyboardButton("التالي ➡️", callback_data=f"next|{symbol}"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+# ---------- إرسال أو تحديث الفكرة في الرسالة ----------
+def show_idea(update: Update, context: CallbackContext, symbol: str, move: int = 0) -> None:
     chat_id = update.effective_chat.id
     state = user_state.get(chat_id)
 
-    # أول مرة أو غيّرنا الزوج → نحمّل أفكار جديدة
+    # أول مرة أو غيرنا الزوج → نجيب أفكار جديدة
     if state is None or state.get("symbol") != symbol or not state.get("ideas"):
         msg = update.effective_message.reply_text(
-            f"⏳ جاري جلب أحدث أفكار TradingView لزوج `{symbol}` ...",
+            f"⏳ جاري جلب أحدث 20 فكرة من TradingView لزوج `{symbol}` ...",
             parse_mode="Markdown",
         )
-        ideas = fetch_symbol_ideas(symbol, limit=10)
+        ideas = fetch_symbol_ideas(symbol, limit=20)
         if not ideas:
-            msg.edit_text(f"⚠️ لا توجد أفكار متاحة حالياً على TradingView لزوج `{symbol}`.")
+            msg.edit_text(
+                f"⚠️ لا توجد أفكار متاحة حالياً على TradingView لزوج `{symbol}`.",
+                parse_mode="Markdown",
+            )
             return
         state = {"symbol": symbol, "ideas": ideas, "index": 0, "message_id": None}
         user_state[chat_id] = state
     else:
-        # تنقّل بين الأفكار
+        # التنقل بين الأفكار
         state["index"] = (state["index"] + move) % len(state["ideas"])
 
     ideas = state["ideas"]
     idx = state["index"]
     idea = ideas[idx]
-    caption = build_caption(symbol, idea, idx, len(ideas))
-
-    keyboard = [
-        [
-            InlineKeyboardButton("⬅️ السابق", callback_data=f"prev|{symbol}"),
-            InlineKeyboardButton(f"{idx + 1}/{len(ideas)}", callback_data="page"),
-            InlineKeyboardButton("التالي ➡️", callback_data=f"next|{symbol}"),
-        ]
-    ]
-    markup = InlineKeyboardMarkup(keyboard)
+    caption = build_caption(idea, idx, len(ideas))
+    markup = build_keyboard(symbol, idx, len(ideas))
 
     bot: Bot = context.bot
-    if state.get("message_id"):
-        # نعدّل نفس الرسالة (الصورة + الكابشن + الأزرار)
-        try:
-            bot.edit_message_media(
-                chat_id=chat_id,
-                message_id=state["message_id"],
-                media=InputMediaPhoto(idea["image"], caption=caption, parse_mode="Markdown"),
-                reply_markup=markup,
-            )
-        except Exception as e:
-            logger.warning("Failed to edit message media: %s", e)
+    msg_id = state.get("message_id")
+    if msg_id:
+        # تحديث نفس الرسالة
+        if idea["image"]:
+            try:
+                bot.edit_message_media(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    media=InputMediaPhoto(idea["image"], caption=caption, parse_mode="Markdown"),
+                    reply_markup=markup,
+                )
+            except Exception as e:
+                logger.warning("edit_message_media failed: %s", e)
+                bot.edit_message_caption(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    caption=caption,
+                    parse_mode="Markdown",
+                    reply_markup=markup,
+                )
+        else:
             bot.edit_message_caption(
                 chat_id=chat_id,
-                message_id=state["message_id"],
+                message_id=msg_id,
                 caption=caption,
                 parse_mode="Markdown",
                 reply_markup=markup,
             )
     else:
-        msg = bot.send_photo(
-            chat_id=chat_id,
-            photo=idea["image"],
-            caption=caption,
-            parse_mode="Markdown",
-            reply_markup=markup,
-        )
+        # أول إرسال
+        if idea["image"]:
+            msg = bot.send_photo(
+                chat_id=chat_id,
+                photo=idea["image"],
+                caption=caption,
+                parse_mode="Markdown",
+                reply_markup=markup,
+            )
+        else:
+            msg = bot.send_message(
+                chat_id=chat_id,
+                text=caption,
+                parse_mode="Markdown",
+                reply_markup=markup,
+            )
         state["message_id"] = msg.message_id
 
 
@@ -242,48 +237,49 @@ def start_cmd(update: Update, context: CallbackContext) -> None:
     text = (
         "أهلاً بك 👋\n\n"
         "هذا البوت يعرض لك *أفكار وتحليلات TradingView* لأي زوج كريبتو.\n\n"
-        "اكتب اسم الزوج بهذا الشكل:\n"
+        "اكتب اسم الزوج بهذا الشكل (كأمر):\n"
         "`/BTCUSDT`\n"
         "`/ETHUSDT`\n"
         "`/SOLUSDT`\n"
         "وهكذا...\n\n"
-        "سيتم جلب آخر الأفكار مع الصورة، ويمكنك التنقل بينها من خلال أزرار ⬅️ / ➡️.\n"
+        "سيتم جلب آخر 20 فكرة (إن وجدت) مع الصورة + العنوان + الكاتب + الوقت،\n"
+        "ويمكنك التنقل بينها من خلال أزرار ⬅️ السابق / التالي ➡️."
     )
     update.message.reply_text(text, parse_mode="Markdown")
 
 
-# ---------- أي كوماند غير /start نعتبره زوج ----------
-def generic_pair_cmd(update: Update, context: CallbackContext) -> None:
-    cmd = update.message.text.strip()
-    symbol = cmd[1:].upper()
+# ---------- أي أمر /XXXX نعتبره زوج ----------
+def pair_command(update: Update, context: CallbackContext) -> None:
+    text = update.message.text.strip()
+    # مثال: "/BTCUSDT" → "BTCUSDT"
+    symbol = text[1:].upper()
 
-    # لو حد كتب /start هنا بالغلط نطنّش
+    # لو حد كتب /start أو /help ما نعتبره رمز
     if symbol in {"START", "HELP"}:
         return
 
-    send_idea(update, context, symbol, move=0)
+    show_idea(update, context, symbol, move=0)
 
 
-# ---------- أزرار ⬅️ / ➡️ ----------
+# ---------- الكولباك بتاع الأزرار ----------
 def nav_callback(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     data = query.data or ""
+    query.answer()
+
     if data == "page":
-        query.answer()
         return
 
     parts = data.split("|", 1)
     if len(parts) != 2:
-        query.answer()
         return
     action, symbol = parts
-    query.answer()
-
     dummy_update = Update(update.update_id, callback_query=query)
+
     if action == "next":
-        send_idea(dummy_update, context, symbol, move=1)
+        show_idea(dummy_update, context, symbol, move=1)
     elif action == "prev":
-        send_idea(dummy_update, context, symbol, move=-1)
+        show_idea(dummy_update, context, symbol, move=-1)
 
 
 # ---------- main ----------
@@ -293,8 +289,8 @@ def main() -> None:
 
     dp.add_handler(CommandHandler("start", start_cmd))
     dp.add_handler(CallbackQueryHandler(nav_callback))
-    # أي أمر /XXXX نعتبره زوج ونجلب له أفكار
-    dp.add_handler(MessageHandler(Filters.command, generic_pair_cmd))
+    # أي أمر آخر غير /start نعتبره زوج مثل /BTCUSDT
+    dp.add_handler(MessageHandler(Filters.command, pair_command))
 
     updater.start_polling()
     updater.idle()
