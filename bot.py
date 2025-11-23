@@ -3,7 +3,7 @@ import re
 import logging
 import requests
 from bs4 import BeautifulSoup
-from telegram import Update, InputMediaPhoto
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
     MessageHandler, ContextTypes, filters
@@ -29,113 +29,70 @@ WEBHOOK_URL = f"https://{KOYEB_APP_NAME}.koyeb.app/webhook"
 # TradingView Ideas Scraper
 # ------------------------------------
 def fetch_ideas(symbol: str):
-    """
-    Get up to 20 latest ideas from TradingView chart ideas page.
-    New endpoint (better than RSS).
-    """
     url = f"https://www.tradingview.com/symbols/{symbol}/ideas/"
     log.info(f"Fetching ideas page: {url}")
 
     r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
     if r.status_code != 200:
-        log.warning("Bad response from TradingView")
         return []
 
     soup = BeautifulSoup(r.text, "html.parser")
-
-    # Get idea cards (latest posts)
-    cards = soup.select("a.js-userlink-popup-anchor")
+    cards = soup.select("div.tv-widget-idea")
     ideas = []
 
-    count = 0
-    for card in cards:
-        if count >= 20:
-            break
-
-        parent = card.find_parent("div", class_="tv-widget-idea")
-        if not parent:
-            continue
-
-        title_el = parent.select_one(".tv-widget-idea__title")
-        img_el = parent.select_one("img")
-
-        title = title_el.text.strip() if title_el else "Untitled"
-        img = img_el["src"] if img_el else None
-        link = "https://www.tradingview.com" + card["href"]
+    for card in cards[:20]:
+        title = card.select_one(".tv-widget-idea__title")
+        img = card.select_one("img")
+        link = card.select_one("a.js-userlink-popup-anchor")
 
         ideas.append({
-            "title": title,
-            "image": img,
-            "link": link
+            "title": title.text.strip() if title else "Untitled",
+            "image": img["src"] if img else None,
+            "link": "https://www.tradingview.com" + link["href"] if link else ""
         })
-
-        count += 1
 
     return ideas
 
-
 # ------------------------------------
-# /start Command
+# Commands
 # ------------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
+    await update.message.reply_text(
         "أهلاً بك! 👋\n\n"
-        "📈 هذا البوت يجلب لك أحدث *أفكار وتحليلات TradingView* لأي زوج كريبتو أو عملات أو ذهب.\n\n"
-        "📌 الطريقة الأولى (مفضلة):\n"
         "/ideas BTCUSDT\n"
-        "/ideas BTCUSD\n"
         "/ideas ETHUSDT\n"
-        "/ideas GOLD\n\n"
-        "✏️ الطريقة الثانية:\n"
-        "اكتب اسم الزوج مباشرة مثل:\n"
+        "/GOLD\n"
         "/BTCUSDT\n"
-        "/BTCUSD\n"
-        "/GOLD\n\n"
-        "سيتم جلب حتى 20 فكرة (إذا كانت موجودة).\n"
     )
-    await update.message.reply_text(text)
 
-
-# ------------------------------------
-# /ideas SYMBOL Handler
-# ------------------------------------
 async def ideas_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) == 0:
         await update.message.reply_text("⚠️ استخدم: /ideas BTCUSDT")
         return
 
     symbol = context.args[0].upper()
-    await update.message.reply_text(f"⏳ جاري جلب أحدث الأفكار لـ *{symbol}* ...")
+    await update.message.reply_text(f"⏳ جاري جلب أحدث الأفكار لـ {symbol} ...")
 
     ideas = fetch_ideas(symbol)
     if not ideas:
-        await update.message.reply_text(f"⚠️ لا توجد أفكار متاحة حاليًا لـ *{symbol}*.")
+        await update.message.reply_text(f"⚠️ لا توجد أفكار متاحة الآن لـ {symbol}.")
         return
 
-    # Send each idea
     for idea in ideas:
-        caption = f"📌 *{idea['title']}*\n🔗 {idea['link']}"
-        await update.message.reply_photo(idea["image"], caption=caption, parse_mode="Markdown")
+        caption = f"📌 {idea['title']}\n🔗 {idea['link']}"
+        await update.message.reply_photo(idea["image"], caption=caption)
 
-
-# ------------------------------------
-# Handle direct commands like /BTCUSDT
-# ------------------------------------
 async def direct_symbol(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip().replace("/", "").upper()
+    symbol = update.message.text.replace("/", "").upper()
 
-    if text in ["START", "IDEAS"]:
+    if not re.match(r"^[A-Z0-9]{3,10}$", symbol):
         return
 
-    if not re.match(r"^[A-Z0-9]{3,10}$", text):
-        return
-
-    context.args = [text]
+    context.args = [symbol]
     await ideas_handler(update, context)
 
-
 # ------------------------------------
-# MAIN (Webhook)
+# MAIN (Webhook only)
 # ------------------------------------
 async def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -144,15 +101,16 @@ async def main():
     app.add_handler(CommandHandler("ideas", ideas_handler))
     app.add_handler(MessageHandler(filters.Regex(r"^/"), direct_symbol))
 
-    # Start webhook
-    await app.initialize()
-    await app.start()
+    # --- Start webhook ----
     await app.bot.set_webhook(WEBHOOK_URL)
-    log.info(f"🚀 Webhook running: {WEBHOOK_URL}")
+    log.info(f"🚀 Webhook started: {WEBHOOK_URL}")
 
-    await app.updater.start_polling()  # Needed for Koyeb internal loop
-    await app.run_until_disconnected()
-
+    await app.run_webhook(
+        listen="0.0.0.0",
+        port=8080,
+        url_path="webhook",
+        webhook_url=WEBHOOK_URL
+    )
 
 if __name__ == "__main__":
     import asyncio
