@@ -1,132 +1,139 @@
 import os
 import logging
-import requests
-from bs4 import BeautifulSoup
+import aiohttp
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+)
 
-# ------------------------------
-# CONFIG
-# ------------------------------
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+KOYEB_APP_NAME = os.getenv("KOYEB_APP_NAME")
+
 if not BOT_TOKEN:
     raise Exception("❌ BOT_TOKEN is missing!")
 
-APP_NAME = os.getenv("KOYEB_APP_NAME")
-if not APP_NAME:
+if not KOYEB_APP_NAME:
     raise Exception("❌ KOYEB_APP_NAME is missing!")
 
-WEBHOOK_URL = f"https://{APP_NAME}.koyeb.app/webhook"
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-
-# ------------------------------
-# SCRAPER FUNCTION
-# ------------------------------
-
-def fetch_ideas(symbol):
+# ---------------------------
+# Fetch Ideas from TradingView
+# ---------------------------
+async def fetch_ideas(symbol: str):
     url = f"https://www.tradingview.com/symbols/{symbol}/ideas/"
-    logger.info(f"Fetching ideas page for {symbol}: {url}")
 
-    response = requests.get(url)
-    if response.status_code != 200:
-        return []
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers={"User-Agent": "Mozilla/5.0"}) as response:
+            html = await response.text()
 
-    soup = BeautifulSoup(response.text, "html.parser")
     ideas = []
 
-    for card in soup.select("div.card-RL30K"):
-        title = card.select_one("a[href*='/chart/']")
-        if not title:
+    parts = html.split('tv-feed__item tv-feed-layout__card-item')
+    for block in parts[1:]:
+        try:
+            link_part = block.split('href="')[1].split('"')[0]
+            full_link = "https://www.tradingview.com" + link_part
+
+            title = block.split('tv-widget-idea__title">')[1].split("</")[0]
+
+            img = block.split('data-src="')[1].split('"')[0]
+
+            ideas.append({
+                "title": title,
+                "image": img,
+                "url": full_link
+            })
+
+            if len(ideas) >= 10:
+                break
+        except:
             continue
-
-        idea_url = "https://www.tradingview.com" + title["href"].split("?")[0]
-        text_title = title.get_text(strip=True)
-
-        img_tag = card.select_one("img[src]")
-        img_url = img_tag["src"] if img_tag else None
-
-        ideas.append({
-            "title": text_title,
-            "url": idea_url,
-            "image": img_url
-        })
-
-        if len(ideas) >= 20:
-            break
 
     return ideas
 
 
-# ------------------------------
-# BOT COMMANDS
-# ------------------------------
-
+# ---------------------------
+# /start
+# ---------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "👋 أهلاً بك!\n"
-        "📈 ابعت لي رمز العملة مثل:\n"
+        "👋 أهلاً بك!\n\n"
+        "هذا البوت يجلب لك أحدث أفكار وتحليلات TradingView لأي زوج كريبتو أو ذهب.\n\n"
+        "✏️ الطريقة الأولى (مفضلة):\n"
         "/ideas BTCUSDT\n"
-        "/ideas BTCUSD\n"
+        "/ideas ETHUSDT\n"
         "/ideas GOLD\n\n"
-        "أو ببساطة:\n"
+        "✏️ الطريقة الثانية:\n"
+        "اكتب رمز الزوج مباشرة مثل:\n"
         "/BTCUSDT\n"
+        "/ETHUSDT\n"
         "/GOLD\n\n"
-        "سأجيبك بأحدث 20 فكرة على TradingView."
+        "سيتم جلب حتى 20 فكرة (إذا كانت موجودة)."
     )
     await update.message.reply_text(text)
 
 
-async def command_ideas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ---------------------------
+# /ideas BTCUSDT
+# ---------------------------
+async def ideas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) == 0:
-        await update.message.reply_text("⚠️ استخدم: /ideas BTCUSDT")
+        await update.message.reply_text("❌ استخدم: /ideas BTCUSDT")
         return
 
     symbol = context.args[0].upper()
-    await update.message.reply_text(f"⌛ جاري جلب الأفكار لـ {symbol} ...")
-
-    ideas = fetch_ideas(symbol)
-
-    if not ideas:
-        await update.message.reply_text(f"⚠️ لا توجد أفكار متاحة الآن لـ {symbol}.")
-        return
-
-    for idea in ideas:
-        msg = f"📌 *{idea['title']}*\n🔗 {idea['url']}"
-        await update.message.reply_photo(photo=idea["image"], caption=msg, parse_mode="Markdown")
+    await send_ideas(symbol, update)
 
 
+# ---------------------------
+# Direct: /BTCUSDT
+# ---------------------------
 async def direct_symbol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     symbol = update.message.text.replace("/", "").upper()
-    await command_ideas(update, context)
+    await send_ideas(symbol, update)
 
 
-# ------------------------------
-# MAIN (WEBHOOK ONLY)
-# ------------------------------
+# ---------------------------
+# Send Ideas
+# ---------------------------
+async def send_ideas(symbol: str, update: Update):
+    loading = await update.message.reply_text(f"⏳ جاري جلب أحدث الأفكار لـ {symbol} ...")
 
+    ideas = await fetch_ideas(symbol)
+
+    if not ideas:
+        await loading.edit_text(f"⚠️ لا توجد أفكار متاحة حالياً لـ {symbol}.")
+        return
+
+    await loading.delete()
+
+    for idea in ideas:
+        text = f"📌 *{idea['title']}*\n🔗 {idea['url']}"
+        await update.message.reply_photo(idea["image"], caption=text, parse_mode="Markdown")
+
+
+# ---------------------------
+# WEBHOOK MODE FOR KOYEB
+# ---------------------------
 async def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ideas", command_ideas))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, direct_symbol))
+    app.add_handler(CommandHandler("ideas", ideas))
+    app.add_handler(MessageHandler(filters.Regex(r"^/[A-Za-z0-9]+$"), direct_symbol))
 
-    logger.info("🚀 Setting webhook...")
-    await app.bot.set_webhook(WEBHOOK_URL)
-
-    logger.info(f"🔥 Bot is running on Webhook: {WEBHOOK_URL}")
+    webhook_url = f"https://{KOYEB_APP_NAME}.koyeb.app/webhook/{BOT_TOKEN}"
 
     await app.run_webhook(
         listen="0.0.0.0",
-        port=8080,
-        webhook_url=WEBHOOK_URL,
+        port=8000,
+        url_path=BOT_TOKEN,
+        webhook_url=webhook_url
     )
 
 
