@@ -1,297 +1,281 @@
 import os
-import re
 import logging
+import re
 from datetime import datetime
-from typing import Dict, Any, List, Optional
 
 import feedparser
-from telegram import (
-    Bot,
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InputMediaPhoto,
-)
+import requests
 from telegram.ext import (
     Updater,
     CommandHandler,
-    CallbackQueryHandler,
     MessageHandler,
     Filters,
-    CallbackContext,
 )
 
-# ---------------- إعداد اللوج ----------------
+# ---------------- الإعدادات العامة ----------------
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# ---------------- التوكن ----------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-if not TELEGRAM_TOKEN:
-    raise RuntimeError("TELEGRAM_TOKEN env var not set")
 
-# حالة كل شات (الزوج + القائمة + رقم الفكرة الحالية + message_id)
-user_state: Dict[int, Dict[str, Any]] = {}
+# عدد الأفكار لكل طلب
+MAX_IDEAS_PER_PAIR = 20
 
-
-# ---------- دوال مساعدة على RSS / النص ----------
-def extract_image(summary_html: str) -> Optional[str]:
-    """يحاول يجيب أول صورة من الـ <img src="..."> جوه الملخص"""
-    if not summary_html:
-        return None
-    m = re.search(r'<img[^>]+src="([^"]+)"', summary_html)
-    if m:
-        return m.group(1)
-    return None
-
-
-def clean_html(text: str) -> str:
-    """تنضيف HTML من النص"""
-    if not text:
-        return ""
-    # إزالة التاجات
-    text = re.sub(r"<.*?>", "", text)
-    # شوية محارف معروفة
-    text = (
-        text.replace("&nbsp;", " ")
-        .replace("&amp;", "&")
-        .replace("&quot;", '"')
-        .replace("&#39;", "'")
-    )
-    return text.strip()
+# ماب بين الأزواج و الـ RSS في TradingView
+PAIR_FEEDS = {
+    "BTCUSDT": [
+        "https://www.tradingview.com/ideas/bitcoin/rss/",
+        "https://www.tradingview.com/ideas/btcusd/rss/",
+    ],
+    "ETHUSDT": [
+        "https://www.tradingview.com/ideas/ethereum/rss/",
+        "https://www.tradingview.com/ideas/ethusd/rss/",
+    ],
+    "BNBUSDT": [
+        "https://www.tradingview.com/ideas/bnbusdt/rss/",
+        "https://www.tradingview.com/ideas/binancecoin/rss/",
+    ],
+    "SOLUSDT": [
+        "https://www.tradingview.com/ideas/solusdt/rss/",
+        "https://www.tradingview.com/ideas/solana/rss/",
+    ],
+    "XRPUSDT": [
+        "https://www.tradingview.com/ideas/xrpusdt/rss/",
+        "https://www.tradingview.com/ideas/ripple/rss/",
+    ],
+}
 
 
-# ---------- جلب 20 فكرة من TradingView لزوج معين ----------
-def fetch_symbol_ideas(symbol: str, limit: int = 20) -> List[Dict[str, Any]]:
+# ---------------- دوال TradingView ----------------
+
+
+def fetch_tv_ideas_for_pair(pair: str, max_ideas: int = MAX_IDEAS_PER_PAIR):
     """
-    يجلب حتى 20 فكرة من TradingView لزوج معيّن عن طريق RSS الرسمي:
-    https://www.tradingview.com/ideas/{SYMBOL}/rss/
+    يرجّع ليست بالأفكار (entries) من TradingView لزوج معين.
+    نعتمد على RSS لأكثر من فيد لكل زوج، ونجمعهم ونرتّبهم بالأحدث.
     """
-    symbol = symbol.upper()
-    url = f"https://www.tradingview.com/ideas/{symbol}/rss/"
-    logger.info("Fetching TV RSS for %s: %s", symbol, url)
+    urls = PAIR_FEEDS.get(pair.upper(), [])
+    if not urls:
+        return []
 
-    feed = feedparser.parse(url)
-    ideas: List[Dict[str, Any]] = []
+    all_entries = []
 
-    if not feed.entries:
-        logger.warning("No entries in RSS for %s", symbol)
-        return ideas
+    headers = {
+        # User-Agent عادي عشان TradingView ما يرفضش الطلبات
+        "User-Agent": "Mozilla/5.0 (compatible; CryptoIdeasBot/1.0)",
+    }
 
-    for entry in feed.entries[:limit]:
-        title = entry.get("title", "No title")
-        summary_html = entry.get("summary", "") or entry.get("description", "")
-        link = entry.get("link", "")
-        # بعض الـ RSS فيها author
-        author = getattr(entry, "author", "") or ""
-        # وقت النشر
-        pub_dt = None
-        if getattr(entry, "published_parsed", None):
-            pub_dt = datetime(*entry.published_parsed[:6])
+    for url in urls:
+        try:
+            logger.info("Fetching TV RSS for %s: %s", pair, url)
+            resp = requests.get(url, timeout=15, headers=headers)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
+        except Exception as e:
+            logger.error("TV Fetch Error for %s from %s: %s", pair, url, e)
+            continue
 
-        img = extract_image(summary_html)
-        summary_clean = clean_html(summary_html)
-        if len(summary_clean) > 260:
-            summary_clean = summary_clean[:260] + "..."
+        if not feed.entries:
+            logger.warning("No entries in RSS for %s from %s", pair, url)
+            continue
 
-        ideas.append(
-            {
-                "symbol": symbol,
-                "title": title,
-                "summary": summary_clean,
-                "url": link,
-                "author": author,
-                "published_dt": pub_dt,
-                "image": img,
-            }
-        )
+        all_entries.extend(feed.entries)
 
-    # ترتيب الأحدث أولاً
-    ideas.sort(
-        key=lambda x: x["published_dt"] if x["published_dt"] else datetime.min,
-        reverse=True,
-    )
-    return ideas
+    # مفيش أي حاجة
+    if not all_entries:
+        return []
 
+    # إزالة التكرار باللينك
+    unique_entries = []
+    seen_links = set()
+    for e in all_entries:
+        link = e.get("link", "")
+        if not link or link in seen_links:
+            continue
+        seen_links.add(link)
+        unique_entries.append(e)
 
-# ---------- تجهيز الكابشن تحت الصورة ----------
-def build_caption(idea: Dict[str, Any], index: int, total: int) -> str:
-    lines = []
-    lines.append(f"*{idea['title']}*")
+    # ترتيب حسب التاريخ
+    with_dt = []
+    without_dt = []
+    for e in unique_entries:
+        published_dt = None
+        if getattr(e, "published_parsed", None):
+            published_dt = datetime(*e.published_parsed[:6])
+        if published_dt:
+            with_dt.append((published_dt, e))
+        else:
+            without_dt.append((None, e))
 
-    if idea.get("author"):
-        lines.append(f"✍️ {idea['author']}")
+    with_dt.sort(key=lambda x: x[0], reverse=True)
+    ordered = [e for _, e in with_dt] + [e for _, e in without_dt]
 
-    if idea.get("published_dt"):
-        dt = idea["published_dt"]
-        lines.append("🕒 " + dt.strftime("%Y-%m-%d %H:%M"))
-
-    lines.append("")
-    lines.append(f"زوج العملة: `{idea['symbol']}`")
-    lines.append(f"الفكرة رقم {index + 1} من {total}")
-    lines.append("")
-    if idea["summary"]:
-        lines.append("📝 " + idea["summary"])
-        lines.append("")
-    lines.append(f"[فتح الفكرة على TradingView]({idea['url']})")
-    lines.append("")
-    lines.append("⚠️ هذه الأفكار من TradingView وليست نصيحة استثمارية.")
-    return "\n".join(lines)
+    return ordered[:max_ideas]
 
 
-def build_keyboard(symbol: str, index: int, total: int) -> InlineKeyboardMarkup:
-    keyboard = [
-        [
-            InlineKeyboardButton("⬅️ السابق", callback_data=f"prev|{symbol}"),
-            InlineKeyboardButton(f"{index + 1}/{total}", callback_data="page"),
-            InlineKeyboardButton("التالي ➡️", callback_data=f"next|{symbol}"),
-        ]
+def extract_image_from_entry(entry) -> str:
+    """
+    نحاول نطلع صورة الفكرة من الـ summary أو أي ميديا في الفيد.
+    """
+    # من media_content إن وجدت
+    media = entry.get("media_content") or entry.get("media_thumbnail")
+    if media and isinstance(media, list):
+        url = media[0].get("url")
+        if url:
+            return url
+
+    summary = entry.get("summary", "") or entry.get("description", "")
+    if summary:
+        m = re.search(r'<img[^>]+src="([^"]+)"', summary)
+        if m:
+            return m.group(1)
+
+    return ""
+
+
+def build_caption(pair: str, idx: int, entry) -> str:
+    title = entry.get("title", "No title")
+    link = entry.get("link", "")
+    author = entry.get("author", "")
+    published_str = ""
+
+    if getattr(entry, "published_parsed", None):
+        dt = datetime(*entry.published_parsed[:6])
+        published_str = dt.strftime("%Y-%m-%d %H:%M")
+    else:
+        published_str = (entry.get("published") or "")[:19]
+
+    caption_lines = [
+        f"*{pair} — Idea #{idx}*",
+        f"*{title}*",
     ]
-    return InlineKeyboardMarkup(keyboard)
+
+    if author:
+        caption_lines.append(f"✍️ {author}")
+    if published_str:
+        caption_lines.append(f"🕒 {published_str}")
+
+    if link:
+        caption_lines.append(f"\n[فتح الفكرة على TradingView]({link})")
+
+    caption_lines.append(
+        "\n⚠️ هذه الأفكار والتحليلات للمعلومات فقط وليست نصيحة استثمارية."
+    )
+
+    return "\n".join(caption_lines)
 
 
-# ---------- إرسال أو تحديث الفكرة في الرسالة ----------
-def show_idea(update: Update, context: CallbackContext, symbol: str, move: int = 0) -> None:
-    chat_id = update.effective_chat.id
-    state = user_state.get(chat_id)
-
-    # أول مرة أو غيرنا الزوج → نجيب أفكار جديدة
-    if state is None or state.get("symbol") != symbol or not state.get("ideas"):
-        msg = update.effective_message.reply_text(
-            f"⏳ جاري جلب أحدث 20 فكرة من TradingView لزوج `{symbol}` ...",
-            parse_mode="Markdown",
-        )
-        ideas = fetch_symbol_ideas(symbol, limit=20)
-        if not ideas:
-            msg.edit_text(
-                f"⚠️ لا توجد أفكار متاحة حالياً على TradingView لزوج `{symbol}`.",
-                parse_mode="Markdown",
-            )
-            return
-        state = {"symbol": symbol, "ideas": ideas, "index": 0, "message_id": None}
-        user_state[chat_id] = state
-    else:
-        # التنقل بين الأفكار
-        state["index"] = (state["index"] + move) % len(state["ideas"])
-
-    ideas = state["ideas"]
-    idx = state["index"]
-    idea = ideas[idx]
-    caption = build_caption(idea, idx, len(ideas))
-    markup = build_keyboard(symbol, idx, len(ideas))
-
-    bot: Bot = context.bot
-    msg_id = state.get("message_id")
-    if msg_id:
-        # تحديث نفس الرسالة
-        if idea["image"]:
-            try:
-                bot.edit_message_media(
-                    chat_id=chat_id,
-                    message_id=msg_id,
-                    media=InputMediaPhoto(idea["image"], caption=caption, parse_mode="Markdown"),
-                    reply_markup=markup,
-                )
-            except Exception as e:
-                logger.warning("edit_message_media failed: %s", e)
-                bot.edit_message_caption(
-                    chat_id=chat_id,
-                    message_id=msg_id,
-                    caption=caption,
-                    parse_mode="Markdown",
-                    reply_markup=markup,
-                )
-        else:
-            bot.edit_message_caption(
-                chat_id=chat_id,
-                message_id=msg_id,
-                caption=caption,
-                parse_mode="Markdown",
-                reply_markup=markup,
-            )
-    else:
-        # أول إرسال
-        if idea["image"]:
-            msg = bot.send_photo(
-                chat_id=chat_id,
-                photo=idea["image"],
-                caption=caption,
-                parse_mode="Markdown",
-                reply_markup=markup,
-            )
-        else:
-            msg = bot.send_message(
-                chat_id=chat_id,
-                text=caption,
-                parse_mode="Markdown",
-                reply_markup=markup,
-            )
-        state["message_id"] = msg.message_id
+# ---------------- أوامر البوت ----------------
 
 
-# ---------- /start ----------
-def start_cmd(update: Update, context: CallbackContext) -> None:
+def start_cmd(update, context):
     text = (
         "أهلاً بك 👋\n\n"
-        "هذا البوت يعرض لك *أفكار وتحليلات TradingView* لأي زوج كريبتو.\n\n"
-        "اكتب اسم الزوج بهذا الشكل (كأمر):\n"
+        "هذا البوت يعرض لك *أفكار وتحليلات TradingView* لعدة أزواج كريبتو.\n\n"
+        "اكتب اسم الزوج على شكل أمر، مثلاً:\n"
         "`/BTCUSDT`\n"
         "`/ETHUSDT`\n"
+        "`/BNBUSDT`\n"
         "`/SOLUSDT`\n"
-        "وهكذا...\n\n"
-        "سيتم جلب آخر 20 فكرة (إن وجدت) مع الصورة + العنوان + الكاتب + الوقت،\n"
-        "ويمكنك التنقل بينها من خلال أزرار ⬅️ السابق / التالي ➡️."
+        "`/XRPUSDT`\n\n"
+        "وسيتم عرض آخر الأفكار المتاحة (حتى 20 فكرة) مع الصورة والرابط.\n"
+        "كل ما عليك إنك تكتب الأمر فقط 👇"
     )
     update.message.reply_text(text, parse_mode="Markdown")
 
 
-# ---------- أي أمر /XXXX نعتبره زوج ----------
-def pair_command(update: Update, context: CallbackContext) -> None:
-    text = update.message.text.strip()
-    # مثال: "/BTCUSDT" → "BTCUSDT"
-    symbol = text[1:].upper()
-
-    # لو حد كتب /start أو /help ما نعتبره رمز
-    if symbol in {"START", "HELP"}:
+def pair_ideas_cmd(update, context):
+    """
+    أي أمر غير معروف هنعتبره اسم زوج: /BTCUSDT مثلاً.
+    """
+    text = (update.message.text or "").strip()
+    if not text.startswith("/"):
         return
 
-    show_idea(update, context, symbol, move=0)
+    command = text[1:]  # شيل /
+    pair = command.upper()
 
-
-# ---------- الكولباك بتاع الأزرار ----------
-def nav_callback(update: Update, context: CallbackContext) -> None:
-    query = update.callback_query
-    data = query.data or ""
-    query.answer()
-
-    if data == "page":
+    if pair not in PAIR_FEEDS:
+        supported = ", ".join(f"/{p}" for p in PAIR_FEEDS.keys())
+        update.message.reply_text(
+            "❌ الزوج غير مدعوم حالياً.\n"
+            f"الأزواج المتاحة:\n{supported}"
+        )
         return
 
-    parts = data.split("|", 1)
-    if len(parts) != 2:
+    chat_id = update.message.chat_id
+    waiting_msg = update.message.reply_text(
+        f"⏳ جاري جلب أحدث أفكار TradingView لزوج {pair}..."
+    )
+
+    try:
+        ideas = fetch_tv_ideas_for_pair(pair)
+    except Exception as e:
+        logger.exception("Unexpected error while fetching ideas for %s: %s", pair, e)
+        context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=waiting_msg.message_id,
+            text="❌ حدث خطأ أثناء جلب الأفكار من TradingView، حاول مرة أخرى لاحقاً.",
+        )
         return
-    action, symbol = parts
-    dummy_update = Update(update.update_id, callback_query=query)
 
-    if action == "next":
-        show_idea(dummy_update, context, symbol, move=1)
-    elif action == "prev":
-        show_idea(dummy_update, context, symbol, move=-1)
+    if not ideas:
+        context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=waiting_msg.message_id,
+            text=f"⚠️ لا توجد أفكار متاحة حالياً على TradingView لزوج {pair}.",
+        )
+        return
+
+    # عدّل رسالة الانتظار
+    context.bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=waiting_msg.message_id,
+        text=f"✅ تم جلب {len(ideas)} فكرة من TradingView لزوج {pair}.",
+    )
+
+    # ابعت كل فكرة كصورة + كابشن
+    for idx, entry in enumerate(ideas, start=1):
+        try:
+            photo_url = extract_image_from_entry(entry)
+            caption = build_caption(pair, idx, entry)
+
+            if photo_url:
+                context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo_url,
+                    caption=caption,
+                    parse_mode="Markdown",
+                )
+            else:
+                context.bot.send_message(
+                    chat_id=chat_id,
+                    text=caption,
+                    parse_mode="Markdown",
+                    disable_web_page_preview=True,
+                )
+        except Exception as e:
+            logger.warning("Error sending idea #%s for %s: %s", idx, pair, e)
 
 
-# ---------- main ----------
-def main() -> None:
+def main():
+    if not TELEGRAM_TOKEN:
+        raise RuntimeError("TELEGRAM_TOKEN env var not set")
+
     updater = Updater(TELEGRAM_TOKEN, use_context=True)
     dp = updater.dispatcher
 
+    # /start
     dp.add_handler(CommandHandler("start", start_cmd))
-    dp.add_handler(CallbackQueryHandler(nav_callback))
-    # أي أمر آخر غير /start نعتبره زوج مثل /BTCUSDT
-    dp.add_handler(MessageHandler(Filters.command, pair_command))
 
+    # أي أمر تاني هنعتبره اسم زوج
+    dp.add_handler(MessageHandler(Filters.command, pair_ideas_cmd))
+
+    logger.info("Bot is starting polling...")
     updater.start_polling()
     updater.idle()
 
