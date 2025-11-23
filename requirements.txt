@@ -1,5 +1,4 @@
-python-telegram-bot==20.8
-fastapi
-uvicorn
-beautifulsoup4
+python-telegram-bot==20.3
 requests
+beautifulsoup4
+aiohttp
