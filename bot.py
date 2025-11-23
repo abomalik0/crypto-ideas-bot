@@ -108,7 +108,6 @@ async def ideas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for idea in ideas:
         caption = f"{idea['title']}\n\n🔗 {idea['link']}"
 
-        # لو في صورة
         if idea["image"]:
             try:
                 await update.message.bot.send_photo(
@@ -120,7 +119,6 @@ async def ideas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
 
-        # لو فشل إرسال الصورة → أرسل نص فقط
         await update.message.bot.send_message(
             chat_id=update.effective_chat.id,
             text=caption
@@ -133,20 +131,19 @@ async def shortcut(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    bot = Application.builder().token(BOT_TOKEN).build()  # ← تمت إعادة التسمية
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ideas", ideas_cmd))
-    app.add_handler(
+    bot.add_handler(CommandHandler("start", start))
+    bot.add_handler(CommandHandler("ideas", ideas_cmd))
+    bot.add_handler(
         MessageHandler(filters.Regex(r"^/[A-Za-z0-9]+$"), shortcut)
     )
 
     port = int(os.getenv("PORT", "8080"))
 
-    logger.info(f"Webhook running on port {port}")
+    logging.info(f"Webhook running on port {port}")
 
-    # أهم نقطة: **بدون await – بدون إغلاق Event Loop**
-    app.run_webhook(
+    bot.run_webhook(
         listen="0.0.0.0",
         port=port,
         url_path=BOT_TOKEN,
