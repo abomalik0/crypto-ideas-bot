@@ -1,69 +1,110 @@
-import os
-import feedparser
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+import logging
+import requests
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# -----------------------------------
+# Logging
+# -----------------------------------
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-def get_ideas(symbol):
-    url = f"https://www.tradingview.com/ideas/{symbol}/rss/"
-    feed = feedparser.parse(url)
+# -----------------------------------
+# TradingView Scraper
+# -----------------------------------
+BASE_URL = "https://scanner.tradingview.com/crypto/scan"
 
-    ideas = []
-    for entry in feed.entries[:10]:
-        ideas.append({
-            "title": entry.title,
-            "link": entry.link
-        })
-    return ideas
+def get_tv_ideas(symbol: str):
+    if symbol.endswith("USDT"):
+        search_pair = symbol.replace("USDT", "USD")
+    else:
+        search_pair = symbol
 
+    payload = {
+        "symbols": {"tickers": [f"BINANCE:{search_pair}"]},
+        "columns": ["name", "description", "relatedIdeas"]
+    }
 
-async def start(update, context):
-    text = (
-        "👋 أهلاً!\n"
-        "هذا البوت يجلب لك آخر أفكار TradingView.\n\n"
-        "استخدم مثلاً:\n"
-        "/ideas BTCUSDT\n"
-        "أو مباشرة:\n"
-        "/BTCUSDT"
+    try:
+        response = requests.post(BASE_URL, json=payload, timeout=10)
+        data = response.json()
+        ideas_raw = data.get("data", [{}])[0].get("d", [])
+
+        ideas = []
+        for idea in ideas_raw:
+            ideas.append({
+                "title": idea.get("title", "No title"),
+                "link": "https://www.tradingview.com" + idea.get("link", "")
+            })
+
+        return ideas[:10]
+
+    except Exception as e:
+        print("TradingView API Error:", e)
+        return []
+
+# -----------------------------------
+# /start command
+# -----------------------------------
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "مرحباً! 👋\n"
+        "استخدم:\n/ideas BTCUSDT\n"
+        "أو اكتب مباشرة /BTCUSDT وسيتم جلب الأفكار."
     )
-    await update.message.reply_text(text)
 
+# -----------------------------------
+# /ideas command
+# -----------------------------------
+async def ideas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-async def ideas_cmd(update, context):
     if len(context.args) == 0:
-        await update.message.reply_text("❗ استخدم: /ideas BTCUSDT")
+        await update.message.reply_text("❗ لازم تكتب زوج مثل: /ideas BTCUSDT")
         return
 
-    symbol = context.args[0].upper()
-    await update.message.reply_text(f"⏳ جاري جلب أفكار {symbol}...")
+    symbol = context.args[0].upper().strip()
 
-    ideas = get_ideas(symbol)
+    await update.message.reply_text(f"⏳ جاري جلب أفكار {symbol} من TradingView...")
+
+    ideas = get_tv_ideas(symbol)
 
     if not ideas:
-        await update.message.reply_text("❌ لا توجد أفكار متاحة حالياً.")
+        await update.message.reply_text("⚠️ لا توجد أفكار متاحة حالياً.")
         return
 
     for idea in ideas:
-        msg = f"📌 *{idea['title']}*\n🔗 {idea['link']}"
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await update.message.reply_text(f"📌 {idea['title']}\n🔗 {idea['link']}")
 
-
-async def shortcut(update, context):
+# -----------------------------------
+# Shortcuts for /BTCUSDT etc.
+# -----------------------------------
+async def shortcut_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     symbol = update.message.text.replace("/", "").upper()
-    context.args = [symbol]
-    await ideas_cmd(update, context)
+    fake_context = type("Fake", (), {})()
+    fake_context.args = [symbol]
+    return await ideas_cmd(update, fake_context)
 
-
+# -----------------------------------
+# MAIN
+# -----------------------------------
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    BOT_TOKEN = "ضع_التوكن_هنا"
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ideas", ideas_cmd))
-    app.add_handler(MessageHandler(filters.Regex(r"/[A-Za-z0-9]+"), shortcut))
+    application = Application.builder().token(BOT_TOKEN).build()
 
-    print("Bot running...")
-    app.run_polling()
+    # Commands
+    application.add_handler(CommandHandler("start", start_cmd))
+    application.add_handler(CommandHandler("ideas", ideas_cmd))
 
+    # Shortcut commands for tickers
+    shortcuts = ["BTCUSDT", "ETHUSDT", "BTCUSD", "ETHUSD", "GOLD"]
+    for s in shortcuts:
+        application.add_handler(CommandHandler(s.lower(), shortcut_cmd))
+
+    print("Bot started in polling mode...")
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
