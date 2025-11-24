@@ -1,81 +1,95 @@
-import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-import feedparser
 import os
+import logging
+import asyncio
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-logging.basicConfig(level=logging.INFO)
+from scraper import get_ideas
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-APP_URL = os.getenv("APP_URL")  # https://your-app-name.koyeb.app
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN missing!")
 
-# -------------------------------------------------
-# جلب أفكار TradingView
-# -------------------------------------------------
-def fetch_ideas(symbol: str):
-    url = f"https://www.tradingview.com/ideas/{symbol}/rss/"
-    feed = feedparser.parse(url)
 
-    ideas = []
-    for entry in feed.entries[:10]:
-        title = entry.get("title", "بدون عنوان")
-        link = entry.get("link", "")
-        ideas.append(f"📌 *{title}*\n🔗 {link}")
-
-    return ideas
+WELCOME = (
+    "أهلاً 👋\n"
+    "استخدم:\n"
+    "/ideas BTCUSDT\n"
+    "أو مباشرة:\n"
+    "/BTCUSDT"
+)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 أهلاً!\n"
-        "اكتب: /ideas BTCUSDT\n"
-        "وسيتم إرسال آخر 10 أفكار من TradingView."
-    )
+    await update.message.reply_text(WELCOME)
 
 
-async def ideas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("❌ يرجى كتابة رمز مثل: /ideas BTCUSDT")
+def extract_symbol(text: str):
+    if text.startswith("/ideas"):
+        parts = text.split()
+        return parts[1].upper() if len(parts) > 1 else None
+    if text.startswith("/"):
+        return text[1:].upper()
+    return None
+
+
+async def ideas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    txt = update.message.text
+    symbol = extract_symbol(txt)
+
+    if not symbol:
+        await update.message.reply_text("اكتب: /ideas BTCUSDT")
         return
 
-    symbol = context.args[0].upper()
+    loading = await update.message.reply_text(f"⏳ جاري جلب أفكار {symbol} ...")
 
-    await update.message.reply_text(f"⏳ جاري جلب أفكار {symbol} من TradingView...")
+    ideas = await get_ideas(symbol)
 
-    results = fetch_ideas(symbol)
-    if not results:
-        await update.message.reply_text("❌ لم يتم العثور على أفكار.")
+    if not ideas:
+        await loading.edit_text(f"❌ لا يوجد أفكار حالياً لـ {symbol}")
         return
 
-    for idea in results:
-        await update.message.reply_markdown(idea)
+    await loading.delete()
+
+    for idea in ideas:
+        caption = f"{idea['title']}\n\n🔗 {idea['link']}"
+        if idea["image"]:
+            try:
+                await update.message.bot.send_photo(
+                    chat_id=update.effective_chat.id,
+                    photo=idea["image"],
+                    caption=caption
+                )
+                continue
+            except:
+                pass
+
+        await update.message.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=caption
+        )
 
 
-# -------------------------------------------------
-# تشغيل البوت - Webhook
-# -------------------------------------------------
-def main():
-    if not BOT_TOKEN:
-        raise ValueError("❌ BOT_TOKEN غير موجود في المتغيرات!")
+async def shortcut(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ideas_cmd(update, context)
 
-    if not APP_URL:
-        raise ValueError("❌ APP_URL غير موجود في المتغيرات!")
 
+async def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ideas", ideas))
+    app.add_handler(CommandHandler("ideas", ideas_cmd))
+    app.add_handler(MessageHandler(filters.Regex(r"^/[A-Za-z0-9]+$"), shortcut))
 
-    logger.info("🔥 Running BOT using WEBHOOK mode...")
-
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=8080,
-        url_path=BOT_TOKEN,
-        webhook_url=f"{APP_URL}/{BOT_TOKEN}"
-    )
+    logger.info("Starting bot...")
+    await app.run_polling()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
