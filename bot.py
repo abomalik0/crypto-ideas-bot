@@ -1,74 +1,69 @@
 import os
-import time
+import feedparser
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from utils.scraper import get_tv_ideas
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-last_call = {}
+def get_ideas(symbol):
+    url = f"https://www.tradingview.com/ideas/{symbol}/rss/"
+    feed = feedparser.parse(url)
 
-def rate_limit(user_id):
-    now = time.time()
-    if user_id in last_call and now - last_call[user_id] < 4:
-        return False, int(4 - (now - last_call[user_id]))
-    last_call[user_id] = now
-    return True, 0
+    ideas = []
+    for entry in feed.entries[:10]:
+        ideas.append({
+            "title": entry.title,
+            "link": entry.link
+        })
+    return ideas
 
-# /start
+
 async def start(update, context):
     text = (
-        "👋 أهلاً!\n\n"
-        "هذا البوت يجلب لك آخر أفكار TradingView لأي زوج كريبتو أو ذهب.\n\n"
+        "👋 أهلاً!\n"
+        "هذا البوت يجلب لك آخر أفكار TradingView.\n\n"
         "استخدم مثلاً:\n"
-        "/ideas BTCUSDT\n\n"
+        "/ideas BTCUSDT\n"
         "أو مباشرة:\n"
-        "/BTCUSDT\n\n"
-        "سيتم إرسال حتى 10 أفكار في رسائل منفصلة مع العنوان والرابط."
+        "/BTCUSDT"
     )
     await update.message.reply_text(text)
 
-# جلب الأفكار
-async def ideas(update, context):
-    user_id = update.message.from_user.id
-    ok, wait_time = rate_limit(user_id)
 
-    if not ok:
-        await update.message.reply_text(f"⏳ من فضلك انتظر {wait_time} ثواني.")
-        return
-
+async def ideas_cmd(update, context):
     if len(context.args) == 0:
-        await update.message.reply_text("❗ مثال:\n/ideas BTCUSDT")
+        await update.message.reply_text("❗ استخدم: /ideas BTCUSDT")
         return
 
     symbol = context.args[0].upper()
+    await update.message.reply_text(f"⏳ جاري جلب أفكار {symbol}...")
 
-    await update.message.reply_text(f"⏳ جاري جلب أفكار **{symbol}** من TradingView...", parse_mode="Markdown")
+    ideas = get_ideas(symbol)
 
-    ideas_list = get_tv_ideas(symbol)
-
-    if not ideas_list:
-        await update.message.reply_text("❌ لم يتم العثور على أفكار لهذا الزوج.")
+    if not ideas:
+        await update.message.reply_text("❌ لا توجد أفكار متاحة حالياً.")
         return
 
-    for idea in ideas_list:
-        msg = f"📌 **{idea['title']}**\n🔗 {idea['link']}"
+    for idea in ideas:
+        msg = f"📌 *{idea['title']}*\n🔗 {idea['link']}"
         await update.message.reply_text(msg, parse_mode="Markdown")
 
-# أوامر مباشرة مثل /BTCUSDT
+
 async def shortcut(update, context):
     symbol = update.message.text.replace("/", "").upper()
     context.args = [symbol]
-    await ideas(update, context)
+    await ideas_cmd(update, context)
+
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ideas", ideas))
-    app.add_handler(MessageHandler(filters.Regex(r"^[A-Za-z0-9]+$"), shortcut))
+    app.add_handler(CommandHandler("ideas", ideas_cmd))
+    app.add_handler(MessageHandler(filters.Regex(r"/[A-Za-z0-9]+"), shortcut))
 
-    print("Bot is running...")
+    print("Bot running...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
