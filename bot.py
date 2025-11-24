@@ -1,53 +1,84 @@
 import os
 import requests
 from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Bot
+from datetime import datetime
+import matplotlib.pyplot as plt
+import io
 
-TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+TOKEN = os.environ.get("BOT_TOKEN")
+WEBHOOK_SECRET = "secure123"
+bot = Bot(token=TOKEN)
 
 app = Flask(__name__)
 
-# ===============================
-#  Telegram Bot Handlers
-# ===============================
+# ===========================
+# 🔥 GET PRICE (BINANCE API)
+# ===========================
+def get_price(symbol="BTCUSDT"):
+    url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}"
+    r = requests.get(url).json()
+    return float(r["price"])
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 أهلاً! البوت شغال!")
+# ===========================
+# 🔥 DRAW DARK PREMIUM CHART
+# ===========================
+def draw_chart(symbol, price):
+    plt.style.use("dark_background")
+    fig, ax = plt.subplots(figsize=(6, 4), facecolor="black")
+    ax.set_facecolor("black")
 
-async def ideas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📌 جارى جلب الأفكار...")
+    x = [0, 1, 2, 3, 4]
+    y = [price * 0.98, price * 0.99, price, price * 1.01, price * 1.015]
 
-async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔍 جارى تحليل الزوج...")
+    ax.plot(x, y, linewidth=2)
 
+    ax.set_title(f"{symbol} – Dark Premium", color="cyan")
+    ax.set_xlabel("Timeline", color="white")
+    ax.set_ylabel("Price", color="white")
 
-# ===============================
-#  Flask Route for Webhook
-# ===============================
+    for spine in ax.spines.values():
+        spine.set_color("white")
+
+    img = io.BytesIO()
+    plt.savefig(img, format="png", dpi=180, bbox_inches="tight")
+    img.seek(0)
+    plt.close()
+    return img
+
+# ===========================
+# 🔥 TELEGRAM WEBHOOK
+# ===========================
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    application.update_queue.put_nowait(data)
+
+    if "message" in data:
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "").strip()
+
+        if text == "/start":
+            bot.send_message(chat_id, "🔥 Bot is online!\nSend any symbol like: BTC")
+            return "ok"
+
+        # symbol
+        symbol = text.upper() + "USDT"
+        price = get_price(symbol)
+
+        # chart
+        img = draw_chart(symbol, price)
+
+        bot.send_photo(
+            chat_id,
+            photo=img,
+            caption=f"**{symbol}**\nPrice: {price}$\n\n🔗 TradingView:\nhttps://www.tradingview.com/chart/?symbol={symbol}",
+            parse_mode="Markdown"
+        )
+
     return "ok"
 
-
-# ===============================
-#  Setup bot + webhook activation
-# ===============================
-application = Application.builder().token(TOKEN).build()
-
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("ideas", ideas))
-application.add_handler(CommandHandler("analysis", analysis))
-
-
+# ===========================
+# RUN FLASK
+# ===========================
 if __name__ == "__main__":
-    # Set webhook
-    requests.get(
-        f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={WEBHOOK_URL}/webhook"
-    )
-
-    # Run Flask server
     app.run(host="0.0.0.0", port=8080)
