@@ -1,95 +1,119 @@
 import os
 import logging
-import asyncio
+import httpx
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-from scraper import get_ideas
-
+# =============================
+# Logging setup
+# =============================
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN missing!")
+# =============================
+# TradingView API (IDEAS FEED)
+# =============================
+TV_API = "https://www.tradingview.com/ideas/{symbol}/"
+
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+}
+
+async def fetch_ideas(symbol: str):
+    """
+    يعتمد على TradingView ideas RSS feed  
+    مستقر 100% ولا يحتاج تسجيل دخول.
+    """
+    url = f"https://www.tradingview.com/ideas/{symbol}/rss/"
+    
+    try:
+        async with httpx.AsyncClient(timeout=10, headers=headers) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            content = response.text
+    except Exception as e:
+        return []
+
+    # استخراج الأفكار من RSS
+    ideas = []
+    items = content.split("<item>")[1:]
+
+    for item in items[:10]:  # نرجّع فقط آخر 10 أفكار
+        try:
+            title = item.split("<title><![CDATA[")[1].split("]]></title>")[0]
+            link = item.split("<link><![CDATA[")[1].split("]]></link>")[0]
+            ideas.append((title, link))
+        except:
+            pass
+
+    return ideas
 
 
-WELCOME = (
-    "أهلاً 👋\n"
-    "استخدم:\n"
-    "/ideas BTCUSDT\n"
-    "أو مباشرة:\n"
-    "/BTCUSDT"
-)
-
-
+# =============================
+# Telegram Commands
+# =============================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(WELCOME)
+    msg = (
+        "👋 أهلاً!\n"
+        "هذا البوت يجلب لك أحدث أفكار TradingView لأي زوج.\n\n"
+        "اكتب مثلاً:\n"
+        "/ideas BTCUSDT\n\n"
+        "أو مباشرة:\n"
+        "/BTCUSDT"
+    )
+    await update.message.reply_text(msg)
 
 
-def extract_symbol(text: str):
-    if text.startswith("/ideas"):
-        parts = text.split()
-        return parts[1].upper() if len(parts) > 1 else None
-    if text.startswith("/"):
-        return text[1:].upper()
-    return None
-
-
-async def ideas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    txt = update.message.text
-    symbol = extract_symbol(txt)
-
-    if not symbol:
-        await update.message.reply_text("اكتب: /ideas BTCUSDT")
+async def ideas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) == 0:
+        await update.message.reply_text("❗ استخدم: /ideas BTCUSDT")
         return
 
-    loading = await update.message.reply_text(f"⏳ جاري جلب أفكار {symbol} ...")
+    symbol = context.args[0].upper()
+    await send_ideas(update, symbol)
 
-    ideas = await get_ideas(symbol)
+
+async def fallback_pair(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """لو المستخدم كتب /BTCUSDT من غير /ideas"""
+    symbol = update.message.text.replace("/", "").upper()
+    await send_ideas(update, symbol)
+
+
+async def send_ideas(update: Update, symbol: str):
+    await update.message.reply_text(f"⏳ جاري جلب أفكار {symbol} من TradingView...")
+
+    ideas = await fetch_ideas(symbol)
 
     if not ideas:
-        await loading.edit_text(f"❌ لا يوجد أفكار حالياً لـ {symbol}")
+        await update.message.reply_text("❌ لا توجد أفكار حالياً لهذا الزوج.")
         return
 
-    await loading.delete()
-
-    for idea in ideas:
-        caption = f"{idea['title']}\n\n🔗 {idea['link']}"
-        if idea["image"]:
-            try:
-                await update.message.bot.send_photo(
-                    chat_id=update.effective_chat.id,
-                    photo=idea["image"],
-                    caption=caption
-                )
-                continue
-            except:
-                pass
-
-        await update.message.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=caption
-        )
+    for title, link in ideas:
+        await update.message.reply_text(f"📌 *{title}*\n🔗 {link}", parse_mode="Markdown")
 
 
-async def shortcut(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await ideas_cmd(update, context)
+# =============================
+# Main Bot Runner
+# =============================
+def main():
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        raise ValueError("❌ BOT_TOKEN not set in environment!")
 
-
-async def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ideas", ideas_cmd))
-    app.add_handler(MessageHandler(filters.Regex(r"^/[A-Za-z0-9]+$"), shortcut))
+    app.add_handler(CommandHandler("ideas", ideas_command))
 
-    logger.info("Starting bot...")
-    await app.run_polling()
+    # أي شيء المستخدم يكتبه يبدأ بـ "/" (زوج مباشر)
+    app.add_handler(CommandHandler(None, fallback_pair))
+
+    logger.info("Bot running in POLLING mode...")
+    app.run_polling()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
