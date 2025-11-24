@@ -1,47 +1,38 @@
-import requests
+import aiohttp
+import asyncio
 
-BASE_URL = "https://scanner.tradingview.com/crypto/scan"
+TV_API = "https://www.tradingview.com"
 
-def get_tv_ideas(symbol: str):
-    if symbol.endswith("USDT"):
-        search_pair = symbol.replace("USDT", "USD")
-    else:
-        search_pair = symbol
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Referer": "https://www.tradingview.com",
+}
 
-    payload = {
-        "symbols": {
-            "tickers": [f"BINANCE:{search_pair}"]
-        },
-        "query": {"types": []},
-        "columns": [
-            "name",
-            "description",
-            "relatedIdeas"
-        ]
-    }
 
-    try:
-        response = requests.post(BASE_URL, json=payload, timeout=10)
-        data = response.json()
+async def fetch_json(url):
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        try:
+            async with session.get(url, timeout=10) as r:
+                if r.status == 200:
+                    return await r.json()
+        except:
+            return None
+    return None
 
-        if "data" not in data or len(data["data"]) == 0:
-            return []
 
-        item = data["data"][0]
-        ideas_raw = item.get("d")[2]
+async def get_ideas(symbol, limit=20):
+    url = f"{TV_API}/ideas-page/?symbol={symbol.upper()}&limit={limit}"
 
-        if not ideas_raw:
-            return []
-
-        ideas = []
-        for idea in ideas_raw:
-            ideas.append({
-                "title": idea.get("title", "No title"),
-                "link": f"https://www.tradingview.com{idea.get('link', '')}"
-            })
-
-        return ideas[:10]
-
-    except Exception as e:
-        print("TradingView API Error:", e)
+    data = await fetch_json(url)
+    if not data or "ideas" not in data:
         return []
+
+    ideas = []
+    for idea in data["ideas"]:
+        ideas.append({
+            "title": idea.get("title", "TradingView Idea"),
+            "image": idea.get("thumb_url", None),
+            "link": TV_API + idea.get("public_id", ""),
+        })
+
+    return ideas
