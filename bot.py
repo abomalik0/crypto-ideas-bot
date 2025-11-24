@@ -1,216 +1,248 @@
 import os
 import requests
-from bs4 import BeautifulSoup
 from flask import Flask, request
 from telegram import Bot
+from datetime import datetime
 
-# ==========================
-# TELEGRAM CONFIG
-# ==========================
+# ======================
+#   CONFIG
+# ======================
 
 TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN env variable is missing")
+
 bot = Bot(token=TOKEN)
 
 app = Flask(__name__)
 
-
-# ==========================
-# helpers
-# ==========================
-
-def clean_symbol(symbol: str) -> str:
-    """تنظيف رمز العملة (BTC / BTCUSDT .. إلخ)"""
-    symbol = (symbol or "").upper().strip()
-    symbol = symbol.replace("/", "")
-    return symbol
+BINANCE_API = "https://api.binance.com/api/v3"
 
 
-def fetch_tradingview_ideas(symbol: str, limit: int = 10):
+# ======================
+#   HELPERS
+# ======================
+
+def get_candles(symbol: str, interval: str = "1h", limit: int = 200):
     """
-    يجمع آخر أفكار من صفحة TradingView للرمز
-    بيرجع list فيها dict لكل فكرة
+    جلب بيانات الشموع من Binance
     """
-    sym = clean_symbol(symbol)
-    url = f"https://www.tradingview.com/symbols/{sym}/ideas/"
+    url = f"{BINANCE_API}/klines"
+    params = {"symbol": symbol.upper(), "interval": interval, "limit": limit}
+    r = requests.get(url, params=params, timeout=10)
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/123.0 Safari/537.36"
-        )
-    }
+    if r.status_code != 200:
+        raise RuntimeError(f"Binance error: {r.text}")
 
-    resp = requests.get(url, headers=headers, timeout=15)
-    if resp.status_code != 200:
-        return []
+    data = r.json()
+    closes = [float(c[4]) for c in data]
+    highs = [float(c[2]) for c in data]
+    lows = [float(c[3]) for c in data]
+    times = [int(c[0]) for c in data]
+    return closes, highs, lows, times
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+
+def simple_ma(values, period):
+    if len(values) < period:
+        period = len(values)
+    return sum(values[-period:]) / period
+
+
+def generate_ideas(symbol: str, closes, highs, lows):
+    """
+    توليد 10 أفكار آلية من بيانات السعر
+    """
     ideas = []
 
-    # كروت الأفكار
-    for card in soup.select("div.tv-widget-idea"):
-        if len(ideas) >= limit:
-            break
+    last_price = closes[-1]
+    ma20 = simple_ma(closes, 20)
+    ma50 = simple_ma(closes, 50)
+    highest_50 = max(highs[-50:])
+    lowest_50 = min(lows[-50:])
 
-        title_el = card.select_one("a.tv-widget-idea__title")
-        if not title_el or not title_el.get("href"):
-            continue
+    change_24 = (closes[-1] - closes[-24]) / closes[-24] * 100 if len(closes) >= 25 else 0
 
-        link = "https://www.tradingview.com" + title_el["href"]
-        title = title_el.get_text(strip=True)
-
-        desc_el = card.select_one("p.tv-widget-idea__description")
-        description = desc_el.get_text(strip=True) if desc_el else ""
-
-        author_el = card.select_one("a.tv-user-link__name")
-        author = author_el.get_text(strip=True) if author_el else ""
-
-        date_el = card.select_one("span.tv-widget-idea__time")
-        date = date_el.get_text(strip=True) if date_el else ""
-
-        img_el = card.select_one("img")
-        image_url = None
-        if img_el and img_el.get("src"):
-            image_url = img_el["src"]
-            if image_url.startswith("//"):
-                image_url = "https:" + image_url
-            elif image_url.startswith("/"):
-                image_url = "https://www.tradingview.com" + image_url
-
+    # 1 - الاتجاه العام
+    if ma20 > ma50:
         ideas.append(
-            {
-                "title": title,
-                "link": link,
-                "description": description,
-                "author": author,
-                "date": date,
-                "image": image_url,
-            }
+            f"الاتجاه العام على المدى القريب صاعد؛ المتوسط المتحرك 20 أعلى من 50. "
+            f"السعر الحالى حوالى {last_price:.2f}."
         )
+    else:
+        ideas.append(
+            f"الاتجاه العام على المدى القريب هابط؛ المتوسط المتحرك 20 تحت 50. "
+            f"السعر الحالى حوالى {last_price:.2f}."
+        )
+
+    # 2 - نطاق دعم / مقاومة
+    ideas.append(
+        f"نطاق الحركة لآخر 50 شمعة تقريبًا بين دعم قرب {lowest_50:.2f} "
+        f"ومقاومة قرب {highest_50:.2f}."
+    )
+
+    # 3 - وضع السعر بالنسبة للنطاق
+    if last_price > (highest_50 * 0.99):
+        ideas.append(
+            "السعر حاليًا قريب من قمة النطاق الأخيرة؛ احتمال تصحيح أو كسر لأعلى."
+        )
+    elif last_price < (lowest_50 * 1.01):
+        ideas.append(
+            "السعر حاليًا قريب من قاع النطاق الأخيرة؛ منطقة قد تُستخدم كدعم محتمل."
+        )
+    else:
+        ideas.append(
+            "السعر يتحرك داخل النطاق الوسط؛ مفيش كسر واضح لدعم أو مقاومة حاليًا."
+        )
+
+    # 4 - أداء آخر 24 ساعة تقريبًا (24 شمعة ساعة)
+    if change_24 > 3:
+        ideas.append(
+            f"خلال آخر 24 شمعة، الزوج طالع بحوالى {change_24:.2f}٪؛ موجة صعود قصيرة المدى."
+        )
+    elif change_24 < -3:
+        ideas.append(
+            f"خلال آخر 24 شمعة، الزوج نازل بحوالى {abs(change_24):.2f}٪؛ ضغط بيع واضح."
+        )
+    else:
+        ideas.append(
+            f"حركة آخر 24 شمعة ضعيفة نسبيًا (التغير حوالى {change_24:.2f}٪)؛ مفيش ترند قوى."
+        )
+
+    # 5 - فكرة عن الشراء مع الاتجاه
+    if ma20 > ma50 and last_price > ma20:
+        ideas.append(
+            "استمرار التداول فوق المتوسط 20 فى اتجاه صاعد ممكن يخلى استراتيجيات "
+            "الشراء مع الاتجاه (trend following) أكثر منطقية، مع إدارة مخاطرة جيدة."
+        )
+    else:
+        ideas.append(
+            "بقاء السعر تحت المتوسط 20 أو وجود تقاطع سلبى بين 20 و 50 يخلّى الشراء مع "
+            "الاتجاه محتاج حذر شديد أو انتظار تأكيد انعكاس."
+        )
+
+    # 6 - فكرة عن الشراء من الدعوم
+    ideas.append(
+        "فى حالة رجوع السعر قرب مناطق الدعم (أسفل المتوسطات أو قرب القاع الأخير)، "
+        "بعض المتداولين بيستهدفوا صفقات ارتداد (bounce) مع وقف خسارة ضيق تحت الدعم."
+    )
+
+    # 7 - فكرة عن البيع من المقاومات
+    ideas.append(
+        "لو السعر قرّب تانى من مناطق المقاومة أو القمم الأخيرة بدون أحجام كبيرة، "
+        "استراتيجيات البيع من المقاومة (mean reversion) بتكون منطقية للبعض."
+    )
+
+    # 8 - مدى المخاطرة
+    volatility = (highest_50 - lowest_50) / last_price * 100
+    ideas.append(
+        f"مدى تذبذب آخر 50 شمعة حوالى {volatility:.2f}٪؛ "
+        "كل ما التذبذب أعلى زادت المخاطرة وأهمية حجم الصفقة الصغير."
+    )
+
+    # 9 - تقسيم المراكز
+    ideas.append(
+        "تقسيم الدخول والخروج على كذا مستوى سعرى (بدل صفقة واحدة كبيرة) "
+        "بيقلل التأثر بأى ذبذبة مفاجئة فى السوق."
+    )
+
+    # 10 - تذكير بالمخاطرة
+    ideas.append(
+        "كل الأفكار دى تحليل آلى تعليمى فقط، ومش نصيحة استثمارية أو مالية. "
+        "اعتمد دايمًا على خطتك وإدارة مخاطر تناسب حسابك."
+    )
 
     return ideas
 
 
-# ==========================
-# WEBHOOK
-# ==========================
+def parse_symbol_from_text(text: str) -> str:
+    """
+    استخراج الرمز من أمر /ideas
+    """
+    parts = text.strip().split()
+    if len(parts) == 2:
+        return parts[1].upper()
+    return ""
+
+
+# ======================
+#   FLASK WEBHOOK
+# ======================
 
 @app.route("/webhook", methods=["POST"])
-def telegram_webhook():
-    data = request.get_json(force=True)
+def webhook():
+    data = request.get_json(force=True, silent=True) or {}
 
     if "message" not in data:
         return "ok"
 
-    message = data["message"]
-    chat_id = message["chat"]["id"]
-    text = message.get("text", "").strip()
-
-    if not text:
-        return "ok"
+    msg = data["message"]
+    chat_id = msg["chat"]["id"]
+    text = msg.get("text", "").strip()
 
     # /start
-    if text.startswith("/start"):
+    if text == "/start":
         bot.send_message(
             chat_id,
-            (
-                "🔥 البوت شغال!\n\n"
-                "اكتب مثلاً:\n"
-                "<code>/ideas BTCUSDT</code>\n"
-                "علشان أجيبلك آخر 10 أفكار منشورة على TradingView للزوج ده."
-            ),
-            parse_mode="HTML",
+            "🔥 أهلاً بيك فى بوت أفكار الكريبتو.\n"
+            "اكتب مثلاً:\n"
+            "/ideas BTCUSDT\n"
+            "عشان أطلعلك 10 أفكار آلية مبنية على بيانات السوق من Binance "
+            "للزوج ده (الإطار الزمنى: ساعة).",
         )
         return "ok"
 
     # /ideas SYMBOL
     if text.startswith("/ideas"):
-        parts = text.split(maxsplit=1)
-        if len(parts) < 2:
+        symbol = parse_symbol_from_text(text)
+        if not symbol:
             bot.send_message(
                 chat_id,
-                "استخدم الأمر بالشكل ده:\n<code>/ideas BTCUSDT</code>",
-                parse_mode="HTML",
+                "اكتب الأمر بالشكل ده:\n/ideas BTCUSDT",
             )
             return "ok"
-        symbol = parts[1].strip()
-    else:
-        # لو كتب الرمز مباشرة (BTCUSDT أو BTC) نعتبرها طلب أفكار
-        symbol = text
 
-    symbol_clean = clean_symbol(symbol)
-
-    bot.send_message(
-        chat_id,
-        f"⏳ بجمع آخر الأفكار لـ <b>{symbol_clean}</b> من TradingView...",
-        parse_mode="HTML",
-    )
-
-    try:
-        ideas = fetch_tradingview_ideas(symbol_clean, limit=10)
-    except Exception:
         bot.send_message(
             chat_id,
-            "⚠️ حصل خطأ أثناء الاتصال بـ TradingView.\nحاول تاني بعد شوية.",
-            parse_mode="HTML",
+            f"⏳ بجمع أفكار آلية لـ {symbol} من بيانات Binance...",
         )
-        return "ok"
 
-    if not ideas:
-        bot.send_message(
-            chat_id,
-            f"ما لاقيتش أفكار حديثة على TradingView للرمز <b>{symbol_clean}</b>.",
-            parse_mode="HTML",
-        )
-        return "ok"
-
-    # إرسال كل فكرة في رسالة منفصلة
-    for idx, idea in enumerate(ideas, start=1):
-        title = idea.get("title") or "Idea"
-        author = idea.get("author") or "غير مذكور"
-        date = idea.get("date") or "غير مذكور"
-        description = idea.get("description") or ""
-        link = idea.get("link") or ""
-        image_url = idea.get("image")
-
-        caption_lines = [
-            f"<b>{idx}. {title}</b>",
-            f"✍️ الكاتب: {author}",
-            f"📅 التاريخ: {date}",
-        ]
-
-        if description:
-            caption_lines.append("")
-            caption_lines.append(description[:400])  # نخليها قصيرة شوية
-
-        if link:
-            caption_lines.append("")
-            caption_lines.append(f'<a href="{link}">فتح الفكرة على TradingView</a>')
-
-        caption = "\n".join(caption_lines)
-
-        if image_url:
-            bot.send_photo(
-                chat_id,
-                image_url,
-                caption=caption,
-                parse_mode="HTML",
-            )
-        else:
+        try:
+            closes, highs, lows, times = get_candles(symbol)
+        except Exception as e:
             bot.send_message(
                 chat_id,
-                caption,
-                parse_mode="HTML",
-                disable_web_page_preview=False,
+                f"❌ ماقدرتش أوصل لبيانات {symbol} من Binance.\n"
+                f"السبب المحتمل: الرمز غلط أو السيرفر مش متاح حاليًا.",
             )
+            return "ok"
+
+        ideas = generate_ideas(symbol, closes, highs, lows)
+
+        header = (
+            f"💡 أفكار آلية مبنية على بيانات ساعة لآخر {len(closes)} شمعة لـ {symbol}:\n\n"
+        )
+        body_lines = []
+        for i, idea in enumerate(ideas, start=1):
+            body_lines.append(f"{i}. {idea}")
+
+        bot.send_message(chat_id, header + "\n\n".join(body_lines))
+        return "ok"
+
+    # أى رسالة تانية
+    bot.send_message(
+        chat_id,
+        "اكتب /start عشان تشوف طريقة الاستخدام.\n"
+        "مثال: /ideas BTCUSDT",
+    )
 
     return "ok"
 
 
-# ==========================
-# LOCAL RUN (Koyeb هيستعمله)
-# ==========================
+# ======================
+#   RUN FLASK (KOYEB)
+# ======================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    # Koyeb بيشغل البورت من المتغير PORT لو موجود
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
