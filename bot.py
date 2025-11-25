@@ -1,255 +1,158 @@
-import os
 import requests
 from flask import Flask, request
-from telegram import Bot
 
-# =========================
-# إعداد التوكن والبوت
-# =========================
-TOKEN = os.environ.get("BOT_TOKEN")
-bot = Bot(token=TOKEN)
+# ============ إعداد البوت ==============
+TOKEN = "PUT-YOUR-TOKEN-HERE"   # ضع التوكن هنا
+BOT_URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 app = Flask(__name__)
 
-BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
+# ============ دوال مساعدة ==============
 
-
-# =========================
-# دوال مساعدة
-# =========================
-
-def get_market_data(symbol: str):
-    """
-    بيجيب آخر 200 شمعة ساعة من Binance
-    ويرجع شوية أرقام جاهزة للتحليل.
-    """
-    params = {
-        "symbol": symbol.upper(),
-        "interval": "1h",
-        "limit": 200,
+def send_message(chat_id, text):
+    url = BOT_URL + "sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown"
     }
+    requests.post(url, json=payload)
 
-    try:
-        r = requests.get(BINANCE_KLINES_URL, params=params, timeout=10)
-    except Exception:
+
+def get_klines(symbol, interval="1d", limit=300):
+    """جلب بيانات الشموع من Binance"""
+    url = "https://api.binance.com/api/v3/klines"
+    params = {"symbol": symbol.upper(), "interval": interval, "limit": limit}
+    res = requests.get(url, params=params)
+    if res.status_code != 200:
         return None
+    return res.json()
 
-    if r.status_code != 200:
-        return None
 
-    data = r.json()
-    if not data:
-        return None
+# ============ دالة التحليل الرئيسية ==============
 
-    closes = [float(k[4]) for k in data]
-    highs = [float(k[2]) for k in data]
-    lows = [float(k[3]) for k in data]
-    volumes = [float(k[5]) for k in data]
+def analyze_symbol(symbol):
+    data = get_klines(symbol)
+    if data is None:
+        return "❌ العملة غير صحيحة أو Binance لا يستجيب الآن."
 
-    current_price = closes[-1]
-    high_200 = max(highs)
-    low_200 = min(lows)
+    closes = [float(x[4]) for x in data]
+    highs  = [float(x[2]) for x in data]
+    lows   = [float(x[3]) for x in data]
+    vols   = [float(x[5]) for x in data]
 
-    price_range = high_200 - low_200
-    if price_range > 0:
-        pos_in_range = (current_price - low_200) / price_range * 100
+    last_close = closes[-1]
+
+    # ——— الاتجاه العام ———
+    ma20 = sum(closes[-20:]) / 20
+    trend = "صاعد" if last_close > ma20 else "هابط"
+    trend_text = f"الاتجاه العام: *{trend}* — السعر أعلى من MA20" if last_close > ma20 \
+                 else f"الاتجاه العام: *هبوط* — السعر تحت MA20"
+
+    # ——— نطاق آخر 200 شمعة ———
+    low_200 = min(lows[-200:])
+    high_200 = max(highs[-200:])
+    range_perc = ((high_200 - low_200) / last_close) * 100
+
+    # ——— موقع السعر الحالي ———
+    if last_close <= low_200 + (high_200 - low_200) * 0.25:
+        position_text = "في *المنطقة السفلية* (ضغط بيعي)."
+    elif last_close >= high_200 - (high_200 - low_200) * 0.25:
+        position_text = "في *المنطقة العلوية* (ضغط شرائي)."
     else:
-        pos_in_range = 50.0
+        position_text = "في *المنتصف* (حيادي)."
 
-    # تغير آخر 24 ساعة (تقريبى من آخر 24 شمعة ساعة)
-    if len(closes) >= 25:
-        prev_24 = closes[-25]
-        change_24h = (current_price - prev_24) / prev_24 * 100
+    # ——— التقلب والزخم ———
+    change_24 = ((closes[-1] - closes[-2]) / closes[-2]) * 100
+    volatility_200 = (high_200 - low_200) / last_close * 100
+
+    if volatility_200 < 2:
+        volatility_label = "ضعيف"
+    elif volatility_200 < 5:
+        volatility_label = "متوسط"
     else:
-        change_24h = 0.0
+        volatility_label = "مرتفع"
 
-    # اتجاه تقريبى من مقارنة السعر دلوقتى بسعر من 3 أيام تقريبًا (72 ساعة)
-    if len(closes) >= 72:
-        old_price = closes[-72]
-        diff_pct = (current_price - old_price) / old_price * 100
+    # ——— حجم التداول ———
+    avg_vol_20 = sum(vols[-20:]) / 20
+    vol_ratio = vols[-1] / avg_vol_20
+
+    if vol_ratio > 1.4:
+        volume_label = "حجم تداول عالي"
+    elif vol_ratio > 0.7:
+        volume_label = "حجم تداول طبيعي"
     else:
-        old_price = closes[0]
-        diff_pct = (current_price - old_price) / old_price * 100
+        volume_label = "سيولة ضعيفة"
 
-    if diff_pct > 1.5:
-        trend = "صاعد"
-        trend_comment = "السعر مايل للصعود على المدى القصير."
-    elif diff_pct < -1.5:
-        trend = "هابط"
-        trend_comment = "السعر تحت ضغط هابط قصير المدى."
-    else:
-        trend = "عرضى"
-        trend_comment = "الحركة أقرب للتجميع أو التذبذب الجانبي."
+    # ——— الدعم والمقاومة ———
+    support_level = low_200
+    resistance_level = high_200
 
-    # تقلب تقريبى
-    volatility = (price_range / current_price) * 100 if current_price > 0 else 0.0
+    # ============ نص التقرير =============
+    report = f"""📌 *تقرير آلي سريع لزوج* `{symbol.upper()}`  
+الإطار الزمني: *يومي* — بيانات من Binance.
 
-    # مقارنة حجم آخر شمعة بمتوسط آخر 24 شمعة
-    if len(volumes) >= 24:
-        avg_vol_24 = sum(volumes[-24:]) / 24
-    else:
-        avg_vol_24 = sum(volumes) / len(volumes)
+💰 *السعر الحالي تقريبًا:* `{last_close:,.4f}` $
 
-    last_vol = volumes[-1]
-    if avg_vol_24 > 0:
-        volume_ratio = last_vol / avg_vol_24
-    else:
-        volume_ratio = 1.0
+📍 *حركة السعر:*
+- {trend_text}
+- نطاق آخر 200 شمعة بين: `{low_200:,.4f}` و `{high_200:,.4f}` (≈ {range_perc:.2f}% من السعر الحالي).
+- السعر حاليًا {position_text}
 
-    if volume_ratio > 1.5:
-        volume_comment = "حجم تداول أعلى من المعتاد؛ فيه اهتمام واضح على الزوج."
-    elif volume_ratio < 0.7:
-        volume_comment = "حجم تداول ضعيف نسبيًا؛ السيولة أقل من المتوسط."
-    else:
-        volume_comment = "حجم تداول قريب من المتوسط؛ السوق هادى نسبيًا."
+📊 *التقلب والزخم:*
+- التقلب العام خلال الفترة: *{volatility_label}* (حوالي {volatility_200:.2f}% من السعر).
+- التغير التقريبي لآخر يوم: `{change_24:+.2f}%` مقارنة باليوم السابق.
 
-    # مستويات دعم/مقاومة بسيطة من حدود النطاق
-    support = low_200
-    resistance = high_200
+💧 *حجم التداول / السيولة:*
+- متوسط حجم آخر 20 شمعة: `{avg_vol_20:,.0f}`
+- حجم آخر شمعة ≈ `{vol_ratio:.2f}x` من المتوسط → {volume_label}
 
-    return {
-        "symbol": symbol.upper(),
-        "current_price": current_price,
-        "high_200": high_200,
-        "low_200": low_200,
-        "pos_in_range": pos_in_range,
-        "change_24h": change_24h,
-        "trend": trend,
-        "trend_comment": trend_comment,
-        "volatility": volatility,
-        "volume_ratio": volume_ratio,
-        "volume_comment": volume_comment,
-        "support": support,
-        "resistance": resistance,
-    }
+🎯 *مستويات فنية قريبة (ليست توصية):*
+- دعم محتمل قرب: `{support_level:,.4f}`
+- مقاومة محتملة قرب: `{resistance_level:,.4f}`
+
+⚠️ *تنبيه مهم:*  
+ده تحليل آلي تعليمي مبني على بيانات تاريخية فقط،  
+ومش نصيحة شراء أو بيع.  
+استخدم إدارة مخاطر تناسب حسابك دائمًا.
+"""
+    return report
 
 
-def build_analysis_message(info: dict) -> str:
-    """
-    بيحول الأرقام اللى فوق لرسالة عربية احترافية ومضغوطة.
-    """
-    symbol = info["symbol"]
-    p = info["current_price"]
-    high_200 = info["high_200"]
-    low_200 = info["low_200"]
-    pos = info["pos_in_range"]
-    ch24 = info["change_24h"]
-    trend = info["trend"]
-    trend_comment = info["trend_comment"]
-    vol = info["volatility"]
-    vr = info["volume_ratio"]
-    v_comment = info["volume_comment"]
-    support = info["support"]
-    resistance = info["resistance"]
-
-    lines = []
-
-    lines.append(f"🧭 تقرير آلى سريع لزوج {symbol}")
-    lines.append("الإطار الزمنى: ساعة – بيانات من Binance\n")
-
-    lines.append(f"💰 السعر الحالى تقريبًا: {p:,.4f} $")
-
-    lines.append("\n📌 حركة السعر:")
-    lines.append(f"- الاتجاه القصير: {trend} – {trend_comment}")
-    lines.append(
-        f"- نطاق آخر 200 شمعة: بين حوالى {low_200:,.4f} $ و {high_200:,.4f} $"
-    )
-    lines.append(f"- السعر حاليًا فى حدود {pos:.1f}% من النطاق ده (من القاع إلى القمة).")
-
-    lines.append("\n📊 السيولة والتقلب:")
-    lines.append(f"- التغير التقريبى خلال آخر 24 ساعة: {ch24:+.2f}%")
-    lines.append(f"- درجة التقلب فى آخر 200 شمعة: حوالى {vol:.2f}% من السعر الحالى.")
-    lines.append(
-        f"- حجم آخر شمعة حوالى {vr:.1f}x من متوسط حجم آخر 24 شمعة → {v_comment}"
-    )
-
-    lines.append("\n🎯 مستويات فنية للمراقبة (مش توصية):")
-    lines.append(f"- دعم محتمل قريب من: {support:,.4f} $")
-    lines.append(f"- مقاومة محتملة قرب: {resistance:,.4f} $")
-
-    lines.append(
-        "\n⚠️ تنبيه هام: ده تحليل آلى تعليمى مبنى على بيانات تاريخية، "
-        "مش نصيحة شراء أو بيع. دايمًا استخدم إدارة مخاطر تناسب حسابك."
-    )
-
-    return "\n".join(lines)
-
-
-# =========================
-# Telegram Webhook
-# =========================
-
-@app.route("/", methods=["GET"])
-def index():
-    return "Crypto Ideas Bot is running."
-
+# ============ استقبال التحديثات ==============
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
+    update = request.get_json()
 
-    if "message" not in data:
-        return "ok"
+    if "message" in update:
+        chat_id = update["message"]["chat"]["id"]
+        text = update["message"].get("text", "")
 
-    message = data["message"]
-    chat_id = message["chat"]["id"]
-    text = message.get("text", "").strip()
+        if text.startswith("/start"):
+            send_message(chat_id,
+"""🔥 أهلاً بيك في بوت أفكار الكريبتو.
 
-    if not text:
-        return "ok"
+اكتب:
+`/coin BTCUSDT`
+وهيجيلك تقرير يومي محترف مبني على بيانات Binance.""")
 
-    # أمر /start
-    if text.startswith("/start"):
-        welcome = (
-            "🔥 أهلاً بيك فى بوت أفكار الكريبتو.\n\n"
-            "اكتب مثلاً:\n"
-            "/coin BTCUSDT\n\n"
-            "عشان أطلعلك تحليل آلى مبنى على بيانات السوق من Binance "
-            "لفريم الساعة للزوج اللى تطلبه."
-        )
-        bot.send_message(chat_id, welcome)
-        return "ok"
+        elif text.startswith("/coin"):
+            parts = text.split()
+            if len(parts) < 2:
+                send_message(chat_id, "❌ من فضلك اكتب العملة مثل:\n/coin BTCUSDT")
+            else:
+                symbol = parts[1].upper()
+                send_message(chat_id, f"⏳ يتم تحليل `{symbol}` آليًا...")
+                report = analyze_symbol(symbol)
+                send_message(chat_id, report)
 
-    # أمر /coin SYMBOL
-    if text.startswith("/coin"):
-        parts = text.split()
-        if len(parts) < 2:
-            bot.send_message(
-                chat_id,
-                "اكتب الأمر بالشكل ده:\n/coin BTCUSDT",
-            )
-            return "ok"
+        else:
+            send_message(chat_id, "❌ أمر غير معروف.")
 
-        symbol = parts[1].upper()
-
-        bot.send_message(
-            chat_id,
-            f"⏳ بيتم تحليل {symbol} آليًا بناءً على آخر بيانات متاحة من Binance...",
-        )
-
-        info = get_market_data(symbol)
-        if info is None:
-            bot.send_message(
-                chat_id,
-                "❌ مش قادر أوصل لبيانات موثوقة للزوج ده دلوقتى.\n"
-                "اتأكد إن الرمز صحيح على Binance (زى BTCUSDT، ETHUSDT) وحاول تانى.",
-            )
-            return "ok"
-
-        msg = build_analysis_message(info)
-        bot.send_message(chat_id, msg)
-        return "ok"
-
-    # أى رسالة تانية
-    bot.send_message(
-        chat_id,
-        "لو حابب تحليل لعملة، استخدم الصيغة دى:\n/coin BTCUSDT",
-    )
-    return "ok"
+    return "OK", 200
 
 
-# =========================
-# تشغيل Flask (Koyeb)
-# =========================
+# ============ تشغيل السيرفر ==============
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
