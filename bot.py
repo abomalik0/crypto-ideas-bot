@@ -1,116 +1,145 @@
 import requests
 from flask import Flask, request
-import random
+
+TOKEN = "8207052650:AAEJ7qyoWqDYyMyllsNuyZHzLynlTM4x9os"
+WEBHOOK_URL = "https://ugliest-tilda-in-crypto-133f2e26.koyeb.app/webhook"
 
 app = Flask(__name__)
 
 # ===========================
-#  Send Message Function
-# ===========================
-
-BOT_TOKEN = "8207052650:AAEJ7qyoWqDYyMyllsNuyZHzLynlTM4x9os"
-API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-
-def send_message(chat_id, text):
-    requests.post(API_URL, json={"chat_id": chat_id, "text": text})
-
-
-# ===========================
-#  Get Live Price (Binance)
+# دوال التحليل
 # ===========================
 
 def get_price(symbol):
     try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}"
         r = requests.get(url).json()
-
-        if "price" not in r:
-            return None
-
         return float(r["price"])
     except:
         return None
 
 
-# ===========================
-#  Format Coin Analysis
-# ===========================
+def get_kline(symbol, interval="1h"):
+    try:
+        url = f"https://api.binance.com/api/v3/klines?symbol={symbol.upper()}&interval={interval}&limit=50"
+        r = requests.get(url).json()
+        return r
+    except:
+        return None
 
-def format_coin_analysis(symbol, price, trend, trend_power, liquidity, support, resistance):
+
+def get_rsi(symbol, interval="1h"):
+    data = get_kline(symbol, interval)
+    if not data:
+        return None
+
+    closes = [float(c[4]) for c in data]
+    deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+
+    gains = [d for d in deltas if d > 0]
+    losses = [-d for d in deltas if d < 0]
+
+    if len(gains) == 0 or len(losses) == 0:
+        return 50
+
+    avg_gain = sum(gains) / len(gains)
+    avg_loss = sum(losses) / len(losses)
+
+    rs = avg_gain / avg_loss if avg_loss != 0 else 1
+    rsi = 100 - (100 / (1 + rs))
+    return round(rsi, 2)
+
+
+def classify_trend(rsi):
+    if rsi > 60:
+        return "صاعد", "قوية"
+    elif rsi < 40:
+        return "هابط", "ضعيفة"
+    else:
+        return "جانبي", "متوسطة"
+
+
+def generate_price_behavior(trend, strength, zone, behavior):
     return f"""
-🔍 **تحليل {symbol} (إطار زمني: يومي)**
-
-📊 **الاتجاه العام**
-• الاتجاه: {trend}
-• قوة الاتجاه: {trend_power}
-
-💰 **السعر الحالي**
-• {price} $
-
-💧 **السيولة (24 ساعة)**
-• ${liquidity}M
-
-📌 **مستويات مهمة**
-• الدعم الرئيسي: {support}
-• المقاومة الرئيسية: {resistance}
-
-تم التحليل بناءً على بيانات السوق + نماذج التحرك السعري.
+🔍 **حركة السعر**
+• **الاتجاه:** {trend}
+• **قوة الاتجاه:** {strength}
+• **موقع السعر:** {zone}
+• **سلوك الحركة:** {behavior}
 """
 
 
 # ===========================
-#  Webhook Endpoint
+# إنشاء التحليل النهائي
+# ===========================
+
+def build_analysis(symbol):
+    price = get_price(symbol)
+    rsi = get_rsi(symbol)
+
+    if price is None:
+        return "⚠️ العملة غير موجودة أو غير مدعومة."
+
+    trend, strength = classify_trend(rsi)
+
+    zone = "قريب من دعم" if rsi < 45 else "قريب من مقاومة"
+    behavior = "حركة مستقرة" if 45 < rsi < 55 else "اندفاع واضح في الحركة"
+
+    price_behavior = generate_price_behavior(trend, strength, zone, behavior)
+
+    return f"""
+📌 **تحليل {symbol.upper()}**
+
+💰 **السعر الحالي:** {price}
+📊 **مؤشر RSI:** {rsi}
+
+{price_behavior}
+
+📌 **الملخص**
+• الاتجاه العام: {trend}
+• قوة الاتجاه: {strength}
+"""
+
+
+# ===========================
+# WEBHOOK
 # ===========================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
+    data = request.json
 
     if "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "")
 
-        # ------------------------------------------------
-        # /coin COMMAND
-        # ------------------------------------------------
-        if text.lower().startswith("/coin"):
-            parts = text.split(" ")
-
+        if text.startswith("/coin"):
+            parts = text.split()
             if len(parts) < 2:
-                send_message(chat_id, "❗ برجاء كتابة العملة بالشكل الصحيح:\n/coin CFXUSDT")
-                return "OK"
+                send_message(chat_id, "استخدم الأمر بالشكل:\n/coin BTCUSDT")
+                return "OK", 200
 
             symbol = parts[1].upper()
+            analysis = build_analysis(symbol)
+            send_message(chat_id, analysis)
 
-            # Get live price
-            price = get_price(symbol)
-
-            if price is None:
-                send_message(chat_id, "⚠️ لم يتم العثور على سعر لهذه العملة، ربما غير مدعومة.")
-                return "OK"
-
-            # Light AI-style logic
-            trend = random.choice(["صاعد", "هابط", "جانبي"])
-            trend_power = random.choice(["قوية", "متوسطة", "ضعيفة"])
-            liquidity = round(random.uniform(10, 500), 2)
-
-            support = round(price * 0.95, 6)
-            resistance = round(price * 1.05, 6)
-
-            reply = format_coin_analysis(
-                symbol, price, trend, trend_power, liquidity, support, resistance
+        elif text == "/start":
+            send_message(chat_id,
+                "💎 أهلاً بك!\n"
+                "لتحليل أي عملة أرسل:\n"
+                "/coin BTCUSDT"
             )
 
-            send_message(chat_id, reply)
-            return "OK"
+    return "OK", 200
 
-    return "OK"
+
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"})
 
 
 # ===========================
-#      Start Flask App
+# Run Flask (Koyeb)
 # ===========================
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
