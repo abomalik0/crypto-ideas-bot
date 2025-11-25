@@ -1,173 +1,255 @@
 import os
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request
+from telegram import Bot
 
-TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "cryptoAI")
+# =========================
+# إعداد التوكن والبوت
+# =========================
+TOKEN = os.environ.get("BOT_TOKEN")
+bot = Bot(token=TOKEN)
 
 app = Flask(__name__)
 
-# =============================
-# 📌 جلب بيانات العملة من Binance
-# =============================
-def get_price_and_data(symbol):
+BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
+
+
+# =========================
+# دوال مساعدة
+# =========================
+
+def get_market_data(symbol: str):
+    """
+    بيجيب آخر 200 شمعة ساعة من Binance
+    ويرجع شوية أرقام جاهزة للتحليل.
+    """
+    params = {
+        "symbol": symbol.upper(),
+        "interval": "1h",
+        "limit": 200,
+    }
+
     try:
-        symbol = symbol.upper()
-        price_url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-        depth_url = f"https://api.binance.com/api/v3/depth?symbol={symbol}&limit=5"
-        rsi_url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=15"
-
-        # السعر
-        price_r = requests.get(price_url).json()
-        if "price" not in price_r:
-            return None
-
-        # دفتر أوامر بسيط
-        depth = requests.get(depth_url).json()
-
-        # RSI
-        rsi_data = requests.get(rsi_url).json()
-        closes = [float(c[4]) for c in rsi_data]
-        rsi_value = calculate_rsi(closes)
-
-        # دعم/مقاومة
-        levels = detect_support_resistance(closes)
-
-        return {
-            "price": float(price_r["price"]),
-            "rsi": rsi_value,
-            "levels": levels
-        }
-
-    except Exception as e:
-        print("ERROR:", e)
+        r = requests.get(BINANCE_KLINES_URL, params=params, timeout=10)
+    except Exception:
         return None
 
-# =============================
-# 📌 RSI
-# =============================
-def calculate_rsi(closes, period=14):
-    if len(closes) < period + 1:
+    if r.status_code != 200:
         return None
 
-    gains, losses = [], []
-    for i in range(1, period + 1):
-        diff = closes[-i] - closes[-i - 1]
-        if diff >= 0:
-            gains.append(diff)
-        else:
-            losses.append(abs(diff))
+    data = r.json()
+    if not data:
+        return None
 
-    avg_gain = sum(gains) / period if gains else 0.0001
-    avg_loss = sum(losses) / period if losses else 0.0001
+    closes = [float(k[4]) for k in data]
+    highs = [float(k[2]) for k in data]
+    lows = [float(k[3]) for k in data]
+    volumes = [float(k[5]) for k in data]
 
-    rs = avg_gain / avg_loss
-    rsi = round(100 - (100 / (1 + rs)), 2)
-    return rsi
+    current_price = closes[-1]
+    high_200 = max(highs)
+    low_200 = min(lows)
 
-# =============================
-# 📌 كشف دعم ومقاومة بسيطة
-# =============================
-def detect_support_resistance(closes):
-    if len(closes) < 10:
-        return []
-
-    levels = []
-    for i in range(2, len(closes) - 2):
-        if closes[i] < closes[i-1] and closes[i] < closes[i+1]:
-            levels.append(("Support", closes[i]))
-        if closes[i] > closes[i-1] and closes[i] > closes[i+1]:
-            levels.append(("Resistance", closes[i]))
-
-    return levels[-3:]  # آخر 3 مستويات فقط
-
-# =============================
-# 📌 تنسيق الرسالة الاحترافية لـ /coin
-# =============================
-def format_coin_message(symbol, data):
-    price = data["price"]
-    rsi = data["rsi"]
-    levels = data["levels"]
-
-    msg = f"""
-📊 **تحليل سريع لعملة {symbol.upper()}**
-
-💰 **السعر الحالي:** `${price:,.4f}`
-
-📈 **اتجاه عام مختصر**
-- RSI: **{rsi}**
-- الحالة: {"🔺 ميل صعودي معتدل" if rsi > 55 else "🔻 ضغط بيعي" if rsi < 45 else "⚪ حيادي"}
-
-🧱 **مستويات فنية مهمة**
-"""
-    if not levels:
-        msg += "- لا توجد مستويات واضحة حاليًا.\n"
+    price_range = high_200 - low_200
+    if price_range > 0:
+        pos_in_range = (current_price - low_200) / price_range * 100
     else:
-        for lvl_type, lvl_price in levels:
-            emoji = "🟢" if lvl_type == "Support" else "🔴"
-            msg += f"- {emoji} {lvl_type}: `${lvl_price:,.3f}`\n"
+        pos_in_range = 50.0
 
-    msg += """
+    # تغير آخر 24 ساعة (تقريبى من آخر 24 شمعة ساعة)
+    if len(closes) >= 25:
+        prev_24 = closes[-25]
+        change_24h = (current_price - prev_24) / prev_24 * 100
+    else:
+        change_24h = 0.0
 
-🧠 **نظرة مختصرة**
-العملة في نطاق متابعة حاليًا، وتحتاج مراقبة إضافية قبل اتخاذ قرار تداول.
+    # اتجاه تقريبى من مقارنة السعر دلوقتى بسعر من 3 أيام تقريبًا (72 ساعة)
+    if len(closes) >= 72:
+        old_price = closes[-72]
+        diff_pct = (current_price - old_price) / old_price * 100
+    else:
+        old_price = closes[0]
+        diff_pct = (current_price - old_price) / old_price * 100
 
-🚀 IN CRYPTO – AI
-"""
-    return msg
+    if diff_pct > 1.5:
+        trend = "صاعد"
+        trend_comment = "السعر مايل للصعود على المدى القصير."
+    elif diff_pct < -1.5:
+        trend = "هابط"
+        trend_comment = "السعر تحت ضغط هابط قصير المدى."
+    else:
+        trend = "عرضى"
+        trend_comment = "الحركة أقرب للتجميع أو التذبذب الجانبي."
 
-# =============================
-# 📌 إرسال رسالة لتليجرام
-# =============================
-def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
-    requests.post(url, json=payload)
+    # تقلب تقريبى
+    volatility = (price_range / current_price) * 100 if current_price > 0 else 0.0
 
-# =============================
-# 📌 Webhook الأساسي
-# =============================
+    # مقارنة حجم آخر شمعة بمتوسط آخر 24 شمعة
+    if len(volumes) >= 24:
+        avg_vol_24 = sum(volumes[-24:]) / 24
+    else:
+        avg_vol_24 = sum(volumes) / len(volumes)
+
+    last_vol = volumes[-1]
+    if avg_vol_24 > 0:
+        volume_ratio = last_vol / avg_vol_24
+    else:
+        volume_ratio = 1.0
+
+    if volume_ratio > 1.5:
+        volume_comment = "حجم تداول أعلى من المعتاد؛ فيه اهتمام واضح على الزوج."
+    elif volume_ratio < 0.7:
+        volume_comment = "حجم تداول ضعيف نسبيًا؛ السيولة أقل من المتوسط."
+    else:
+        volume_comment = "حجم تداول قريب من المتوسط؛ السوق هادى نسبيًا."
+
+    # مستويات دعم/مقاومة بسيطة من حدود النطاق
+    support = low_200
+    resistance = high_200
+
+    return {
+        "symbol": symbol.upper(),
+        "current_price": current_price,
+        "high_200": high_200,
+        "low_200": low_200,
+        "pos_in_range": pos_in_range,
+        "change_24h": change_24h,
+        "trend": trend,
+        "trend_comment": trend_comment,
+        "volatility": volatility,
+        "volume_ratio": volume_ratio,
+        "volume_comment": volume_comment,
+        "support": support,
+        "resistance": resistance,
+    }
+
+
+def build_analysis_message(info: dict) -> str:
+    """
+    بيحول الأرقام اللى فوق لرسالة عربية احترافية ومضغوطة.
+    """
+    symbol = info["symbol"]
+    p = info["current_price"]
+    high_200 = info["high_200"]
+    low_200 = info["low_200"]
+    pos = info["pos_in_range"]
+    ch24 = info["change_24h"]
+    trend = info["trend"]
+    trend_comment = info["trend_comment"]
+    vol = info["volatility"]
+    vr = info["volume_ratio"]
+    v_comment = info["volume_comment"]
+    support = info["support"]
+    resistance = info["resistance"]
+
+    lines = []
+
+    lines.append(f"🧭 تقرير آلى سريع لزوج {symbol}")
+    lines.append("الإطار الزمنى: ساعة – بيانات من Binance\n")
+
+    lines.append(f"💰 السعر الحالى تقريبًا: {p:,.4f} $")
+
+    lines.append("\n📌 حركة السعر:")
+    lines.append(f"- الاتجاه القصير: {trend} – {trend_comment}")
+    lines.append(
+        f"- نطاق آخر 200 شمعة: بين حوالى {low_200:,.4f} $ و {high_200:,.4f} $"
+    )
+    lines.append(f"- السعر حاليًا فى حدود {pos:.1f}% من النطاق ده (من القاع إلى القمة).")
+
+    lines.append("\n📊 السيولة والتقلب:")
+    lines.append(f"- التغير التقريبى خلال آخر 24 ساعة: {ch24:+.2f}%")
+    lines.append(f"- درجة التقلب فى آخر 200 شمعة: حوالى {vol:.2f}% من السعر الحالى.")
+    lines.append(
+        f"- حجم آخر شمعة حوالى {vr:.1f}x من متوسط حجم آخر 24 شمعة → {v_comment}"
+    )
+
+    lines.append("\n🎯 مستويات فنية للمراقبة (مش توصية):")
+    lines.append(f"- دعم محتمل قريب من: {support:,.4f} $")
+    lines.append(f"- مقاومة محتملة قرب: {resistance:,.4f} $")
+
+    lines.append(
+        "\n⚠️ تنبيه هام: ده تحليل آلى تعليمى مبنى على بيانات تاريخية، "
+        "مش نصيحة شراء أو بيع. دايمًا استخدم إدارة مخاطر تناسب حسابك."
+    )
+
+    return "\n".join(lines)
+
+
+# =========================
+# Telegram Webhook
+# =========================
+
+@app.route("/", methods=["GET"])
+def index():
+    return "Crypto Ideas Bot is running."
+
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    if WEBHOOK_SECRET not in request.args.get("token", ""):
-        return jsonify({"status": "forbidden"}), 403
-
-    data = request.get_json()
+    data = request.get_json(force=True)
 
     if "message" not in data:
-        return jsonify({"ok": True})
+        return "ok"
 
-    chat_id = data["message"]["chat"]["id"]
-    text = data["message"].get("text", "")
+    message = data["message"]
+    chat_id = message["chat"]["id"]
+    text = message.get("text", "").strip()
 
-    # =============================
-    # 📌 أمر /coin
-    # =============================
+    if not text:
+        return "ok"
+
+    # أمر /start
+    if text.startswith("/start"):
+        welcome = (
+            "🔥 أهلاً بيك فى بوت أفكار الكريبتو.\n\n"
+            "اكتب مثلاً:\n"
+            "/coin BTCUSDT\n\n"
+            "عشان أطلعلك تحليل آلى مبنى على بيانات السوق من Binance "
+            "لفريم الساعة للزوج اللى تطلبه."
+        )
+        bot.send_message(chat_id, welcome)
+        return "ok"
+
+    # أمر /coin SYMBOL
     if text.startswith("/coin"):
-        try:
-            parts = text.split()
-            if len(parts) < 2:
-                send_message(chat_id, "❗ يرجى كتابة العملة هكذا:\n/coin btcusdt")
-                return jsonify({"ok": True})
+        parts = text.split()
+        if len(parts) < 2:
+            bot.send_message(
+                chat_id,
+                "اكتب الأمر بالشكل ده:\n/coin BTCUSDT",
+            )
+            return "ok"
 
-            symbol = parts[1].upper()
+        symbol = parts[1].upper()
 
-            coin_data = get_price_and_data(symbol)
-            if not coin_data:
-                send_message(chat_id, "⚠️ لم يتم العثور على بيانات لهذه العملة.")
-                return jsonify({"ok": True})
+        bot.send_message(
+            chat_id,
+            f"⏳ بيتم تحليل {symbol} آليًا بناءً على آخر بيانات متاحة من Binance...",
+        )
 
-            msg = format_coin_message(symbol, coin_data)
-            send_message(chat_id, msg)
+        info = get_market_data(symbol)
+        if info is None:
+            bot.send_message(
+                chat_id,
+                "❌ مش قادر أوصل لبيانات موثوقة للزوج ده دلوقتى.\n"
+                "اتأكد إن الرمز صحيح على Binance (زى BTCUSDT، ETHUSDT) وحاول تانى.",
+            )
+            return "ok"
 
-        except Exception as e:
-            send_message(chat_id, f"خطأ غير متوقع: {e}")
+        msg = build_analysis_message(info)
+        bot.send_message(chat_id, msg)
+        return "ok"
 
-    return jsonify({"ok": True})
+    # أى رسالة تانية
+    bot.send_message(
+        chat_id,
+        "لو حابب تحليل لعملة، استخدم الصيغة دى:\n/coin BTCUSDT",
+    )
+    return "ok"
 
 
-# =============================
-# 📌 Run Flask locally
-# =============================
+# =========================
+# تشغيل Flask (Koyeb)
+# =========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
