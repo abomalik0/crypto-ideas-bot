@@ -1,130 +1,153 @@
 import os
+import logging
 import math
-import statistics
+from flask import Flask, request
 import requests
-from flask import Flask, request, jsonify
 
-# ======================
-# إعدادات البوت و السيرفر
-# ======================
+# ==========================
+# إعدادات أساسية
+# ==========================
 
-BOT_TOKEN = "8207052650:AAEJ7qyoWqDYyMyllsNuyZHzLynlTM4x9os"
-BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+TELEGRAM_TOKEN = "8207052650:AAEJ7qyoWqDYyMyllsNuyZHzLynlTM4x9os"
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# عنوان السيرفر على Koyeb مع مسار /webhook
-WEBHOOK_URL = "https://ugliest-tilda-in-crypto-133f2e26.koyeb.app/webhook"
+# رابط السيرفر على Koyeb (بدون / في الآخر)
+APP_BASE_URL = "https://ugliest-tilda-in-crypto-133f2e26.koyeb.app"
+
+BINANCE_API = "https://api.binance.com"
+KUCOIN_API = "https://api.kucoin.com"
 
 app = Flask(__name__)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 
-# ======================
-# دوال مساعدة للتيليجرام
-# ======================
 
-def send_message(chat_id: int, text: str) -> None:
-    """إرسال رسالة عادية لتليجرام."""
+# ==========================
+# دوال مساعدة عامة
+# ==========================
+
+def fmt_price(p: float) -> str:
+    """
+    تنسيق السعر بشكل احترافي:
+    - لو السعر كبير (أكبر من أو يساوي 1000) => 98.000
+    - لو من 1 إلى أقل من 1000 => 98.25
+    - لو أقل من 1 => 0.012345
+    """
+    if p is None or math.isnan(p):
+        return "غير متاح"
     try:
-        requests.post(
-            f"{BASE_URL}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text,
-                "disable_web_page_preview": True,
-            },
-            timeout=10,
-        )
-    except Exception as e:
-        print(f"Error sending message: {e}")
+        if p >= 1000:
+            s = f"{p:,.0f}"           # 98,000
+            s = s.replace(",", ".")   # 98.000
+            return s
+        elif p >= 1:
+            s = f"{p:.2f}".rstrip("0").rstrip(".")
+            return s
+        else:
+            s = f"{p:.6f}".rstrip("0").rstrip(".")
+            return s
+    except Exception:
+        return str(p)
 
 
-def set_webhook() -> None:
-    """تحديث / ضبط الـ webhook على عنوان السيرفر."""
+def send_message(chat_id: int, text: str):
     try:
-        r = requests.get(
-            f"{BASE_URL}/setWebhook",
-            params={"url": WEBHOOK_URL},
-            timeout=10,
-        )
-        print("SetWebhook response:", r.text)
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+        }
+        requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload, timeout=10)
     except Exception as e:
-        print(f"Error setting webhook: {e}")
+        logging.error(f"Error sending message: {e}")
 
 
-# ======================
-# جلب البيانات من المنصات
-# ======================
+# ==========================
+# جلب البيانات من البورصات
+# ==========================
 
-def get_binance_klines(symbol: str, limit: int = 200):
+def get_binance_klines(symbol: str, limit: int = 120):
     """
-    جلب شموع يومية من Binance.
-    symbol مثال: BTCUSDT أو CFXUSDT
+    يجلب بيانات شموع يومية من باينانس.
     """
-    url = "https://api.binance.com/api/v3/klines"
-    params = {"symbol": symbol, "interval": "1d", "limit": limit}
-    r = requests.get(url, params=params, timeout=10)
-    if r.status_code != 200:
-        raise ValueError(f"Binance error: {r.text}")
-    data = r.json()
-    if not data:
-        raise ValueError("No kline data from Binance")
-    return data
-
-
-def get_kucoin_klines(symbol: str = "VAI-USDT", limit: int = 200):
-    """
-    جلب شموع يومية من KuCoin لعملة VAI فقط.
-    لو حصل خطأ، هنرمي Exception ويتلَقط فوق.
-    """
-    url = "https://api.kucoin.com/api/v1/market/candles"
+    url = f"{BINANCE_API}/api/v3/klines"
     params = {
         "symbol": symbol,
-        "type": "1day",
+        "interval": "1d",
         "limit": limit,
     }
     r = requests.get(url, params=params, timeout=10)
     if r.status_code != 200:
-        raise ValueError(f"KuCoin error: {r.text}")
+        raise ValueError(f"Binance error: {r.text}")
+
     data = r.json()
-    if data.get("code") != "200000":
-        raise ValueError(f"KuCoin response error: {data}")
-    candles = data.get("data", [])
-    if not candles:
-        raise ValueError("No kline data from KuCoin")
-    # KuCoin بترجع من الأحدث للأقدم، هنرجع الترتيب كـ أقدم → أحدث
-    candles.reverse()
-    # هنحوّلها لصيغة شبه Binance: [open_time, open, high, low, close, volume, ...]
-    klines = []
-    for c in candles[:limit]:
-        # c مثال: [time, open, close, high, low, volume, turnover]
-        ts = int(float(c[0])) * 1000  # نخليها ms عشان تبقى شبه Binance
-        open_p = c[1]
-        close_p = c[2]
-        high_p = c[3]
-        low_p = c[4]
-        vol = c[5]
-        klines.append([ts, open_p, high_p, low_p, close_p, vol])
-    return klines
+    candles = []
+    for c in data:
+        candles.append({
+            "open_time": c[0],
+            "open": float(c[1]),
+            "high": float(c[2]),
+            "low": float(c[3]),
+            "close": float(c[4]),
+            "volume": float(c[5]),
+        })
+    return candles
 
 
-# ======================
-# حسابات فنية بسيطة
-# ======================
+def get_kucoin_last_price(symbol: str = "VAI-USDT") -> float:
+    """
+    سعر آخر صفقة من KuCoin (للـ VAI).
+    """
+    url = f"{KUCOIN_API}/api/v1/market/orderbook/level1"
+    params = {"symbol": symbol}
+    r = requests.get(url, params=params, timeout=10)
+    if r.status_code != 200:
+        raise ValueError(f"KuCoin error: {r.text}")
+    j = r.json()
+    if j.get("code") != "200000":
+        raise ValueError(f"KuCoin bad response: {j}")
+    price_str = j["data"]["price"]
+    return float(price_str)
 
-def compute_rsi(closes, period: int = 14):
-    """حساب RSI بشكل مبسط بدون تعقيد كبير."""
-    if len(closes) <= period:
+
+# ==========================
+# مؤشرات فنية بسيطة
+# ==========================
+
+def ema(values, period: int):
+    """
+    حساب المتوسط المتحرك الأسي EMA.
+    """
+    if len(values) < period:
+        return None
+
+    k = 2 / (period + 1)
+    ema_val = sum(values[:period]) / period
+    for price in values[period:]:
+        ema_val = price * k + ema_val * (1 - k)
+    return ema_val
+
+
+def rsi(values, period: int = 14):
+    """
+    حساب مؤشر القوة النسبية RSI.
+    """
+    if len(values) <= period:
         return None
 
     gains = []
     losses = []
     for i in range(1, period + 1):
-        change = closes[i] - closes[i - 1]
-        if change >= 0:
-            gains.append(change)
-            losses.append(0)
+        diff = values[i] - values[i - 1]
+        if diff >= 0:
+            gains.append(diff)
+            losses.append(0.0)
         else:
-            gains.append(0)
-            losses.append(-change)
+            gains.append(0.0)
+            losses.append(-diff)
 
     avg_gain = sum(gains) / period
     avg_loss = sum(losses) / period
@@ -133,244 +156,276 @@ def compute_rsi(closes, period: int = 14):
         return 100.0
 
     rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    rsi_val = 100 - (100 / (1 + rs))
+    return rsi_val
 
 
-def detect_trend_and_pattern(closes, highs, lows):
+def detect_price_structure(closes):
     """
-    تحديد الاتجاه العام + شكل سعر بسيط (قناة / حركة جانبية)
-    عشان نرجع وصف جاهز.
+    رصد شكل حركة السعر التقريبية:
+    - اتجاه صاعد
+    - اتجاه هابط
+    - نطاق عرضي
+    - قناة سعرية محتملة
     """
-    last_close = closes[-1]
-    # متوسطات بسيطة
-    sma_short = statistics.mean(closes[-20:]) if len(closes) >= 20 else statistics.mean(closes)
-    sma_med = statistics.mean(closes[-50:]) if len(closes) >= 50 else sma_short
-    sma_long = statistics.mean(closes[-100:]) if len(closes) >= 100 else sma_med
+    if len(closes) < 30:
+        return "لا توجد بيانات كافية لرصد نموذج سعري واضح حتى الآن."
 
-    # اتجاه من المتوسطات
-    if last_close > sma_med > sma_long:
-        trend_text = "الاتجاه العام يميل للصعود على المدى المتوسط والطويل."
-        trend_dir = "up"
-    elif last_close < sma_med < sma_long:
-        trend_text = "الاتجاه العام يميل للهبوط على المدى المتوسط والطويل."
-        trend_dir = "down"
+    recent = closes[-30:]
+    start = recent[0]
+    end = recent[-1]
+    change_pct = (end - start) / start * 100 if start != 0 else 0
+
+    high = max(recent)
+    low = min(recent)
+    range_pct = (high - low) / low * 100 if low != 0 else 0
+
+    # منطق بسيط لتوصيف الحركة
+    if abs(change_pct) < 3 and range_pct < 8:
+        return "السعر يتحرك في نطاق عرضي ضيق نسبيًا، مع تذبذب محدود خلال الفترة الأخيرة."
+    elif change_pct > 3 and range_pct < 15:
+        return "السعر يتحرك في مسار صاعد معتدل، مع قمم وقيعان أعلى بشكل تدريجي."
+    elif change_pct < -3 and range_pct < 15:
+        return "السعر يتحرك في مسار هابط معتدل، مع قمم وقيعان أدنى بشكل تدريجي."
+    elif range_pct >= 15 and change_pct > 0:
+        return "السعر في قناة سعرية صاعدة واسعة نسبيًا، ما يعكس موجة تذبذب صاعدة خلال الفترة الماضية."
+    elif range_pct >= 15 and change_pct < 0:
+        return "السعر في قناة سعرية هابطة واسعة نسبيًا، مع ضغوط بيعية متكررة على الحركة."
     else:
-        trend_text = "الاتجاه العام متذبذب ولا توجد سيطرة واضحة للمشترين أو البائعين."
-        trend_dir = "side"
-
-    # شكل السعر التقريبى (قناة / جانبي)
-    window = min(60, len(closes))
-    ref_close = closes[-window]
-    price_change = last_close - ref_close
-    rel_change = price_change / ref_close if ref_close != 0 else 0
-
-    if rel_change > 0.08:
-        shape_text = "حركة السعر حالياً تشبه قناة صاعدة مستقرة نسبيًا."
-    elif rel_change < -0.08:
-        shape_text = "حركة السعر حالياً تشبه قناة هابطة ويغلب عليها الضغط البيعي."
-    else:
-        shape_text = "السعر يتحرك في نطاق جانبي محدود بدون اتجاه واضح."
-
-    # دعم ومقاومة بسيطة من آخر 60 شمعة
-    recent_high = max(highs[-window:])
-    recent_low = min(lows[-window:])
-    mid_level = (recent_high + recent_low) / 2
-
-    support_level = recent_low
-    resistance_level = recent_high
-
-    levels_text = (
-        f"أقرب منطقة دعم رئيسية حول: {support_level:.4f}\n"
-        f"أقرب منطقة مقاومة رئيسية حول: {resistance_level:.4f}\n"
-        f"منطقة توازن تقريبية بينهما قرب: {mid_level:.4f}"
-    )
-
-    return trend_text, shape_text, levels_text, trend_dir
+        return "هناك حركة سعرية متذبذبة بدون نموذج واضح تمامًا، ويُفضَّل انتظار مزيد من التأكيد."
 
 
-def describe_rsi(rsi_value):
-    """تحويل قيمة RSI لنص مفهوم."""
-    if rsi_value is None:
-        return "لم تتوفر بيانات كافية لقراءة مؤشر القوة النسبية (RSI)."
-    rsi = round(rsi_value, 1)
-    if rsi >= 70:
-        return f"مؤشر القوة النسبية عند حوالي {rsi} → يشير إلى حالة تشبع شرائي واحتمال زيادة ضغط التصحيح."
-    elif rsi <= 30:
-        return f"مؤشر القوة النسبية عند حوالي {rsi} → يشير إلى حالة تشبع بيعي واحتمال تحسن تدريجي إذا ظهرت سيولة شرائية."
-    else:
-        return f"مؤشر القوة النسبية عند حوالي {rsi} → وضع حيادي، لا توجد إشارة قوية على تشبع شراء أو بيع."
+# ==========================
+# بناء نص التحليل للعملة
+# ==========================
 
-
-def ai_comment(volatility_score, trend_dir):
+def build_analysis_text(symbol_display: str, candles=None, last_price: float = None, is_vai: bool = False) -> str:
     """
-    تعليق قصير من الذكاء الاصطناعي على المخاطر بناءً على
-    مدى عنف الحركة + اتجاهها.
+    يبني رسالة تحليل احترافية باللغة العربية.
     """
-    if volatility_score > 0.06:
-        mood = "السوق حالياً يميل للعنف وتقلبات ملحوظة، ويُفضَّل تقليل الرافعة أو حجم المخاطرة."
-    elif volatility_score > 0.03:
-        mood = "السوق يتحرك بتذبذب متوسط؛ يمكن التعامل معه لكن مع مراعاة إيقاف الخسارة والانضباط في إدارة رأس المال."
-    else:
-        mood = "السوق هادئ نسبيًا من حيث التذبذب، لكن ذلك لا يمنع تغيُّر الحركة بشكل مفاجئ."
+    if is_vai:
+        # تحليل مبسط لـ VAI بسبب محدودية البيانات
+        price_txt = fmt_price(last_price) if last_price is not None else "غير متاح"
+        return (
+            f"📊 *تحليل مبسط لعملة* `{symbol_display}`\n\n"
+            f"💰 *السعر الحالي:* `{price_txt} USDT`\n\n"
+            "🔎 حاليًا يتم جلب السعر من *KuCoin* مع توفر بيانات تاريخية محدودة، لذلك:\n"
+            "- تم تقديم قراءة سعرية مبسّطة دون تحليل عميق للاتجاهات.\n"
+            "- يُنصح بالاعتماد على إدارة مخاطر حذرة في التداول على هذه العملة.\n\n"
+            "🤖 *ملاحظة من نظام الذكاء الاصطناعي:*\n"
+            "هذه العملة ذات سيولة وبيانات تاريخية أقل من العملات الرئيسية، لذلك قد تكون الحركة أكثر حدة "
+            "ويُفضَّل حجم مخاطرة أقل في حالة التداول عليها."
+        )
 
-    if trend_dir == "up":
-        trend_extra = "الاتجاه يميل للصعود، لكن المتابعة المستمرة ضرورية لتفادي أي انعكاس مفاجئ."
-    elif trend_dir == "down":
-        trend_extra = "الاتجاه يميل للهبوط، ويُفضَّل توخي الحذر في صفقات الشراء والالتزام بمستويات الخروج."
-    else:
-        trend_extra = "الاتجاه العام غير واضح، مما يجعل قرارات الدخول والخروج تحتاج لمزيد من الانضباط والصبر."
+    if not candles or len(candles) < 20:
+        price_txt = fmt_price(last_price) if last_price is not None else "غير متاح"
+        return (
+            f"📊 *تحليل العملة* `{symbol_display}`\n\n"
+            f"💰 *السعر الحالي:* `{price_txt} USDT`\n\n"
+            "لا توجد بيانات كافية لبناء تحليل فني موثوق على الإطار اليومي في الوقت الحالي.\n"
+            "يُنصح بالانتظار قليلًا حتى تتكوّن حركة سعرية أوضح قبل اتخاذ قرارات تداول.\n\n"
+            "🤖 *ملاحظة من نظام الذكاء الاصطناعي:*\n"
+            "عند ضعف البيانات التاريخية، يكون الاعتماد على التحليل الفني أقل دقة، لذلك الأفضل التركيز "
+            "على إدارة رأس المال وتقليل حجم المخاطرة."
+        )
 
-    return f"{mood}\n{trend_extra}"
+    closes = [c["close"] for c in candles]
+    last_candle = candles[-1]
+    prev_candle = candles[-2]
 
+    last_close = last_candle["close"]
+    prev_close = prev_candle["close"]
 
-def build_analysis_text(symbol: str, klines):
-    """تحويل بيانات الشموع لتحليل نصى منسق."""
+    change_pct = (last_close - prev_close) / prev_close * 100 if prev_close != 0 else 0
 
-    closes = [float(k[4]) for k in klines]
-    highs = [float(k[2]) for k in klines]
-    lows = [float(k[3]) for k in klines]
+    # دعم ومقاومة بسيطة من آخر 30 شمعة
+    recent = candles[-30:]
+    recent_highs = [c["high"] for c in recent]
+    recent_lows = [c["low"] for c in recent]
+    support = min(recent_lows)
+    resistance = max(recent_highs)
 
-    last_close = closes[-1]
-
-    # اتجاه عام + شكل سعر + مستويات
-    trend_text, shape_text, levels_text, trend_dir = detect_trend_and_pattern(
-        closes, highs, lows
-    )
+    # EMA على الإطار اليومي
+    ema_fast = ema(closes, 9)
+    ema_slow = ema(closes, 21)
 
     # RSI
-    rsi_value = compute_rsi(closes[-30:])  # نكتفي بآخر 30 قيمة
-    rsi_text = describe_rsi(rsi_value)
+    rsi_val = rsi(closes, 14)
 
-    # تذبذب (للذكاء الاصطناعي)
-    recent_window = min(30, len(closes))
-    recent_closes = closes[-recent_window:]
-    high_recent = max(recent_closes)
-    low_recent = min(recent_closes)
-    volatility_score = (high_recent - low_recent) / last_close if last_close != 0 else 0
+    # اتجاه عام + هيكل سعر
+    structure_text = detect_price_structure(closes)
 
-    ai_text = ai_comment(volatility_score, trend_dir)
+    # توصيف الاتجاه من EMA
+    if ema_fast and ema_slow:
+        if ema_fast > ema_slow and last_close > ema_fast:
+            trend_text = "الاتجاه العام يميل إلى الصعود، مع حفاظ السعر حاليًا على تداولات أعلى من متوسطاته المتوسطة."
+        elif ema_fast < ema_slow and last_close < ema_slow:
+            trend_text = "الاتجاه العام يميل إلى الهبوط، مع بقاء السعر أسفل المتوسطات المتحركة الرئيسية."
+        else:
+            trend_text = "الاتجاه العام حيادي نسبيًا، مع تذبذب السعر بالقرب من المتوسطات المتحركة اليومية."
+    else:
+        trend_text = "لا توجد بيانات كافية لتحديد اتجاه عام واضح من خلال المتوسطات المتحركة."
 
-    # تجميع الرسالة
-    msg_lines = []
-    msg_lines.append(f"📊 تحليل يومي لعملة: {symbol.upper()}")
-    msg_lines.append(f"السعر الحالي التقريبي: {last_close:.4f}\n")
+    # توصيف RSI
+    if rsi_val is None:
+        rsi_text = "مؤشر القوة النسبية (RSI) غير متاح بشكل موثوق على هذا الرمز حاليًا."
+    elif rsi_val > 70:
+        rsi_text = f"مؤشر القوة النسبية عند حوالي `{rsi_val:.1f}` → المنطقة أقرب إلى تشبّع شرائي؛ قد تزداد احتمالات التصحيح."
+    elif rsi_val < 30:
+        rsi_text = f"مؤشر القوة النسبية عند حوالي `{rsi_val:.1f}` → المنطقة أقرب إلى تشبّع بيعي؛ قد تظهر فرص ارتداد محتملة."
+    else:
+        rsi_text = f"مؤشر القوة النسبية عند حوالي `{rsi_val:.1f}` → حيادي نسبيًا بدون تشبّع واضح في الشراء أو البيع."
 
-    msg_lines.append("📌 الاتجاه وسلوك السعر:")
-    msg_lines.append(f"- {trend_text}")
-    msg_lines.append(f"- {shape_text}\n")
+    # تلخيص حركة اليوم
+    if change_pct > 0.8:
+        day_move = "اليوم يميل إلى الإيجابية مع صعود ملحوظ في السعر."
+    elif change_pct < -0.8:
+        day_move = "اليوم يميل إلى السلبية مع هبوط واضح في السعر."
+    else:
+        day_move = "تحركات اليوم حتى الآن محدودة وغير حاسمة بشكل كبير."
 
-    msg_lines.append("📍 مستويات فنية مهمة:")
-    msg_lines.append(levels_text + "\n")
+    price_txt = fmt_price(last_close)
+    support_txt = fmt_price(support)
+    resistance_txt = fmt_price(resistance)
 
-    msg_lines.append("📈 قراءة سريعة لمؤشر القوة النسبية (RSI):")
-    msg_lines.append(rsi_text + "\n")
+    # نص نهائي
+    text = (
+        f"📊 *تحليل فني يومي للعملة* `{symbol_display}`\n\n"
+        f"💰 *السعر الحالي:* `{price_txt} USDT`\n"
+        f"📈 *تغيّر اليوم:* `{change_pct:.2f}%`\n\n"
+        f"🧭 *حركة السعر العامة:*\n"
+        f"- {day_move}\n"
+        f"- {structure_text}\n\n"
+        f"📍 *مستويات فنية مهمة:*\n"
+        f"- أقرب دعم يومي تقريبي حول: `{support_txt} USDT`\n"
+        f"- أقرب مقاومة يومية تقريبية حول: `{resistance_txt} USDT`\n\n"
+        f"📊 *صورة الاتجاه والمتوسطات المتحركة:*\n"
+        f"- {trend_text}\n\n"
+        f"📉 *وضع مؤشر القوة النسبية (RSI):*\n"
+        f"- {rsi_text}\n\n"
+        f"🤖 *ملاحظة من نظام الذكاء الاصطناعي للبوت:*\n"
+        "هذا التحليل مبني على بيانات يومية وأساليب فنية مبسّطة، ولا يُعتبَر توصية مباشرة بالشراء أو البيع، "
+        "بل أداة مساعدة لرؤية أوضح لحالة السوق. يُنصح دائمًا بدمج التحليل الفني مع إدارة مخاطر منضبطة."
+    )
 
-    msg_lines.append("🤖 ملاحظة من نظام الذكاء الاصطناعي:")
-    msg_lines.append(ai_text)
-    msg_lines.append("\n—\nهذا التحليل آلي وتقريبي، ويُفضَّل استخدامه كنظرة عامة مع دمجه برؤيتك وخطتك الخاصة.")
-
-    return "\n".join(msg_lines)
+    return text
 
 
-# ======================
-#  Webhook  من تيليجرام
-# ======================
+# ==========================
+# Webhook
+# ==========================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
-        update = request.get_json(force=True)
-        if not update:
-            return jsonify({"ok": True})
+        update = request.get_json(force=True, silent=True)
+        logging.info(f"Update: {update}")
 
-        message = update.get("message") or update.get("edited_message")
-        if not message:
-            return jsonify({"ok": True})
+        if not update or "message" not in update:
+            return "OK", 200
 
+        message = update["message"]
         chat_id = message["chat"]["id"]
-        text = (message.get("text") or "").strip()
+        text = message.get("text", "").strip()
 
-        if not text:
-            send_message(chat_id, "من فضلك أرسل أمراً نصياً مثل: /coin btcusdt")
-            return jsonify({"ok": True})
-
-        # ----- أوامر البوت -----
-
+        # /start
         if text.startswith("/start"):
-            send_message(
-                chat_id,
-                "أهلاً بك 👋\n\n"
-                "أرسل الأمر التالي للحصول على تحليل لأي عملة:\n"
+            welcome = (
+                "👋 أهلاً بك في بوت *تحليل الكريبتو اليومي*.\n\n"
+                "اكتب الأمر بالشكل التالي لتحليل أي عملة على إطار يومي:\n"
                 "`/coin btcusdt`\n"
-                "أو فقط اكتُب الرمز بعد /coin مثل:\n"
-                "`/coin cfx` أو `/coin eth`",
+                "أو ببساطة:\n"
+                "`/btc`\n\n"
+                "سيقوم البوت بجلب بيانات العملة من باينانس (أو KuCoin في حالة VAI) "
+                "ثم يعرض لك ملخصًا فنيًا احترافيًا مدعومًا ببعض آليات الذكاء الاصطناعي. 🤖"
             )
-            return jsonify({"ok": True})
+            send_message(chat_id, welcome)
+            return "OK", 200
 
-        if text.startswith("/coin"):
-            parts = text.split(maxsplit=1)
-            if len(parts) == 1:
-                send_message(
-                    chat_id,
-                    "اكتب الأمر بهذا الشكل:\n"
-                    "`/coin btcusdt` أو `/coin cfx`",
-                )
-                return jsonify({"ok": True})
+        # أوامر التحليل: /coin أو /btc الخ...
+        if text.startswith("/"):
+            parts = text[1:].split()
+            if not parts:
+                send_message(chat_id, "❗ من فضلك اكتب الرمز بعد الأمر، مثل: `/coin btcusdt` أو `/btc`.")
+                return "OK", 200
 
-            raw_symbol = parts[1].strip().upper()
+            cmd = parts[0].lower()
 
-            # دعم كتابه مثل: cfx أو cfxusdt
-            if raw_symbol == "VAI" or raw_symbol == "VAIUSDT":
-                # KuCoin لعملة VAI
-                try:
-                    klines = get_kucoin_klines("VAI-USDT", limit=200)
-                    reply = build_analysis_text("VAIUSDT", klines)
-                    send_message(chat_id, reply)
-                except Exception as e:
-                    print("KuCoin error:", e)
-                    send_message(
-                        chat_id,
-                        "تعذر جلب البيانات لعملة VAI حالياً من KuCoin. يُرجى المحاولة لاحقاً.",
-                    )
-                return jsonify({"ok": True})
-
-            # باقي العملات من Binance
-            if not raw_symbol.endswith("USDT"):
-                symbol = raw_symbol + "USDT"
+            # لو كان الأمر نفسه هو الرمز /btc
+            if cmd == "coin":
+                if len(parts) < 2:
+                    send_message(chat_id, "❗ من فضلك اكتب الرمز بعد الأمر، مثل: `/coin btcusdt`.")
+                    return "OK", 200
+                user_symbol = parts[1]
             else:
-                symbol = raw_symbol
+                # اعتبر الأمر نفسه هو الرمز (مثل /btc أو /ethusdt)
+                user_symbol = cmd
+
+            # تجهيز الرمز
+            user_symbol_clean = user_symbol.replace("/", "").replace(" ", "").upper()
+            if not user_symbol_clean.endswith("USDT"):
+                user_symbol_clean = user_symbol_clean.replace("USDT", "")  # لو كتبها جوه الرمز
+                user_symbol_clean = user_symbol_clean + "USDT"
+
+            symbol_display = user_symbol_clean
 
             try:
-                klines = get_binance_klines(symbol, limit=200)
-                reply = build_analysis_text(symbol, klines)
-                send_message(chat_id, reply)
+                # حالة VAI من KuCoin
+                if user_symbol_clean in ("VAIUSDT", "VAI-USDT"):
+                    last_price = get_kucoin_last_price("VAI-USDT")
+                    text_reply = build_analysis_text(symbol_display, candles=None, last_price=last_price, is_vai=True)
+                    send_message(chat_id, text_reply)
+                    return "OK", 200
+
+                # باقي العملات من باينانس
+                candles = get_binance_klines(user_symbol_clean, limit=120)
+                last_close = candles[-1]["close"] if candles else None
+                text_reply = build_analysis_text(symbol_display, candles=candles, last_price=last_close, is_vai=False)
+                send_message(chat_id, text_reply)
+                return "OK", 200
+
             except Exception as e:
-                print("Binance error:", e)
+                logging.error(f"Error in analysis: {e}")
                 send_message(
                     chat_id,
-                    "تعذر جلب بيانات هذه العملة من Binance.\n"
-                    "تأكد من كتابة الرمز بشكل صحيح مثل: BTCUSDT أو CFXUSDT.",
+                    "⚠️ تعذّر جلب بيانات هذه العملة في الوقت الحالي.\n"
+                    "تأكّد من كتابة الرمز بشكل صحيح مثل: `btcusdt` أو جرّب لاحقًا."
                 )
+                return "OK", 200
 
-            return jsonify({"ok": True})
-
-        # لو كتب حاجة تانية غير /start و /coin
+        # أي رسالة أخرى
         send_message(
             chat_id,
-            "لم أفهم الأمر المرسل.\n"
-            "استخدم:\n`/coin btcusdt` للحصول على تحليل عملة.",
+            "ℹ️ لاستخدام البوت، اكتب مثلاً:\n"
+            "`/coin btcusdt`\n"
+            "أو:\n`/btc`"
         )
-        return jsonify({"ok": True})
+        return "OK", 200
 
     except Exception as e:
-        print("Webhook error:", e)
-        # مهم جداً نرجّع Response عشان ميحصلش TypeError 500
-        return jsonify({"ok": True})
+        logging.error(f"Unhandled error in webhook: {e}")
+        return "OK", 200
+
+
+# ==========================
+# ضبط الويبهوك وتشغيل السيرفر
+# ==========================
+
+def setup_webhook():
+    """
+    ضبط الويبهوك تلقائيًا مع عنوان Koyeb.
+    """
+    url = f"{TELEGRAM_API_URL}/setWebhook"
+    webhook_url = APP_BASE_URL.rstrip("/") + "/webhook"
+    try:
+        r = requests.get(url, params={"url": webhook_url}, timeout=10)
+        logging.info(f"SetWebhook response: {r.status_code} - {r.text}")
+    except Exception as e:
+        logging.error(f"Error setting webhook: {e}")
 
 
 if __name__ == "__main__":
-    # ضبط الـ webhook عند تشغيل السيرفر
-    set_webhook()
-    port = int(os.environ.get("PORT", 8080))
+    logging.info("Bot is starting...")
+    setup_webhook()
+    port = int(os.environ.get("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
