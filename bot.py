@@ -1,208 +1,173 @@
 import os
-import logging
-from flask import Flask, request
 import requests
+from flask import Flask, request, jsonify
 
-# =========================
-# إعدادات أساسية
-# =========================
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set")
+TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "cryptoAI")
 
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{TOKEN}"
-
-# إعداد اللوج
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-# إنشاء تطبيق Flask
 app = Flask(__name__)
 
-
-# =========================
-# دوال مساعدة
-# =========================
-def send_message(chat_id: int, text: str, reply_to_message_id: int | None = None):
-    """
-    إرسال رسالة عادية بتنسيق Markdown.
-    """
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": True,
-    }
-    if reply_to_message_id is not None:
-        payload["reply_to_message_id"] = reply_to_message_id
-
+# =============================
+# 📌 جلب بيانات العملة من Binance
+# =============================
+def get_price_and_data(symbol):
     try:
-        resp = requests.post(
-            f"{TELEGRAM_API_URL}/sendMessage",
-            json=payload,
-            timeout=10,
-        )
-        if not resp.ok:
-            logger.error("sendMessage failed: %s - %s", resp.status_code, resp.text)
+        symbol = symbol.upper()
+        price_url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+        depth_url = f"https://api.binance.com/api/v3/depth?symbol={symbol}&limit=5"
+        rsi_url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=15"
+
+        # السعر
+        price_r = requests.get(price_url).json()
+        if "price" not in price_r:
+            return None
+
+        # دفتر أوامر بسيط
+        depth = requests.get(depth_url).json()
+
+        # RSI
+        rsi_data = requests.get(rsi_url).json()
+        closes = [float(c[4]) for c in rsi_data]
+        rsi_value = calculate_rsi(closes)
+
+        # دعم/مقاومة
+        levels = detect_support_resistance(closes)
+
+        return {
+            "price": float(price_r["price"]),
+            "rsi": rsi_value,
+            "levels": levels
+        }
+
     except Exception as e:
-        logger.exception("Error sending message: %s", e)
+        print("ERROR:", e)
+        return None
 
+# =============================
+# 📌 RSI
+# =============================
+def calculate_rsi(closes, period=14):
+    if len(closes) < period + 1:
+        return None
 
-def extract_command_and_args(text: str) -> tuple[str, str]:
-    """
-    يقسم نص الرسالة إلى:
-    - command: مثل /coin
-    - args: باقي النص بعد الأمر
-    """
-    text = (text or "").strip()
-    if not text.startswith("/"):
-        return "", text
+    gains, losses = [], []
+    for i in range(1, period + 1):
+        diff = closes[-i] - closes[-i - 1]
+        if diff >= 0:
+            gains.append(diff)
+        else:
+            losses.append(abs(diff))
 
-    parts = text.split(maxsplit=1)
-    command = parts[0]
-    args = parts[1] if len(parts) > 1 else ""
-    return command.lower(), args.strip()
+    avg_gain = sum(gains) / period if gains else 0.0001
+    avg_loss = sum(losses) / period if losses else 0.0001
 
+    rs = avg_gain / avg_loss
+    rsi = round(100 - (100 / (1 + rs)), 2)
+    return rsi
 
-def build_coin_analysis(symbol: str) -> str:
-    """
-    يبني رسالة تحليل احترافية (تجريبية) للعملة المطلوبة.
-    حالياً لا يعتمد على بيانات سوق حقيقية، فقط قالب احترافي ثابت.
-    """
-    sym = symbol.upper()
+# =============================
+# 📌 كشف دعم ومقاومة بسيطة
+# =============================
+def detect_support_resistance(closes):
+    if len(closes) < 10:
+        return []
 
-    msg = f"""📊 *تحليل مبدئي – {sym}*
+    levels = []
+    for i in range(2, len(closes) - 2):
+        if closes[i] < closes[i-1] and closes[i] < closes[i+1]:
+            levels.append(("Support", closes[i]))
+        if closes[i] > closes[i-1] and closes[i] > closes[i+1]:
+            levels.append(("Resistance", closes[i]))
 
-▫️ *الاتجاه العام (تجريبي):*
-السوق الحالي يُظهر حركة يمكن اعتبارها *عرضية/يميل للهبوط أو الصعود* بحسب سلوك السعر الأخير، لذا يُفضَّل التعامل بحذر وعدم الاعتماد على حركة واحدة فقط للحكم على الاتجاه.
+    return levels[-3:]  # آخر 3 مستويات فقط
 
-▫️ *مناطق مهمة للمراقبة:*
-• مناطق دعم محتملة لمراقبة أي رد فعل سعري جديد في حال الهبوط.
-• مناطق مقاومة محتملة قد يظهر عندها جني أرباح أو تباطؤ في الصعود.
+# =============================
+# 📌 تنسيق الرسالة الاحترافية لـ /coin
+# =============================
+def format_coin_message(symbol, data):
+    price = data["price"]
+    rsi = data["rsi"]
+    levels = data["levels"]
 
-▫️ *سيولة العملة وحركة السوق:*
-• يتم التركيز على سلوك السيولة على الفريمات القصيرة لمعرفة إن كان هناك دخول قوي لمراكز جديدة أو خروج تدريجي من السوق.
-• أي توسع مفاجئ في السبريد أو حركة سريعة يكون عادةً إشارة على زيادة المخاطر قصيرة المدى.
+    msg = f"""
+📊 **تحليل سريع لعملة {symbol.upper()}**
 
-▫️ *النماذج الفنية / الهارمونيك:*
-حتى الآن *لا يوجد نموذج هارمونيك واضح وقوي يتم الاعتماد عليه*، وسيتم متابعة الحركة لاكتشاف أي نموذج متناظر (مثل جارتلي – بات – فراكتر) يمكن الاستفادة منه مستقبلاً.
+💰 **السعر الحالي:** `${price:,.4f}`
 
-▫️ *إدارة المخاطر:*
-• يُفضَّل استخدام حجم مخاطرة منخفض.
-• وضع وقف خسارة يكون:
-  – أسفل أقرب منطقة دعم في حالة الشراء.
-  – أو أعلى أقرب منطقة مقاومة في حالة البيع.
-• تجنّب الدخول بكامل رأس المال في صفقة واحدة.
+📈 **اتجاه عام مختصر**
+- RSI: **{rsi}**
+- الحالة: {"🔺 ميل صعودي معتدل" if rsi > 55 else "🔻 ضغط بيعي" if rsi < 45 else "⚪ حيادي"}
 
-🧠 *هذا التحليل مبدئي وتجريبي، وليس نصيحة استثمارية مباشرة. القرار النهائي دائماً مسؤوليتك أنت.*
+🧱 **مستويات فنية مهمة**
+"""
+    if not levels:
+        msg += "- لا توجد مستويات واضحة حاليًا.\n"
+    else:
+        for lvl_type, lvl_price in levels:
+            emoji = "🟢" if lvl_type == "Support" else "🔴"
+            msg += f"- {emoji} {lvl_type}: `${lvl_price:,.3f}`\n"
 
-𝗜𝗡 𝗖𝗥𝗬𝗣𝗧𝗢 Ai
+    msg += """
+
+🧠 **نظرة مختصرة**
+العملة في نطاق متابعة حاليًا، وتحتاج مراقبة إضافية قبل اتخاذ قرار تداول.
+
+🚀 IN CRYPTO – AI
 """
     return msg
 
+# =============================
+# 📌 إرسال رسالة لتليجرام
+# =============================
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+    requests.post(url, json=payload)
 
-# =========================
-# معالجة الرسائل
-# =========================
-def handle_message(message: dict):
-    """
-    يستقبل message من Telegram (من /webhook) ويقرر يرد بإيه.
-    """
-    chat = message.get("chat") or {}
-    chat_id = chat.get("id")
-    text = message.get("text") or ""
-
-    if not chat_id or not text:
-        return
-
-    command, args = extract_command_and_args(text)
-
-    # أمر /start
-    if command == "/start":
-        welcome = (
-            "👋 أهلاً بك في *IN CRYPTO Ai Bot*.\n\n"
-            "يمكنك طلب تحليل مبدئي لأي عملة عن طريق الأمر:\n"
-            "`/coin BTCUSDT`\n"
-            "أو مثلاً:\n"
-            "`/coin ETHUSDT`\n\n"
-            "⚠️ التحليل تجريبي ومبدئي، وليس نصيحة استثمارية مباشرة."
-        )
-        send_message(chat_id, welcome, reply_to_message_id=message.get("message_id"))
-        return
-
-    # أمر /coin
-    if command == "/coin":
-        if not args:
-            help_text = (
-                "🧾 *طريقة الاستخدام:*\n\n"
-                "اكتب الأمر بهذا الشكل:\n"
-                "`/coin BTCUSDT`\n"
-                "أو:\n"
-                "`/coin ethusdt`\n\n"
-                "سيصلك تحليل مبدئي منظم للعملة."
-            )
-            send_message(chat_id, help_text, reply_to_message_id=message.get("message_id"))
-            return
-
-        symbol = args.split()[0].strip().upper()
-        analysis = build_coin_analysis(symbol)
-        send_message(chat_id, analysis, reply_to_message_id=message.get("message_id"))
-        return
-
-    # أي رسالة تانية: نرشده لاستخدام /coin
-    if command.startswith("/"):
-        unknown = (
-            "⚠️ الأمر غير معروف.\n\n"
-            "جرّب استخدام:\n"
-            "`/coin BTCUSDT`\n"
-            "للحصول على تحليل مبدئي للعملة."
-        )
-        send_message(chat_id, unknown, reply_to_message_id=message.get("message_id"))
-    else:
-        hint = (
-            "💡 إذا أردت تحليل عملة، استخدم:\n"
-            "`/coin BTCUSDT`\n"
-            "وغيّر `BTCUSDT` لأي عملة أخرى تريدها."
-        )
-        send_message(chat_id, hint, reply_to_message_id=message.get("message_id"))
-
-
-# =========================
-# مسارات Flask
-# =========================
-@app.route("/", methods=["GET"])
-def index():
-    return "OK", 200
-
-
+# =============================
+# 📌 Webhook الأساسي
+# =============================
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """
-    نقطة استقبال التحديثات من Telegram.
-    """
-    try:
-        update = request.get_json(force=True, silent=True) or {}
-    except Exception as e:
-        logger.exception("Failed to parse incoming update: %s", e)
-        return "BAD REQUEST", 400
+    if WEBHOOK_SECRET not in request.args.get("token", ""):
+        return jsonify({"status": "forbidden"}), 403
 
-    message = update.get("message") or update.get("edited_message")
-    if message:
+    data = request.get_json()
+
+    if "message" not in data:
+        return jsonify({"ok": True})
+
+    chat_id = data["message"]["chat"]["id"]
+    text = data["message"].get("text", "")
+
+    # =============================
+    # 📌 أمر /coin
+    # =============================
+    if text.startswith("/coin"):
         try:
-            handle_message(message)
+            parts = text.split()
+            if len(parts) < 2:
+                send_message(chat_id, "❗ يرجى كتابة العملة هكذا:\n/coin btcusdt")
+                return jsonify({"ok": True})
+
+            symbol = parts[1].upper()
+
+            coin_data = get_price_and_data(symbol)
+            if not coin_data:
+                send_message(chat_id, "⚠️ لم يتم العثور على بيانات لهذه العملة.")
+                return jsonify({"ok": True})
+
+            msg = format_coin_message(symbol, coin_data)
+            send_message(chat_id, msg)
+
         except Exception as e:
-            logger.exception("Error handling message: %s", e)
+            send_message(chat_id, f"خطأ غير متوقع: {e}")
 
-    return "OK", 200
+    return jsonify({"ok": True})
 
 
-# =========================
-# تشغيل محلي (اختياري)
-# =========================
+# =============================
+# 📌 Run Flask locally
+# =============================
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "8080"))
-    logger.info("Starting Flask app on port %s ...", port)
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=8080)
