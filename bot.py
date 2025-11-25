@@ -1,248 +1,208 @@
 import os
-import requests
+import logging
 from flask import Flask, request
-from telegram import Bot
-from datetime import datetime
+import requests
 
-# ======================
-#   CONFIG
-# ======================
-
-TOKEN = os.environ.get("BOT_TOKEN")
+# =========================
+# إعدادات أساسية
+# =========================
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
-    raise RuntimeError("BOT_TOKEN env variable is missing")
+    raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set")
 
-bot = Bot(token=TOKEN)
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TOKEN}"
 
+# إعداد اللوج
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# إنشاء تطبيق Flask
 app = Flask(__name__)
 
-BINANCE_API = "https://api.binance.com/api/v3"
 
-
-# ======================
-#   HELPERS
-# ======================
-
-def get_candles(symbol: str, interval: str = "1h", limit: int = 200):
+# =========================
+# دوال مساعدة
+# =========================
+def send_message(chat_id: int, text: str, reply_to_message_id: int | None = None):
     """
-    جلب بيانات الشموع من Binance
+    إرسال رسالة عادية بتنسيق Markdown.
     """
-    url = f"{BINANCE_API}/klines"
-    params = {"symbol": symbol.upper(), "interval": interval, "limit": limit}
-    r = requests.get(url, params=params, timeout=10)
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+    }
+    if reply_to_message_id is not None:
+        payload["reply_to_message_id"] = reply_to_message_id
 
-    if r.status_code != 200:
-        raise RuntimeError(f"Binance error: {r.text}")
-
-    data = r.json()
-    closes = [float(c[4]) for c in data]
-    highs = [float(c[2]) for c in data]
-    lows = [float(c[3]) for c in data]
-    times = [int(c[0]) for c in data]
-    return closes, highs, lows, times
-
-
-def simple_ma(values, period):
-    if len(values) < period:
-        period = len(values)
-    return sum(values[-period:]) / period
-
-
-def generate_ideas(symbol: str, closes, highs, lows):
-    """
-    توليد 10 أفكار آلية من بيانات السعر
-    """
-    ideas = []
-
-    last_price = closes[-1]
-    ma20 = simple_ma(closes, 20)
-    ma50 = simple_ma(closes, 50)
-    highest_50 = max(highs[-50:])
-    lowest_50 = min(lows[-50:])
-
-    change_24 = (closes[-1] - closes[-24]) / closes[-24] * 100 if len(closes) >= 25 else 0
-
-    # 1 - الاتجاه العام
-    if ma20 > ma50:
-        ideas.append(
-            f"الاتجاه العام على المدى القريب صاعد؛ المتوسط المتحرك 20 أعلى من 50. "
-            f"السعر الحالى حوالى {last_price:.2f}."
+    try:
+        resp = requests.post(
+            f"{TELEGRAM_API_URL}/sendMessage",
+            json=payload,
+            timeout=10,
         )
+        if not resp.ok:
+            logger.error("sendMessage failed: %s - %s", resp.status_code, resp.text)
+    except Exception as e:
+        logger.exception("Error sending message: %s", e)
+
+
+def extract_command_and_args(text: str) -> tuple[str, str]:
+    """
+    يقسم نص الرسالة إلى:
+    - command: مثل /coin
+    - args: باقي النص بعد الأمر
+    """
+    text = (text or "").strip()
+    if not text.startswith("/"):
+        return "", text
+
+    parts = text.split(maxsplit=1)
+    command = parts[0]
+    args = parts[1] if len(parts) > 1 else ""
+    return command.lower(), args.strip()
+
+
+def build_coin_analysis(symbol: str) -> str:
+    """
+    يبني رسالة تحليل احترافية (تجريبية) للعملة المطلوبة.
+    حالياً لا يعتمد على بيانات سوق حقيقية، فقط قالب احترافي ثابت.
+    """
+    sym = symbol.upper()
+
+    msg = f"""📊 *تحليل مبدئي – {sym}*
+
+▫️ *الاتجاه العام (تجريبي):*
+السوق الحالي يُظهر حركة يمكن اعتبارها *عرضية/يميل للهبوط أو الصعود* بحسب سلوك السعر الأخير، لذا يُفضَّل التعامل بحذر وعدم الاعتماد على حركة واحدة فقط للحكم على الاتجاه.
+
+▫️ *مناطق مهمة للمراقبة:*
+• مناطق دعم محتملة لمراقبة أي رد فعل سعري جديد في حال الهبوط.
+• مناطق مقاومة محتملة قد يظهر عندها جني أرباح أو تباطؤ في الصعود.
+
+▫️ *سيولة العملة وحركة السوق:*
+• يتم التركيز على سلوك السيولة على الفريمات القصيرة لمعرفة إن كان هناك دخول قوي لمراكز جديدة أو خروج تدريجي من السوق.
+• أي توسع مفاجئ في السبريد أو حركة سريعة يكون عادةً إشارة على زيادة المخاطر قصيرة المدى.
+
+▫️ *النماذج الفنية / الهارمونيك:*
+حتى الآن *لا يوجد نموذج هارمونيك واضح وقوي يتم الاعتماد عليه*، وسيتم متابعة الحركة لاكتشاف أي نموذج متناظر (مثل جارتلي – بات – فراكتر) يمكن الاستفادة منه مستقبلاً.
+
+▫️ *إدارة المخاطر:*
+• يُفضَّل استخدام حجم مخاطرة منخفض.
+• وضع وقف خسارة يكون:
+  – أسفل أقرب منطقة دعم في حالة الشراء.
+  – أو أعلى أقرب منطقة مقاومة في حالة البيع.
+• تجنّب الدخول بكامل رأس المال في صفقة واحدة.
+
+🧠 *هذا التحليل مبدئي وتجريبي، وليس نصيحة استثمارية مباشرة. القرار النهائي دائماً مسؤوليتك أنت.*
+
+𝗜𝗡 𝗖𝗥𝗬𝗣𝗧𝗢 Ai
+"""
+    return msg
+
+
+# =========================
+# معالجة الرسائل
+# =========================
+def handle_message(message: dict):
+    """
+    يستقبل message من Telegram (من /webhook) ويقرر يرد بإيه.
+    """
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    text = message.get("text") or ""
+
+    if not chat_id or not text:
+        return
+
+    command, args = extract_command_and_args(text)
+
+    # أمر /start
+    if command == "/start":
+        welcome = (
+            "👋 أهلاً بك في *IN CRYPTO Ai Bot*.\n\n"
+            "يمكنك طلب تحليل مبدئي لأي عملة عن طريق الأمر:\n"
+            "`/coin BTCUSDT`\n"
+            "أو مثلاً:\n"
+            "`/coin ETHUSDT`\n\n"
+            "⚠️ التحليل تجريبي ومبدئي، وليس نصيحة استثمارية مباشرة."
+        )
+        send_message(chat_id, welcome, reply_to_message_id=message.get("message_id"))
+        return
+
+    # أمر /coin
+    if command == "/coin":
+        if not args:
+            help_text = (
+                "🧾 *طريقة الاستخدام:*\n\n"
+                "اكتب الأمر بهذا الشكل:\n"
+                "`/coin BTCUSDT`\n"
+                "أو:\n"
+                "`/coin ethusdt`\n\n"
+                "سيصلك تحليل مبدئي منظم للعملة."
+            )
+            send_message(chat_id, help_text, reply_to_message_id=message.get("message_id"))
+            return
+
+        symbol = args.split()[0].strip().upper()
+        analysis = build_coin_analysis(symbol)
+        send_message(chat_id, analysis, reply_to_message_id=message.get("message_id"))
+        return
+
+    # أي رسالة تانية: نرشده لاستخدام /coin
+    if command.startswith("/"):
+        unknown = (
+            "⚠️ الأمر غير معروف.\n\n"
+            "جرّب استخدام:\n"
+            "`/coin BTCUSDT`\n"
+            "للحصول على تحليل مبدئي للعملة."
+        )
+        send_message(chat_id, unknown, reply_to_message_id=message.get("message_id"))
     else:
-        ideas.append(
-            f"الاتجاه العام على المدى القريب هابط؛ المتوسط المتحرك 20 تحت 50. "
-            f"السعر الحالى حوالى {last_price:.2f}."
+        hint = (
+            "💡 إذا أردت تحليل عملة، استخدم:\n"
+            "`/coin BTCUSDT`\n"
+            "وغيّر `BTCUSDT` لأي عملة أخرى تريدها."
         )
-
-    # 2 - نطاق دعم / مقاومة
-    ideas.append(
-        f"نطاق الحركة لآخر 50 شمعة تقريبًا بين دعم قرب {lowest_50:.2f} "
-        f"ومقاومة قرب {highest_50:.2f}."
-    )
-
-    # 3 - وضع السعر بالنسبة للنطاق
-    if last_price > (highest_50 * 0.99):
-        ideas.append(
-            "السعر حاليًا قريب من قمة النطاق الأخيرة؛ احتمال تصحيح أو كسر لأعلى."
-        )
-    elif last_price < (lowest_50 * 1.01):
-        ideas.append(
-            "السعر حاليًا قريب من قاع النطاق الأخيرة؛ منطقة قد تُستخدم كدعم محتمل."
-        )
-    else:
-        ideas.append(
-            "السعر يتحرك داخل النطاق الوسط؛ مفيش كسر واضح لدعم أو مقاومة حاليًا."
-        )
-
-    # 4 - أداء آخر 24 ساعة تقريبًا (24 شمعة ساعة)
-    if change_24 > 3:
-        ideas.append(
-            f"خلال آخر 24 شمعة، الزوج طالع بحوالى {change_24:.2f}٪؛ موجة صعود قصيرة المدى."
-        )
-    elif change_24 < -3:
-        ideas.append(
-            f"خلال آخر 24 شمعة، الزوج نازل بحوالى {abs(change_24):.2f}٪؛ ضغط بيع واضح."
-        )
-    else:
-        ideas.append(
-            f"حركة آخر 24 شمعة ضعيفة نسبيًا (التغير حوالى {change_24:.2f}٪)؛ مفيش ترند قوى."
-        )
-
-    # 5 - فكرة عن الشراء مع الاتجاه
-    if ma20 > ma50 and last_price > ma20:
-        ideas.append(
-            "استمرار التداول فوق المتوسط 20 فى اتجاه صاعد ممكن يخلى استراتيجيات "
-            "الشراء مع الاتجاه (trend following) أكثر منطقية، مع إدارة مخاطرة جيدة."
-        )
-    else:
-        ideas.append(
-            "بقاء السعر تحت المتوسط 20 أو وجود تقاطع سلبى بين 20 و 50 يخلّى الشراء مع "
-            "الاتجاه محتاج حذر شديد أو انتظار تأكيد انعكاس."
-        )
-
-    # 6 - فكرة عن الشراء من الدعوم
-    ideas.append(
-        "فى حالة رجوع السعر قرب مناطق الدعم (أسفل المتوسطات أو قرب القاع الأخير)، "
-        "بعض المتداولين بيستهدفوا صفقات ارتداد (bounce) مع وقف خسارة ضيق تحت الدعم."
-    )
-
-    # 7 - فكرة عن البيع من المقاومات
-    ideas.append(
-        "لو السعر قرّب تانى من مناطق المقاومة أو القمم الأخيرة بدون أحجام كبيرة، "
-        "استراتيجيات البيع من المقاومة (mean reversion) بتكون منطقية للبعض."
-    )
-
-    # 8 - مدى المخاطرة
-    volatility = (highest_50 - lowest_50) / last_price * 100
-    ideas.append(
-        f"مدى تذبذب آخر 50 شمعة حوالى {volatility:.2f}٪؛ "
-        "كل ما التذبذب أعلى زادت المخاطرة وأهمية حجم الصفقة الصغير."
-    )
-
-    # 9 - تقسيم المراكز
-    ideas.append(
-        "تقسيم الدخول والخروج على كذا مستوى سعرى (بدل صفقة واحدة كبيرة) "
-        "بيقلل التأثر بأى ذبذبة مفاجئة فى السوق."
-    )
-
-    # 10 - تذكير بالمخاطرة
-    ideas.append(
-        "كل الأفكار دى تحليل آلى تعليمى فقط، ومش نصيحة استثمارية أو مالية. "
-        "اعتمد دايمًا على خطتك وإدارة مخاطر تناسب حسابك."
-    )
-
-    return ideas
+        send_message(chat_id, hint, reply_to_message_id=message.get("message_id"))
 
 
-def parse_symbol_from_text(text: str) -> str:
-    """
-    استخراج الرمز من أمر /ideas
-    """
-    parts = text.strip().split()
-    if len(parts) == 2:
-        return parts[1].upper()
-    return ""
+# =========================
+# مسارات Flask
+# =========================
+@app.route("/", methods=["GET"])
+def index():
+    return "OK", 200
 
-
-# ======================
-#   FLASK WEBHOOK
-# ======================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True, silent=True) or {}
+    """
+    نقطة استقبال التحديثات من Telegram.
+    """
+    try:
+        update = request.get_json(force=True, silent=True) or {}
+    except Exception as e:
+        logger.exception("Failed to parse incoming update: %s", e)
+        return "BAD REQUEST", 400
 
-    if "message" not in data:
-        return "ok"
-
-    msg = data["message"]
-    chat_id = msg["chat"]["id"]
-    text = msg.get("text", "").strip()
-
-    # /start
-    if text == "/start":
-        bot.send_message(
-            chat_id,
-            "🔥 أهلاً بيك فى بوت أفكار الكريبتو.\n"
-            "اكتب مثلاً:\n"
-            "/ideas BTCUSDT\n"
-            "عشان أطلعلك 10 أفكار آلية مبنية على بيانات السوق من Binance "
-            "للزوج ده (الإطار الزمنى: ساعة).",
-        )
-        return "ok"
-
-    # /ideas SYMBOL
-    if text.startswith("/ideas"):
-        symbol = parse_symbol_from_text(text)
-        if not symbol:
-            bot.send_message(
-                chat_id,
-                "اكتب الأمر بالشكل ده:\n/ideas BTCUSDT",
-            )
-            return "ok"
-
-        bot.send_message(
-            chat_id,
-            f"⏳ بجمع أفكار آلية لـ {symbol} من بيانات Binance...",
-        )
-
+    message = update.get("message") or update.get("edited_message")
+    if message:
         try:
-            closes, highs, lows, times = get_candles(symbol)
+            handle_message(message)
         except Exception as e:
-            bot.send_message(
-                chat_id,
-                f"❌ ماقدرتش أوصل لبيانات {symbol} من Binance.\n"
-                f"السبب المحتمل: الرمز غلط أو السيرفر مش متاح حاليًا.",
-            )
-            return "ok"
+            logger.exception("Error handling message: %s", e)
 
-        ideas = generate_ideas(symbol, closes, highs, lows)
-
-        header = (
-            f"💡 أفكار آلية مبنية على بيانات ساعة لآخر {len(closes)} شمعة لـ {symbol}:\n\n"
-        )
-        body_lines = []
-        for i, idea in enumerate(ideas, start=1):
-            body_lines.append(f"{i}. {idea}")
-
-        bot.send_message(chat_id, header + "\n\n".join(body_lines))
-        return "ok"
-
-    # أى رسالة تانية
-    bot.send_message(
-        chat_id,
-        "اكتب /start عشان تشوف طريقة الاستخدام.\n"
-        "مثال: /ideas BTCUSDT",
-    )
-
-    return "ok"
+    return "OK", 200
 
 
-# ======================
-#   RUN FLASK (KOYEB)
-# ======================
-
+# =========================
+# تشغيل محلي (اختياري)
+# =========================
 if __name__ == "__main__":
-    # Koyeb بيشغل البورت من المتغير PORT لو موجود
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.getenv("PORT", "8080"))
+    logger.info("Starting Flask app on port %s ...", port)
     app.run(host="0.0.0.0", port=port)
