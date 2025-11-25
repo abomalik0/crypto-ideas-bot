@@ -2,7 +2,7 @@ import requests
 from flask import Flask, request
 
 # ============ إعداد البوت ==============
-TOKEN = "PUT-YOUR-TOKEN-HERE"   # ضع التوكن هنا
+TOKEN = "8207052650:AAEJ7qyoWqDYyMyllsNuyZHzLynlTM4x9os"
 BOT_URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 app = Flask(__name__)
