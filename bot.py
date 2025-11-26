@@ -449,7 +449,25 @@ def webhook():
             else:
                 # مثل /btc أو /eth
                 user_symbol = cmd
+# أمر فحص حالة الويبهوك
+            if cmd == "getwebhookinfo":
+                try:
+                    url = f"{TELEGRAM_API_URL}/getWebhookInfo"
+                    r = requests.get(url, timeout=10)
+                    info = r.json()
 
+                    text_info = (
+                        "🔍 *Webhook Info:*\n\n"
+                        f"• URL: `{info.get('result', {}).get('url', 'None')}`\n"
+                        f"• Pending Updates: `{info.get('result', {}).get('pending_update_count', 0)}`\n"
+                        f"• Last Error Date: `{info.get('result', {}).get('last_error_date', 'None')}`\n"
+                        f"• Last Error Message:\n`{info.get('result', {}).get('last_error_message', 'None')}`\n"
+                    )
+
+                    send_message(chat_id, text_info)
+                except Exception as e:
+                    send_message(chat_id, f"⚠️ Error getting info:\n`{e}`")
+                return "OK", 200
             # تنظيف الرمز
             user_symbol_clean = user_symbol.replace("/", "").replace(" ", "").upper()
             if not user_symbol_clean.endswith("USDT"):
