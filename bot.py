@@ -1,105 +1,207 @@
 import os
-import requests
+import logging
 from flask import Flask, request
+import requests
 
-app = Flask(__name__)
+# ==============================
+#      الإعدادات العامة
+# ==============================
 
-# =======================
-# إعدادات التوكن
-# =======================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("BOT_TOKEN")
+APP_URL = os.getenv("APP_URL")
+
 if not TELEGRAM_TOKEN:
-    raise RuntimeError("❌ TELEGRAM_TOKEN غير موجود في المتغيرات!")
+    raise RuntimeError("❌ BOT_TOKEN مش موجود فى الـ Environment.")
+
+if not APP_URL:
+    raise RuntimeError("❌ APP_URL مش موجود فى الـ Environment.")
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
+app = Flask(__name__)
 
-# =======================
-# إرسال رسالة
-# =======================
-def send_message(chat_id, text, parse_mode="HTML"):
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
+# ==============================
+#     روابط Binance + KuCoin
+# ==============================
+
+BINANCE_API = "https://api.binance.com"
+KUCOIN_API = "https://api.kucoin.com"
+
+
+# ==============================
+#     إرسال رسالة لتليجرام
+# ==============================
+
+def send_message(chat_id: int, text: str, parse_mode="HTML"):
     url = f"{TELEGRAM_API}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
-    requests.post(url, json=payload)
-
-
-# =======================
-# جلب بيانات العملة
-# =======================
-def fetch_data(symbol):
-    url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol.upper()}"
     try:
-        r = requests.get(url, timeout=10)
-        if r.status_code != 200:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        logging.error(f"Send message error: {e}")
+
+
+# ==============================
+#   توحيد شكل الرمز normalize
+# ==============================
+
+def normalize_symbol(user_symbol: str) -> str:
+    """
+    توحيد الرمز:
+    - تشيل / والمسافات
+    - تضيف USDT لو مش موجودة
+    """
+    clean = user_symbol.upper().replace("/", "").replace(" ", "")
+    if not clean.endswith("USDT"):
+        clean = clean.replace("USDT", "")
+        clean = clean + "USDT"
+    return clean
+
+
+# ==============================
+#  جلب بيانات السعر (Binance + KuCoin)
+# ==============================
+
+def fetch_price_data(symbol: str):
+    """
+    ترجع dict متكاملة:
+    - lastPrice
+    - priceChangePercent (إن وجد)
+    - exchange
+    - symbol
+    """
+
+    # 1) التطبيع
+    norm = normalize_symbol(symbol)
+
+    # 2) VAI → KuCoin فقط
+    if norm in ("VAIUSDT", "VAI-USDT"):
+        try:
+            r = requests.get(
+                f"{KUCOIN_API}/api/v1/market/orderbook/level1",
+                params={"symbol": "VAI-USDT"},
+                timeout=10,
+            )
+            j = r.json()
+            if j.get("code") != "200000":
+                logging.error(f"KuCoin error: {j}")
+                return None
+
+            return {
+                "symbol": "VAIUSDT",
+                "exchange": "KuCoin",
+                "lastPrice": float(j["data"]["price"]),
+                "priceChangePercent": None,
+            }
+        except Exception as e:
+            logging.error(f"VAI exception: {e}")
             return None
-        return r.json()
-    except:
+
+    # 3) باقي الرموز من Binance
+    try:
+        url = f"{BINANCE_API}/api/v3/ticker/24hr"
+        r = requests.get(url, params={"symbol": norm}, timeout=10)
+        if r.status_code != 200:
+            logging.error(f"Binance error {r.status_code}: {r.text}")
+            return None
+
+        data = r.json()
+        data["symbol"] = data.get("symbol", norm)
+        data["exchange"] = "Binance"
+        return data
+
+    except Exception as e:
+        logging.error(f"fetch_price_data error: {e}")
         return None
 
 
-# =======================
-# صياغة التحليل
-# =======================
-def format_analysis(symbol):
-    data = fetch_data(symbol)
+# ==============================
+#      بناء رسالة التحليل
+# ==============================
+
+def format_analysis(symbol: str):
+    data = fetch_price_data(symbol)
+
     if not data:
-        return "⚠️ لا يمكن جلب بيانات العملة الآن."
+        return (
+            "⚠️ لم يتم العثور على بيانات موثوقة لهذه العملة.\n"
+            "✅ تأكد من الرمز مثل:\n"
+            "`/coin btcusdt`\n"
+            "`/coin cfxusdt`\n"
+            "`/coin vai`"
+        )
 
     price = float(data["lastPrice"])
-    change = float(data["priceChangePercent"])
 
-    # دعم و مقاومة تقريبي
-    support = round(price * 0.925, 5)
-    resistance = round(price * 1.14, 5)
+    raw_change = data.get("priceChangePercent")
+    change = None
+    if raw_change not in (None, "", "0", "0.0", "0.000"):
+        try:
+            change = float(raw_change)
+        except:
+            change = None
 
-    # الاتجاه
-    trend = "↘️ الاتجاه العام يميل للهبوط، مع بقاء السعر أسفل المتوسطات الرئيسية." \
-        if change < 0 else \
-        "↗️ الاتجاه العام يميل للصعود، مع بقاء السعر أعلى بعض المتوسطات."
+    symbol_final = data["symbol"]
+    exchange = data["exchange"]
 
-    # RSI تجريبي مناسب
-    rsi = round(30 + (change % 35), 1)
-    rsi_desc = "📉 حيادي بدون تشبع" if 45 < rsi < 55 else \
-               "🔼 صعودي" if rsi >= 55 else "🔽 بيعي"
+    # دعم و مقاومة تقديري
+    support = round(price * 0.92, 4)
+    resistance = round(price * 1.12, 4)
 
-    # الحركة العامة
-    price_desc = (
-        "- السعر اليوم يميل للسلبية مع هبوط واضح في السعر.\n"
-        "- السعر في قناة سعرية هابطة واسعة نسبيًا، مع ضغوط بيعية متكررة على الحركة."
-        if change < 0 else
-        "- السعر يظهر تحسنًا نسبيًا مع زخم صعودي معتدل.\n"
-        "- الحركة داخل قناة سعرية صاعدة مع ضغوط شرائية متقطعة."
-    )
+    # RSI تقديري
+    if change is not None:
+        rsi = round(45 + (change % 10), 1)
+        rsi_trend = "🔼 صعودي" if rsi > 50 else "🔽 هابط"
+    else:
+        rsi = None
+        rsi_trend = "⚪ لا يمكن حساب RSI لعدم توفر بيانات تغيير يومية."
+
+    # اتجاه
+    if change is None:
+        trend = "↔️ الاتجاه غير محدد لعدم توفر بيانات التغير."
+        change_line = "📉 *تغير اليوم:* غير متاح."
+    else:
+        trend = "↗️ الاتجاه يميل للصعود." if change > 0 else "↘️ الاتجاه يميل للهبوط."
+        change_line = f"📉 *تغير اليوم:* %{change:.2f}"
+
+    price_str = f"{price:,.6f}".rstrip("0").rstrip(".")
+
+    # توضيح مصدر VAI
+    source_note = ""
+    if exchange == "KuCoin" and symbol_final.startswith("VAI"):
+        source_note = "\n📌 *ملاحظة:* سعر VAI يتم جلبه من KuCoin."
 
     return f"""
-📊 <b>تحليل فني يومي للعملة {symbol.upper()}</b>
+📊 <b>تحليل فني يومي للعملة {symbol_final}</b>
 
-💰 <b>السعر الحالي:</b> {price}
-📉 <b>تغير اليوم:</b> %{round(change, 2)}
+💰 <b>السعر الحالي:</b> {price_str}$
+{change_line}
 
-🎯 <b>حركة السعر العامة:</b>
-{price_desc}
-
-📍 <b>مستويات فنية مهمة:</b>
-- دعم يومي تقريبي حول: <b>{support}</b>
-- مقاومة يومية تقريبية حول: <b>{resistance}</b>
-
-📊 <b>صورة الاتجاه والمتوسطات:</b>
+🎯 <b>حركة السعر:</b>
 - {trend}
 
-🧭 <b>RSI:</b>
-- مؤشر القوة النسبية عند حوالي <b>{rsi}</b> → {rsi_desc}.
+📍 <b>مستويات فنية تقديرية:</b>
+- دعم: {support}
+- مقاومة: {resistance}
+
+📉 <b>RSI:</b>
+- {rsi if rsi is not None else 'غير متاح'} → {rsi_trend}
 
 🤖 <b>ملاحظة الذكاء الاصطناعي:</b>
-هذا التحليل يساعد على فهم الاتجاه وحركة السعر،
-وليس توصية مباشرة بالشراء أو البيع. يُفضل دائمًا دمج التحليل
-الفني مع إدارة مخاطر منضبطة.
-"""
+التحليل مبسط بناءً على بيانات يومية عامة، ولا يُعتبر توصية مباشرة.
+{source_note}
+    """.strip()
 
 
-# =======================
-# استقبال الويبهوك
-# =======================
+# ==============================
+#          Webhook
+# ==============================
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = request.get_json()
@@ -115,41 +217,35 @@ def webhook():
     if text == "/start":
         send_message(
             chat_id,
-            "👋 أهلاً بك في بوت IN CRYPTO Ai.\n\n"
-            "يمكنك طلب تحليل فني لأي عملة:\n"
-            "› /coin btcusdt\n"
-            "› /btc\n"
-            "› /vai\n\n"
-            "🔔 البوت يراقب البيتكوين تلقائيًا وسيرسل لك تقرير + تحذير عند وجود خطر 🤖"
+            "أهلاً بك 👋\n"
+            "اكتب /btc أو /coin btcusdt للحصول على التحليل."
         )
         return "OK"
 
     # /btc
     if text == "/btc":
-        send_message(chat_id, format_analysis("BTCUSDT"))
-        return "OK"
-
-    # /vai
-    if text == "/vai":
-        send_message(chat_id, format_analysis("VAIUSDT"))
+        reply = format_analysis("BTCUSDT")
+        send_message(chat_id, reply)
         return "OK"
 
     # /coin xxx
     if text.startswith("/coin"):
         parts = text.split()
         if len(parts) < 2:
-            send_message(chat_id, "⚠️ مثال: /coin eth أو /coin btcusdt")
+            send_message(chat_id, "⚠️ مثال: /coin cfx أو /coin btcusdt")
         else:
-            symbol = parts[1].upper()
-            send_message(chat_id, format_analysis(symbol))
+            symbol = parts[1]
+            reply = format_analysis(symbol)
+            send_message(chat_id, reply)
         return "OK"
 
     return "OK"
 
 
-# =======================
-# تشغيل السيرفر على 8080
-# =======================
+# ==============================
+#      تشغيل Flask على port 8080
+# ==============================
+
 if __name__ == "__main__":
     print("Bot is running...")
     app.run(host="0.0.0.0", port=8080)
