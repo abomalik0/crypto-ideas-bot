@@ -1,8 +1,6 @@
 import os
 import logging
 import requests
-import threading
-import time
 from datetime import datetime
 from flask import Flask, request, jsonify
 
@@ -20,9 +18,7 @@ if not APP_BASE_URL:
     raise RuntimeError("البيئة لا تحتوى على APP_BASE_URL")
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-
-# صاحب البوت (هيستقبل التنبيهات التلقائية)
-OWNER_CHAT_ID = 669209875
+COINGECKO_API = "https://api.coingecko.com/api/v3"
 
 # إعداد اللوج
 logging.basicConfig(
@@ -87,7 +83,7 @@ def fetch_from_binance(symbol: str):
     يرجّع dict قياسية أو None.
     """
     try:
-        url = "https://api.binance.com/api/v3/ticker/24hr"
+        url = f"https://api.binance.com/api/v3/ticker/24hr"
         r = requests.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
             logger.info("Binance error %s for %s: %s", r.status_code, symbol, r.text)
@@ -179,29 +175,7 @@ def fetch_price_data(user_symbol: str):
 
 
 # ==============================
-#     دوال فورمات للأرقام
-# ==============================
-
-def fmt_price(value: float) -> str:
-    """
-    تنسيق رقم كبير بشكل لطيف (مستخدم فى التقرير).
-    """
-    try:
-        if value is None:
-            return "غير متاح"
-        if value >= 1_000_000_000:
-            return f"{value/1_000_000_000:.2f}B"
-        if value >= 1_000_000:
-            return f"{value/1_000_000:.2f}M"
-        if value >= 1000:
-            return f"{value:,.0f}".replace(",", ".")
-        return f"{value:.2f}"
-    except Exception:
-        return str(value)
-
-
-# ==============================
-#     صياغة رسالة التحليل
+#     صياغة رسالة التحليل للعملات
 # ==============================
 
 def format_analysis(user_symbol: str) -> str:
@@ -232,6 +206,7 @@ def format_analysis(user_symbol: str) -> str:
     resistance = round(high * 1.01, 6) if high > 0 else round(price * 1.05, 6)
 
     # RSI تجريبى مبنى على نسبة التغير
+    # (مش RSI حقيقى، لكن يعطى إحساس بالزخم)
     rsi_raw = 50 + (change * 0.8)
     rsi = max(0, min(100, rsi_raw))
     if rsi >= 70:
@@ -251,21 +226,24 @@ def format_analysis(user_symbol: str) -> str:
     else:
         trend_text = "الاتجاه العام يميل إلى الهبوط مع ضغوط بيعية واضحة."
 
-    # ملاحظة الذكاء الاصطناعى – مع تلميح خاص لو السيولة أقل (KuCoin مثلاً)
+    # ملاحظة خاصة لو KuCoin (زى حالة VAI)
     if exchange == "kucoin":
-        ai_note = (
-            "🤖 <b>ملاحظة الذكاء الاصطناعى:</b>\n"
-            "السعر يتم تتبّعه عبر منصة سيولتها أقل من العملات الرئيسية، "
-            "لذلك الحركة قد تكون أكثر حدة.\n"
-            "استخدم حجم صفقات أصغر وركز على إدارة المخاطر.\n"
+        source_note = (
+            "⚙️ <b>مصدر البيانات:</b> KuCoin\n"
+            "- السعر يتم جلبه من KuCoin مع توفر بيانات تاريخية محدودة نسبيًا.\n"
+            "- لذلك التحليل يكون <b>مبسّط ومحافظ</b>، "
+            "ويُفضّل استخدام إدارة مخاطر منخفضة.\n\n"
         )
     else:
-        ai_note = (
-            "🤖 <b>ملاحظة الذكاء الاصطناعى:</b>\n"
-            "هذا التحليل يساعدك على فهم الاتجاه وحركة السعر، "
-            "وليس توصية مباشرة بالشراء أو البيع.\n"
-            "يُفضّل دائمًا دمج التحليل الفنى مع خطة إدارة مخاطر منضبطة.\n"
-        )
+        # شيلنا ذكر Binance الصريح زى ما طلبت قبل كده
+        source_note = ""
+
+    ai_note = (
+        "🤖 <b>ملاحظة الذكاء الاصطناعى:</b>\n"
+        "هذا التحليل يساعدك على فهم الاتجاه وحركة السعر، "
+        "وليس توصية مباشرة بالشراء أو البيع.\n"
+        "يُفضّل دائمًا دمج التحليل الفنى مع خطة إدارة مخاطر منضبطة.\n"
+    )
 
     msg = f"""
 📊 <b>تحليل فنى يومى للعملة {display_symbol}</b>
@@ -280,310 +258,276 @@ def format_analysis(user_symbol: str) -> str:
 - دعم يومى تقريبى حول: <b>{support}</b>
 - مقاومة يومية تقريبية حول: <b>{resistance}</b>
 
-📉 <b>RSI (تقديرى):</b>
+📊 <b>صورة الاتجاه والمتوسطات:</b>
+- قراءة مبسطة بناءً على الحركة اليومية وبعض المستويات الفنية.
+
+📉 <b>RSI:</b>
 - مؤشر القوة النسبية عند حوالى: <b>{rsi:.1f}</b> → {rsi_trend}
 
-{ai_note}
+{source_note}{ai_note}
 """.strip()
 
     return msg
 
 
 # ==============================
-#   نظام مراقبة السوق (BTC + Total3)
+#         CoinGecko – Market
 # ==============================
 
-# حالة المراقبة العالمية
-LAST_ALT_MCAP = None          # آخر قيمة لسيولة العملات البديلة
-LAST_ALT_MCAP_TS = 0          # وقت آخر قراءة
-LAST_MARKET_ALERT_TS = 0      # آخر وقت تم إرسال تنبيه فيه
-MARKET_ALERT_COOLDOWN = 20 * 60   # 20 دقيقة بين التنبيهات
-MARKET_CHECK_INTERVAL = 10 * 60   # فحص كل 10 دقائق (خطة مجانية)
-
-
-def fetch_btc_snapshot():
-    """جلب لقطة سريعة للبيتكوين من Binance."""
-    return fetch_from_binance("BTCUSDT")
-
-
-def fetch_total3_snapshot():
+def fetch_global_market_data():
     """
-    جلب سيولة العملات البديلة (تقريبية) من CoinGecko:
-    Total3 ≈ إجمالى السوق - (BTC + ETH)
+    جلب بيانات السوق العامة من CoinGecko:
+    إجمالى القيمة السوقية + نسب هيمنة BTC و ETH + تغير 24 ساعة.
     """
     try:
-        url = "https://api.coingecko.com/api/v3/global"
-        r = requests.get(url, timeout=10)
+        url = f"{COINGECKO_API}/global"
+        r = requests.get(url, timeout=15)
         if r.status_code != 200:
-            logger.info("CoinGecko error %s: %s", r.status_code, r.text)
+            logger.warning("CoinGecko /global error: %s - %s", r.status_code, r.text)
             return None
 
-        data = (r.json() or {}).get("data") or {}
-        total_mcap_usd = float((data.get("total_market_cap") or {}).get("usd") or 0.0)
-        dom = data.get("market_cap_percentage") or {}
-        btc_dom = float(dom.get("btc") or 0.0)
-        eth_dom = float(dom.get("eth") or 0.0)
-
-        alt_dom = max(0.0, 100.0 - btc_dom - eth_dom)
-        alt_mcap = total_mcap_usd * (alt_dom / 100.0)
+        data = r.json().get("data") or {}
+        total_cap_usd = float((data.get("total_market_cap") or {}).get("usd") or 0)
+        dominance = data.get("market_cap_percentage") or {}
+        btc_dom = float(dominance.get("btc") or 0.0)
+        eth_dom = float(dominance.get("eth") or 0.0)
+        total_change = float(data.get("market_cap_change_percentage_24h_usd") or 0.0)
 
         return {
-            "total_mcap": total_mcap_usd,
-            "alt_mcap": alt_mcap,
-            "alt_dom": alt_dom,
-            "btc_dom": btc_dom,
-            "eth_dom": eth_dom,
+            "total_cap_usd": total_cap_usd,
+            "btc_dominance": btc_dom,
+            "eth_dominance": eth_dom,
+            "total_change_pct": total_change,
         }
     except Exception as e:
-        logger.exception("Error fetching from CoinGecko: %s", e)
+        logger.exception("Error fetching CoinGecko global data: %s", e)
         return None
 
 
-def analyze_market_for_alert(btc_data, total3_cur, alt_prev):
+def fetch_btc_eth_data():
     """
-    يحدد هل فى تنبيه مهم دلوقتى ولا لأ (ويوضح السبب).
-    حساسيتنا هنا Ultra لكن مع كول داون.
+    جلب سعر البيتكوين + الإيثريوم وتغير 24 ساعة من CoinGecko.
     """
-    if not btc_data or not total3_cur:
-        return False, None, None, None
+    try:
+        url = f"{COINGECKO_API}/simple/price"
+        params = {
+            "ids": "bitcoin,ethereum",
+            "vs_currencies": "usd",
+            "include_24hr_change": "true",
+        }
+        r = requests.get(url, params=params, timeout=15)
+        if r.status_code != 200:
+            logger.warning("CoinGecko /simple/price error: %s - %s", r.status_code, r.text)
+            return None
 
-    btc_price = btc_data["price"]
-    btc_change = btc_data["change_pct"]
-    alt_mcap = total3_cur["alt_mcap"]
+        data = r.json()
+        btc = data.get("bitcoin") or {}
+        eth = data.get("ethereum") or {}
 
-    alt_change_pct = None
-    if alt_prev and alt_prev > 0:
-        alt_change_pct = (alt_mcap - alt_prev) / alt_prev * 100.0
+        btc_price = float(btc.get("usd") or 0)
+        btc_change = float(btc.get("usd_24h_change") or 0.0)
+        eth_price = float(eth.get("usd") or 0)
+        eth_change = float(eth.get("usd_24h_change") or 0.0)
 
-    mood = "calm"
-    reason = None
+        return {
+            "btc_price": btc_price,
+            "btc_change_pct": btc_change,
+            "eth_price": eth_price,
+            "eth_change_pct": eth_change,
+        }
+    except Exception as e:
+        logger.exception("Error fetching CoinGecko BTC/ETH data: %s", e)
+        return None
 
-    # حالات الخطر / الحركة القوية
-    # 1) هبوط بيتكوين قوى
-    if btc_change <= -3:
-        mood = "down"
-        reason = "هبوط يومى ملحوظ فى البيتكوين (أكثر من 3٪)، ما يعكس ضغط بيعى قوى."
 
-    # 2) خروج سيولة من العملات البديلة بسرعة
-    if alt_change_pct is not None and alt_change_pct <= -2:
-        mood = "down"
-        add = "انخفاض واضح فى سيولة العملات البديلة (Total3) بأكثر من 2٪ تقريبًا."
-        reason = add if not reason else reason + " " + add
-
-    # 3) حركة عنيفة لأعلى (مخاطرة / فرصة)
-    if btc_change >= 4 or (alt_change_pct is not None and alt_change_pct >= 3):
-        if mood == "calm":
-            mood = "up"
-            reason = "حركة صعودية قوية (إما فى البيتكوين أو فى سيولة العملات البديلة)، ما يزيد فرص الربح وأيضًا درجة المخاطرة."
+def evaluate_risk_level(btc_change, total_change, alt_cap_usd, btc_dom, eth_dom):
+    """
+    نظام تقييم مخاطر بسيط (حساسية A متوازنة).
+    """
+    try:
+        # قواعد تقريبية:
+        # هبوط قوى فى السوق أو البيتكوين → high
+        if total_change <= -4 or btc_change <= -5:
+            level = "high"
+            emoji = "🔴"
+            msg = (
+                "المخاطر مرتفعة حاليًا؛ السوق يتعرض لضغط بيعى واضح، "
+                "ويُفضّل تجنب الدخول الجديد إلا بحساب دقيق لحجم الصفقة."
+            )
+        # سوق متذبذب / غير واضح → medium
+        elif -4 < total_change < 1 and abs(btc_change) < 4:
+            level = "medium"
+            emoji = "🟡"
+            msg = (
+                "المخاطر متوسطة؛ السوق يتحرك فى نطاق متقلب مع عدم وضوح اتجاه "
+                "قوى، ويُفضّل تقليل الرافعة والالتزام بمناطق دعم ومقاومة واضحة."
+            )
+        # باقى الحالات → low
         else:
-            # لو فيه هبوط + حركة سيولة غريبة
-            reason = (reason or "") + " مع حركة قوية فى السيولة، ما يزيد من حدة التذبذب."
+            level = "low"
+            emoji = "🟢"
+            msg = (
+                "المخاطر حالياً منخفضة نسبيًا؛ الحركة العامة متوازنة، "
+                "مع إمكانية استغلال الفرص ولكن مع الحفاظ على إدارة رأس مال منضبطة."
+            )
 
-    # لو مفيش أى سبب واضح، ما فى تنبيه
-    if not reason:
-        return False, None, None, None
+        # لو هيمنة BTC عالية جدًا مع AltCap ضعيف → نحذر زيادة شوية
+        if alt_cap_usd > 0 and btc_dom > 52 and total_change < 0:
+            msg += (
+                "\n⚠️ توجد سيطرة ملحوظة للبيتكوين مقارنة بالعملات البديلة، "
+                "مما قد يزيد من حدة الهبوط فى بعض العملات الصغيرة."
+            )
 
-    return True, mood, reason, alt_change_pct
-
-
-def build_quick_alert_message(btc_data, total3_cur, mood, reason, alt_change_pct):
-    """رسالة تنبيه سريعة قبل التقرير المفصل."""
-    btc_price = btc_data["price"]
-    btc_change = btc_data["change_pct"]
-
-    alt_mcap = total3_cur["alt_mcap"]
-    alt_dom = total3_cur["alt_dom"]
-
-    if alt_change_pct is None:
-        alt_line = f"سيولة العملات البديلة (تقريبًا): {fmt_price(alt_mcap)}$ (لا توجد مقارنة زمنية كافية بعد)."
-    else:
-        alt_line = (
-            f"سيولة العملات البديلة (تقريبًا): {fmt_price(alt_mcap)}$ "
-            f"({alt_change_pct:+.2f}٪ منذ آخر متابعة، هيمنة تقريبية: {alt_dom:.1f}٪)."
-        )
-
-    if mood == "down":
-        mood_emoji = "⚠️"
-        mood_title = "تنبيه هبوط / ضغط بيعى"
-    else:
-        mood_emoji = "🚀"
-        mood_title = "تنبيه حركة قوية / زخم عالى"
-
-    msg = f"""
-{mood_emoji} <b>{mood_title} من IN CRYPTO Ai</b>
-
-• بيتكوين: ~{fmt_price(btc_price)}$ ({btc_change:+.2f}٪ خلال 24 ساعة).
-• {alt_line}
-
-📌 <b>ملخص سريع:</b>
-{reason}
-
-سيتم إرسال تقرير مفصل عن حالة السوق بعد لحظات...
-""".strip()
-
-    return msg
+        return level, emoji, msg
+    except Exception as e:
+        logger.exception("Error evaluating risk: %s", e)
+        return "unknown", "⚪", "تعذر حساب مستوى المخاطر بدقة بسبب مشكلة فى البيانات."
 
 
-def build_full_market_report(btc_data, total3_cur, alt_change_pct):
-    """تقرير احترافى مدموج (BTC + سيولة العملات البديلة)."""
-    btc_price = btc_data["price"]
-    btc_change = btc_data["change_pct"]
+def build_market_snapshot():
+    """
+    يجمع كل بيانات السوق فى dict واحد لاستخدامه فى التقرير /market
+    أو أمر /risk_test.
+    """
+    global_data = fetch_global_market_data()
+    btc_eth_data = fetch_btc_eth_data()
 
-    alt_mcap = total3_cur["alt_mcap"]
-    total_mcap = total3_cur["total_mcap"]
-    alt_dom = total3_cur["alt_dom"]
-    btc_dom = total3_cur["btc_dom"]
-    eth_dom = total3_cur["eth_dom"]
+    if not global_data or not btc_eth_data:
+        return None
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    total_cap = global_data["total_cap_usd"]
+    btc_dom = global_data["btc_dominance"]
+    eth_dom = global_data["eth_dominance"]
+    total_change = global_data["total_change_pct"]
 
-    # توصيف بيتكوين
-    if btc_change <= -3:
-        btc_summary = "السوق ما زال يميل إلى الهبوط على المدى القصير، مع ضغط بيعى واضح على البيتكوين."
-    elif btc_change <= -1:
-        btc_summary = "البيتكوين يتعرض لتصحيح هابط خفيف إلى متوسط، دون علامات قوة صعودية واضحة حتى الآن."
-    elif btc_change < 1:
-        btc_summary = "البيتكوين يتحرك فى نطاق عرضى نسبياً مع تذبذب محدود."
-    elif btc_change < 3:
-        btc_summary = "البيتكوين يُظهر ميلاً صعودياً هادئاً مع تحسن تدريجى فى الزخم."
-    else:
-        btc_summary = "البيتكوين يتحرك فى موجة صعود قوية نسبياً، مع زيادة ملحوظة فى الزخم."
+    btc_price = btc_eth_data["btc_price"]
+    btc_change = btc_eth_data["btc_change_pct"]
+    eth_price = btc_eth_data["eth_price"]
+    eth_change = btc_eth_data["eth_change_pct"]
 
-    # توصيف سيولة العملات البديلة
-    if alt_change_pct is None:
-        alt_summary = "لا توجد بيانات كافية بعد لقياس التغير اللحظى فى سيولة العملات البديلة."
-    elif alt_change_pct <= -2:
-        alt_summary = "هناك خروج ملحوظ للسيولة من العملات البديلة (Total3)، ما يزيد حساسية السوق لأى هبوط إضافى."
-    elif alt_change_pct <= -0.5:
-        alt_summary = "سيولة العملات البديلة تشهد تراجعاً خفيفاً، مع حذر واضح من المتداولين."
-    elif alt_change_pct < 0.5:
-        alt_summary = "سيولة العملات البديلة مستقرة تقريباً دون تغيرات كبيرة."
-    elif alt_change_pct < 2:
-        alt_summary = "هناك تدفق إيجابى معتدل للسيولة نحو العملات البديلة، ما قد يدعم فرص صعود انتقائية."
-    else:
-        alt_summary = "تدفّق قوى للسيولة نحو العملات البديلة، ما يعكس شهية مخاطرة مرتفعة وقد يصاحبه تذبذب عنيف."
+    # نحسب القيمة السوقية التقريبية BTC/ETH من الهيمنة
+    btc_cap = total_cap * (btc_dom / 100.0)
+    eth_cap = total_cap * (eth_dom / 100.0)
+    alt_cap = max(total_cap - btc_cap - eth_cap, 0)
 
-    # تقييم عام
-    if btc_change <= -2.5 or (alt_change_pct is not None and alt_change_pct <= -2):
-        risk_eval = (
-            "المخاطر حالياً مرتفعة نسبيًا، خاصةً مع تزايد احتمالات استمرار الهبوط أو توسع التصحيح.\n"
-            "يُنصح بالتركيز على حماية رأس المال وتقليل حجم المراكز ذات الرافعة العالية."
-        )
-    elif btc_change >= 3 or (alt_change_pct is not None and alt_change_pct >= 2):
-        risk_eval = (
-            "السوق فى وضع زخم قوى (إما صعودى فى البيتكوين أو فى العملات البديلة)، "
-            "ما يخلق فرصًا قوية لكن مع درجة مخاطرة أعلى من المعتاد."
-        )
-    else:
-        risk_eval = (
-            "المخاطر حاليًا متوسطة، مع توازن نسبى بين المشترين والبائعين، "
-            "والأفضل انتظار تأكيد أوضح قبل زيادة حجم التعرض للسوق."
-        )
-
-    # توقعات عامة بسيطة
-    expectations = (
-        "• استمرار التماسك أعلى مناطق دعم رئيسية فى البيتكوين يعزّز فرص الاستقرار أو محاولات الصعود.\n"
-        "• أى كسر واضح لمناطق دعم مهمة مع خروج سيولة من العملات البديلة قد يفتح الباب لتصحيح أعمق.\n"
-        "• عودة السيولة بقوة إلى العملات البديلة مع استقرار البيتكوين عادةً ما تكون إشارة مبكرة لموجات مضاربية أقوى."
+    # تقييم المخاطر
+    risk_level, risk_emoji, risk_message = evaluate_risk_level(
+        btc_change=btc_change,
+        total_change=total_change,
+        alt_cap_usd=alt_cap,
+        btc_dom=btc_dom,
+        eth_dom=eth_dom,
     )
 
-    if alt_change_pct is None:
-        alt_change_line = "لا توجد مقارنة زمنية كافية بعد لقياس تغير سيولة العملات البديلة منذ آخر متابعة."
+    # نص الاتجاه العام
+    if total_change > 2 and btc_change > 2:
+        market_trend = (
+            "السوق يميل إلى الصعود مع تحسن فى البيتكوين وباقى السوق، "
+            "لكن يظل من المهم مراقبة مستويات المقاومة الرئيسية."
+        )
+    elif total_change < -2 and btc_change < -2:
+        market_trend = (
+            "السوق يعانى من ضغوط بيعية واضحة، مع هبوط ملحوظ فى القيمة "
+            "السوقية العامة وفى البيتكوين."
+        )
     else:
-        alt_change_line = f"تغير سيولة العملات البديلة منذ آخر متابعة: {alt_change_pct:+.2f}٪ تقريباً."
+        market_trend = (
+            "السوق يتحرك داخل نطاق متذبذب بدون اتجاه قوى واضح حتى الآن، "
+            "ومناسب أكثر للتداول قصير المدى بحذر."
+        )
 
-    text = f"""
-تصحيح تاريخ التحليل ✅
+    today = datetime.utcnow().strftime("%d-%m-%Y")
 
-🧭 <b>تحليل الذكاء الاصطناعي لسوق الكريبتو</b> – {today}
+    snapshot = {
+        "date_str": today,
+        "btc_price": btc_price,
+        "btc_change": btc_change,
+        "eth_price": eth_price,
+        "eth_change": eth_change,
+        "total_cap": total_cap,
+        "alt_cap": alt_cap,
+        "btc_dom": btc_dom,
+        "eth_dom": eth_dom,
+        "total_change": total_change,
+        "market_trend": market_trend,
+        "risk_level": risk_level,
+        "risk_emoji": risk_emoji,
+        "risk_message": risk_message,
+    }
+    return snapshot
 
-🏦 <b>نظرة عامة على البيتكوين:</b>
-السعر الحالى للبيتكوين يدور حول ~<b>{fmt_price(btc_price)}$</b>.
-نسبة التغير خلال 24 ساعة حوالى <b>{btc_change:+.2f}٪</b>.
-{btc_summary}
 
-🌐 <b>سيولة العملات البديلة (Total3 تقريبًا):</b>
-- إجمالى قيمة السوق الكلية تقريبًا: <b>{fmt_price(total_mcap)}$</b>.
-- سيولة تقديرية للعملات البديلة: <b>{fmt_price(alt_mcap)}$</b>.
-- هيمنة البيتكوين: <b>{btc_dom:.1f}٪</b> – هيمنة الإيثيريوم: <b>{eth_dom:.1f}٪</b> – هيمنة العملات البديلة: <b>{alt_dom:.1f}٪</b>.
-- {alt_change_line}
-{alt_summary}
+def format_market_report(snapshot: dict) -> str:
+    """
+    صياغة تقرير سوق كامل لأمر /market.
+    """
+    date_str = snapshot["date_str"]
+    btc_price = snapshot["btc_price"]
+    btc_change = snapshot["btc_change"]
+    eth_price = snapshot["eth_price"]
+    eth_change = snapshot["eth_change"]
+    total_cap = snapshot["total_cap"]
+    alt_cap = snapshot["alt_cap"]
+    btc_dom = snapshot["btc_dom"]
+    eth_dom = snapshot["eth_dom"]
+    total_change = snapshot["total_change"]
+    market_trend = snapshot["market_trend"]
+    risk_level = snapshot["risk_level"]
+    risk_emoji = snapshot["risk_emoji"]
+    risk_message = snapshot["risk_message"]
+
+    # تحويل الأرقام لسلاسل مفهومة
+    total_cap_trillions = total_cap / 1e12
+    alt_cap_billions = alt_cap / 1e9
+
+    btc_trend = "⬆️ صعودى" if btc_change > 0 else ("⬇️ هابط" if btc_change < 0 else "🔁 عرضى")
+    eth_trend = "⬆️ صعودى" if eth_change > 0 else ("⬇️ هابط" if eth_change < 0 else "🔁 عرضى")
+    total_trend = "⬆️ تحسن فى إجمالى القيمة" if total_change > 0 else (
+        "⬇️ ضعف فى إجمالى القيمة" if total_change < 0 else "🔁 استقرار نسبى فى إجمالى القيمة"
+    )
+
+    # عنوان التقرير – من غير "تصحيح تاريخ التحليل"
+    report = f"""
+✅ <b>تحليل الذكاء الاصطناعى لسوق الكريبتو</b>
+📅 التاريخ: <b>{date_str}</b>
+
+🏛 <b>نظرة عامة على البيتكوين:</b>
+- السعر الحالى للبيتكوين: <b>${btc_price:,.0f}</b>
+- نسبة تغير آخر 24 ساعة: <b>{btc_change:+.2f}%</b> → {btc_trend}
+
+🪙 <b>نظرة عامة على سيولة العملات البديلة (Total3 تقريبياً):</b>
+- سيولة تقديرية لسوق العملات البديلة: <b>${alt_cap_billions:,.1f}B</b>
+- القيمة التقديرية لإجمالى السوق: <b>${total_cap_trillions:,.2f}T</b>
+- التغير الكلى لإجمالى القيمة السوقية آخر 24 ساعة: <b>{total_change:+.2f}%</b> → {total_trend}
+
+📊 <b>هيمنة السوق:</b>
+- هيمنة البيتكوين: <b>{btc_dom:.2f}%</b>
+- هيمنة الإيثريوم: <b>{eth_dom:.2f}%</b>
 
 💎 <b>تقييم الوضع العام:</b>
-{risk_eval}
+- {market_trend}
 
-⚙️ <b>التوقعات القادمة (وفق البيانات الحالية فقط):</b>
-{expectations}
+⚙️ <b>مستوى المخاطر (نظام التحذير الذكى):</b>
+- {risk_emoji} <b>المخاطر حالياً عند مستوى:</b> {'منخفض' if risk_level=='low' else ('متوسط' if risk_level=='medium' else 'عالٍ')}
+- {risk_message}
 
-📌 <b>الملخص النهائي:</b>
-> السوق يتحرك حاليًا بين تأثير حركة البيتكوين من جهة، وتدفق/خروج السيولة من العملات البديلة من جهة أخرى.
-أفضل ما يمكن التركيز عليه الآن هو وضوح مناطق الدعم والمقاومة، مع الالتزام الصارم بإدارة رأس المال.
+🧭 <b>التوقعات القادمة (وفق البيانات الحالية فقط):</b>
+- استمرار تماسك البيتكوين أعلى مناطق الدعم الرئيسية يعزز فرص الاستقرار وتحسن الشهية للمخاطرة.
+- كسر مناطق دعم قوية مع زيادة هبوط إجمالى القيمة السوقية قد يفتح المجال لموجات تصحيح أعمق، خاصة فى العملات البديلة ذات السيولة الضعيفة.
+- أى تحسن واضح فى السيولة الداخلة للسوق مع صعود متدرج فى البيتكوين يعطى إشارات أفضل للتداول المضاربى.
+
+📌 <b>الملخص النهائى:</b>
+- السوق حالياً يتابع حركة البيتكوين والسيولة الداخلة والخارجة من العملات البديلة.
+- يُفضّل التركيز على المناطق الواضحة للدعم والمقاومة مع عدم المبالغة فى الرافعة المالية.
 
 ⚠️ <b>رسالة اليوم من IN CRYPTO Ai:</b>
-> السوق دائمًا يحتوى على فرص، لكن البقاء فى السوق لفترة أطول يتطلب صبرًا وانضباطًا فى اتخاذ القرار.
-لا تحاول مطاردة كل حركة؛ ركّز على الفرص الواضحة فقط، واعتبر إدارة المخاطر جزءًا من استراتيجية الربح، لا عائقًا له.  
+- لا تحاول مطاردة كل حركة؛ ركّز على الفرص الواضحة فقط واعتبر إدارة المخاطر جزءاً من استراتيجيتك، لا عبءً إضافياً.
+- الصبر وعدم مطاردة الحركة يكون <b>أفضل من الدخول المتأخر</b> فى كثير من الأحيان.
+
 IN CRYPTO Ai 🤖
 """.strip()
 
-    return text
-
-
-def market_monitor_loop():
-    """
-    حلقة مراقبة السوق فى الخلفية:
-    - تراقب BTCUSDT + سيولة العملات البديلة (Total3 تقريبًا).
-    - حساسية عالية (Ultra) مع كول داون 20 دقيقة عشان ما يبقاش سبام.
-    """
-    global LAST_ALT_MCAP, LAST_ALT_MCAP_TS, LAST_MARKET_ALERT_TS
-
-    logger.info("Market monitor thread started.")
-
-    while True:
-        try:
-            logger.info("Market monitor: checking BTC + Total3...")
-            btc_data = fetch_btc_snapshot()
-            total3_cur = fetch_total3_snapshot()
-
-            if not btc_data or not total3_cur:
-                logger.info("Market monitor: missing data (btc or total3), skipping this round.")
-            else:
-                should_alert, mood, reason, alt_change_pct = analyze_market_for_alert(
-                    btc_data, total3_cur, LAST_ALT_MCAP
-                )
-                now_ts = time.time()
-
-                # تحديث آخر قيمة لسيولة العملات البديلة
-                LAST_ALT_MCAP = total3_cur["alt_mcap"]
-                LAST_ALT_MCAP_TS = now_ts
-
-                if should_alert:
-                    if (now_ts - LAST_MARKET_ALERT_TS) >= MARKET_ALERT_COOLDOWN:
-                        # تنبيه سريع
-                        quick_msg = build_quick_alert_message(
-                            btc_data, total3_cur, mood, reason, alt_change_pct
-                        )
-                        send_message(OWNER_CHAT_ID, quick_msg)
-
-                        # انتظر دقيقة ثم ابعت تقرير مفصل
-                        time.sleep(60)
-                        full_report = build_full_market_report(
-                            btc_data, total3_cur, alt_change_pct
-                        )
-                        send_message(OWNER_CHAT_ID, full_report)
-
-                        LAST_MARKET_ALERT_TS = now_ts
-                    else:
-                        logger.info("Market monitor: alert conditions met but still under cooldown.")
-        except Exception as e:
-            logger.exception("Market monitor error: %s", e)
-
-        # انتظار حتى الفحص القادم
-        time.sleep(MARKET_CHECK_INTERVAL)
-
-
-def start_market_monitor_thread():
-    t = threading.Thread(target=market_monitor_loop, daemon=True)
-    t.start()
+    return report
 
 
 # ==============================
@@ -619,10 +563,11 @@ def webhook():
             "➤ <code>/coin btc</code>\n"
             "➤ <code>/coin btcusdt</code>\n"
             "➤ <code>/coin hook</code> أو أى رمز آخر.\n\n"
+            "كما يمكنك طلب تقرير السوق اليومى:\n"
+            "➤ <code>/market</code> تقرير شامل عن البيتكوين و Total3.\n"
+            "➤ <code>/risk_test</code> لاختبار مستوى المخاطر السريع.\n\n"
             "البوت يحاول أولاً جلب البيانات من Binance، "
-            "وإذا لم يجد العملة يحاول تلقائياً من KuCoin.\n\n"
-            "🔔 بالإضافة إلى ذلك: يوجد نظام تنبيهات ذكى يراقب حركة البيتكوين "
-            "وسيولة العملات البديلة ويرسل لك تنبيه وتقرير تلقائياً عند حدوث تحركات قوية."
+            "وإذا لم يجد العملة يحاول تلقائياً من KuCoin."
         )
         send_message(chat_id, welcome)
         return jsonify(ok=True)
@@ -633,10 +578,56 @@ def webhook():
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # /vai
+    # /vai  (هنا VAI → KuCoin تلقائياً لو مش موجودة فى Binance)
     if lower_text == "/vai":
         reply = format_analysis("VAIUSDT")
         send_message(chat_id, reply)
+        return jsonify(ok=True)
+
+    # تقرير السوق /market
+    if lower_text == "/market":
+        snapshot = build_market_snapshot()
+        if not snapshot:
+            send_message(
+                chat_id,
+                "⚠️ تعذر جلب بيانات السوق الكاملة فى الوقت الحالى.\n"
+                "حاول مرة أخرى بعد قليل."
+            )
+        else:
+            report = format_market_report(snapshot)
+            send_message(chat_id, report)
+        return jsonify(ok=True)
+
+    # اختبار المخاطر /risk_test
+    if lower_text == "/risk_test":
+        snapshot = build_market_snapshot()
+        if not snapshot:
+            send_message(
+                chat_id,
+                "⚠️ تعذر جلب بيانات السوق لاختبار المخاطر الآن.\n"
+                "حاول مرة أخرى بعد قليل."
+            )
+        else:
+            risk_level = snapshot["risk_level"]
+            risk_emoji = snapshot["risk_emoji"]
+            risk_message = snapshot["risk_message"]
+            btc_change = snapshot["btc_change"]
+            total_change = snapshot["total_change"]
+            btc_dom = snapshot["btc_dom"]
+            eth_dom = snapshot["eth_dom"]
+
+            reply = f"""
+🧪 <b>اختبار سريع لمستوى المخاطر فى السوق</b>
+
+- مستوى المخاطر الحالى: {risk_emoji} <b>{'منخفض' if risk_level=='low' else ('متوسط' if risk_level=='medium' else 'عالٍ')}</b>
+- تغير البيتكوين آخر 24 ساعة: <b>{btc_change:+.2f}%</b>
+- تغير إجمالى القيمة السوقية: <b>{total_change:+.2f}%</b>
+- هيمنة البيتكوين: <b>{btc_dom:.2f}%</b> – هيمنة الإيثريوم: <b>{eth_dom:.2f}%</b>
+
+<b>تفسير الذكاء الاصطناعى:</b>
+{risk_message}
+""".strip()
+            send_message(chat_id, reply)
         return jsonify(ok=True)
 
     # /coin xxx
@@ -656,26 +647,11 @@ def webhook():
             send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # أمر اختبار يدوى لتقرير السوق الكامل (للاختبار فقط)
-    if lower_text in ("/market", "/btcreport", "/btc_report"):
-        try:
-            btc_data = fetch_btc_snapshot()
-            total3_cur = fetch_total3_snapshot()
-            if not btc_data or not total3_cur:
-                send_message(chat_id, "⚠️ تعذّر إنشاء تقرير السوق الآن، جرّب لاحقًا.")
-            else:
-                report = build_full_market_report(btc_data, total3_cur, None)
-                send_message(chat_id, report)
-        except Exception as e:
-            logger.exception("Manual market report error: %s", e)
-            send_message(chat_id, "⚠️ حدث خطأ أثناء إنشاء تقرير السوق.")
-        return jsonify(ok=True)
-
     # أى رسالة أخرى
     send_message(
         chat_id,
         "⚙️ اكتب /start لعرض الأوامر المتاحة.\n"
-        "مثال سريع: <code>/btc</code> أو <code>/coin btc</code>.",
+        "مثال سريع: <code>/btc</code> أو <code>/coin btc</code> أو <code>/market</code>.",
     )
     return jsonify(ok=True)
 
@@ -701,6 +677,5 @@ def setup_webhook():
 if __name__ == "__main__":
     logger.info("Bot is starting...")
     setup_webhook()
-    start_market_monitor_thread()
     # تشغيل Flask على 8080
     app.run(host="0.0.0.0", port=8080)
