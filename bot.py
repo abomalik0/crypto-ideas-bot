@@ -1,4 +1,10 @@
+
 import os
+import math
+import time
+import threading
+from datetime import datetime
+
 import logging
 import requests
 from flask import Flask, request, jsonify
@@ -18,6 +24,14 @@ if not APP_BASE_URL:
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
+# صاحب البوت اللى هيوصل له تحذير البيتكوين التلقائى
+OWNER_CHAT_ID = 669209875
+
+# متغيرات خاصة بتنبيه BTC التلقائى
+LAST_BTC_ALERT_STATE = None   # "normal" / "warning"
+LAST_BTC_ALERT_TS = 0         # آخر وقت تم إرسال تحذير فيه
+BTC_ALERT_COOLDOWN = 60 * 60  # ساعة بين كل تحذير وتحذير
+
 # إعداد اللوج
 logging.basicConfig(
     level=logging.INFO,
@@ -30,11 +44,11 @@ app = Flask(__name__)
 
 
 # ==============================
-#  دوال مساعدة لـ Telegram API
+#  دوال مساعدة عامة
 # ==============================
 
 def send_message(chat_id: int, text: str, parse_mode: str = "HTML"):
-    """إرسال رسالة عادية."""
+    """إرسال رسالة عادية لتليجرام."""
     try:
         url = f"{TELEGRAM_API}/sendMessage"
         payload = {
@@ -47,6 +61,19 @@ def send_message(chat_id: int, text: str, parse_mode: str = "HTML"):
             logger.warning("Telegram sendMessage error: %s - %s", r.status_code, r.text)
     except Exception as e:
         logger.exception("Exception while sending message: %s", e)
+
+
+def fmt_price_human(p: float) -> str:
+    """تنسيق رقم بشكل مقروء: 90600 → 90,600 | 0.98765 → 0.99"""
+    try:
+        if p >= 1000:
+            return f"{p:,.0f}"
+        elif p >= 1:
+            return f"{p:.2f}"
+        else:
+            return f"{p:.4f}"
+    except Exception:
+        return str(p)
 
 
 # ==============================
@@ -81,7 +108,7 @@ def fetch_from_binance(symbol: str):
     يرجّع dict قياسية أو None.
     """
     try:
-        url = f"https://api.binance.com/api/v3/ticker/24hr"
+        url = "https://api.binance.com/api/v3/ticker/24hr"
         r = requests.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
             logger.info("Binance error %s for %s: %s", r.status_code, symbol, r.text)
@@ -164,7 +191,7 @@ def fetch_price_data(user_symbol: str):
     if data:
         return data
 
-    # لو ما نجحش، جرّب KuCoin
+    # لو ما نجحش، جرّب KuCoin (زى VAI)
     data = fetch_from_kucoin(kucoin_symbol)
     if data:
         return data
@@ -173,7 +200,7 @@ def fetch_price_data(user_symbol: str):
 
 
 # ==============================
-#     صياغة رسالة التحليل
+#     صياغة رسالة التحليل للأوامر /btc /vai /coin
 # ==============================
 
 def format_analysis(user_symbol: str) -> str:
@@ -187,7 +214,10 @@ def format_analysis(user_symbol: str) -> str:
         return (
             "⚠️ لا يمكن جلب بيانات هذه العملة الآن.\n"
             "تأكد من الرمز (مثال: <code>BTC</code> أو <code>BTCUSDT</code> أو <code>VAI</code>) "
-            "وحاول مرة أخرى."
+            "وحاول مرة أخرى.\n\n"
+            "🤖 <b>ملاحظة الذكاء الاصطناعى:</b>\n"
+            "أحيانًا يكون السبب مشكلة مؤقتة فى مزود البيانات أو أن العملة ذات سيولة ضعيفة، "
+            "لذلك يُفضّل التحقق من المنصة مباشرة عند الشك."
         )
 
     price = data["price"]
@@ -203,8 +233,7 @@ def format_analysis(user_symbol: str) -> str:
     support = round(low * 0.99, 6) if low > 0 else round(price * 0.95, 6)
     resistance = round(high * 1.01, 6) if high > 0 else round(price * 1.05, 6)
 
-    # RSI تجريبى مبنى على نسبة التغير
-    # (مش RSI حقيقى، لكن يعطى إحساس بالزخم)
+    # RSI تجريبى مبنى على نسبة التغير (مش RSI حقيقى لكنه يعطى إحساس بالزخم)
     rsi_raw = 50 + (change * 0.8)
     rsi = max(0, min(100, rsi_raw))
     if rsi >= 70:
@@ -224,7 +253,20 @@ def format_analysis(user_symbol: str) -> str:
     else:
         trend_text = "الاتجاه العام يميل إلى الهبوط مع ضغوط بيعية واضحة."
 
-    # ملاحظة الذكاء الاصطناعى (نخليها زى ما هى)
+    # ملاحظة خاصة لو KuCoin (زى حالة VAI)
+    if exchange == "kucoin":
+        source_note = (
+            "⚙️ <b>مصدر البيانات:</b> KuCoin\n"
+            "- السعر يتم جلبه من KuCoin مع توفر بيانات تاريخية محدودة نسبيًا.\n"
+            "- لذلك التحليل يكون <b>مبسّط ومحافظ</b>، "
+            "ويُفضّل استخدام إدارة مخاطر منخفضة.\n\n"
+        )
+    else:
+        source_note = (
+            "⚙️ <b>مصدر البيانات:</b> Binance\n"
+            "- التحليل يعتمد على بيانات يومية ومؤشرات فنية مبسطة.\n\n"
+        )
+
     ai_note = (
         "🤖 <b>ملاحظة الذكاء الاصطناعى:</b>\n"
         "هذا التحليل يساعدك على فهم الاتجاه وحركة السعر، "
@@ -251,10 +293,319 @@ def format_analysis(user_symbol: str) -> str:
 📉 <b>RSI:</b>
 - مؤشر القوة النسبية عند حوالى: <b>{rsi:.1f}</b> → {rsi_trend}
 
-{ai_note}
+{source_note}{ai_note}
 """.strip()
 
     return msg
+
+
+# ==============================
+#   مؤشرات فنية خاصة بتقرير BTC
+# ==============================
+
+def get_binance_klines(symbol: str, limit: int = 120):
+    """
+    جلب شموع يومية من Binance لاستخدامها فى تقرير BTC المتقدم.
+    """
+    try:
+        url = "https://api.binance.com/api/v3/klines"
+        params = {
+            "symbol": symbol,
+            "interval": "1d",
+            "limit": limit,
+        }
+        r = requests.get(url, params=params, timeout=10)
+        if r.status_code != 200:
+            logger.info("Binance klines error %s for %s: %s", r.status_code, symbol, r.text)
+            return None
+
+        data = r.json()
+        candles = []
+        for c in data:
+            candles.append({
+                "open_time": c[0],
+                "open": float(c[1]),
+                "high": float(c[2]),
+                "low": float(c[3]),
+                "close": float(c[4]),
+                "volume": float(c[5]),
+            })
+        return candles
+    except Exception as e:
+        logger.exception("Error fetching klines: %s", e)
+        return None
+
+
+def ema(values, period: int):
+    """حساب المتوسط المتحرك الأسي EMA."""
+    if len(values) < period:
+        return None
+    k = 2 / (period + 1)
+    ema_val = sum(values[:period]) / period
+    for price in values[period:]:
+        ema_val = price * k + ema_val * (1 - k)
+    return ema_val
+
+
+def rsi(values, period: int = 14):
+    """حساب مؤشر القوة النسبية RSI."""
+    if len(values) <= period:
+        return None
+
+    gains = []
+    losses = []
+    for i in range(1, period + 1):
+        diff = values[i] - values[i - 1]
+        if diff >= 0:
+            gains.append(diff)
+            losses.append(0.0)
+        else:
+            gains.append(0.0)
+            losses.append(-diff)
+
+    avg_gain = sum(gains) / period
+    avg_loss = sum(losses) / period
+
+    if avg_loss == 0:
+        return 100.0
+
+    rs = avg_gain / avg_loss
+    rsi_val = 100 - (100 / (1 + rs))
+    return rsi_val
+
+
+# ==============================
+#   تقرير + تحذير ذكى للبيتكوين BTC
+# ==============================
+
+def build_btc_ai_report(candles, danger: bool = False) -> str:
+    """
+    تقرير شامل للبيتكوين بنفس روح الرسالة التى أرسلتها:
+    - تصحيح تاريخ التحليل
+    - نظرة عامة
+    - مؤشرات فنية
+    - تقييم الوضع
+    - التوقعات
+    - الملخص النهائى
+    - رسالة اليوم من IN CRYPTO Ai
+    """
+    closes = [c["close"] for c in candles]
+    last_candle = candles[-1]
+    prev_candle = candles[-2]
+
+    last_close = last_candle["close"]
+    prev_close = prev_candle["close"]
+
+    change_pct = (last_close - prev_close) / prev_close * 100 if prev_close != 0 else 0
+
+    highs = [c["high"] for c in candles[-30:]]
+    lows = [c["low"] for c in candles[-30:]]
+    recent_high = max(highs)
+    recent_low = min(lows)
+
+    ema50 = ema(closes, 50)
+    ema200 = ema(closes, 200)
+    rsi_val = rsi(closes, 14)
+
+    price_txt = fmt_price_human(last_close)
+    recent_high_txt = fmt_price_human(recent_high)
+    recent_low_txt = fmt_price_human(recent_low)
+
+    # تقريب لمستويات أشبه بـ 96,000 / 98,000 / 102,000
+    rounded = round(last_close / 1000) * 1000
+    level1 = rounded - 2000
+    level2 = rounded - 1000
+    level3 = rounded + 1000
+    level4 = rounded + 3000
+
+    level1_txt = fmt_price_human(level1)
+    level2_txt = fmt_price_human(level2)
+    level3_txt = fmt_price_human(level3)
+    level4_txt = fmt_price_human(level4)
+
+    # توصيف RSI
+    if rsi_val is None:
+        rsi_desc = "RSI غير متاح بشكل واضح حاليًا."
+    elif rsi_val < 30:
+        rsi_desc = f"RSI عند حوالى {rsi_val:.1f} → يشير إلى تشبّع بيعى واضح، يعكس ضغطًا بيعيًا قويًا."
+    elif rsi_val > 70:
+        rsi_desc = f"RSI عند حوالى {rsi_val:.1f} → يشير إلى تشبّع شرائى وقد يزيد احتمال حدوث جنى أرباح."
+    else:
+        rsi_desc = f"RSI عند حوالى {rsi_val:.1f} → حالة حيادية نسبيًا بدون تشبّع واضح."
+
+    # توصيف الاتجاه من EMA
+    if ema50 and ema200:
+        if last_close < ema50 < ema200:
+            trend_desc = (
+                "الاتجاه قصير المدى يميل للسلبية مع تداول السعر أسفل متوسط 50 يوم "
+                "وقريب من متوسط 200 يوم."
+            )
+        elif last_close < ema200:
+            trend_desc = "السعر أسفل متوسط 200 يوم، ما يعكس ضغوط هابطة متوسطة إلى طويلة المدى."
+        elif last_close > ema50 > ema200:
+            trend_desc = "الاتجاه العام يميل إلى الإيجابية مع تمركز السعر أعلى المتوسطات الرئيسية."
+        else:
+            trend_desc = "السعر يتذبذب بالقرب من المتوسطات المتحركة، ما يعكس حالة حيادية نسبية."
+    else:
+        trend_desc = "لا توجد بيانات كافية لحساب متوسطات 50 و 200 يوم بشكل موثوق."
+
+    # توصيف حجم الحركة اليومية
+    if change_pct <= -5:
+        day_move_desc = f"اليوم يشهد هبوطًا قويًا بحوالى %{change_pct:.2f} مقارنة بإغلاق الأمس."
+    elif change_pct >= 5:
+        day_move_desc = f"اليوم يشهد صعودًا قويًا بحوالى %{change_pct:.2f} مقارنة بإغلاق الأمس."
+    elif change_pct < -1:
+        day_move_desc = f"اليوم يميل للهبوط بحوالى %{change_pct:.2f}."
+    elif change_pct > 1:
+        day_move_desc = f"اليوم يميل للصعود بحوالى %{change_pct:.2f}."
+    else:
+        day_move_desc = f"تغيّر اليوم محدود عند حوالى %{change_pct:.2f}."
+
+    today_str = datetime.utcnow().strftime("%A %d %B %Y")  # تاريخ نصى انجليزى، ممكن نسيبه كده
+
+    # نص "رسالة اليوم" مختلف لو danger أو لا
+    if danger:
+        ai_tail = (
+            "⚠️ رسالة اليوم من IN CRYPTO Ai:\n\n"
+            "> السوق يظهر حاليًا إشارات ضغط بيعى أو حركة هابطة قوية.\n"
+            "فى مثل هذه الأجواء، يكون الصبر وتقليل المخاطرة أهم من مطاردة كل حركة.\n"
+            "تأجيل قرارات التداول المندفعة، والالتزام بخطط وقف الخسارة، يساعد على حماية رأس المال والأرباح السابقة.\n"
+            "IN CRYPTO Ai 🤖"
+        )
+    else:
+        ai_tail = (
+            "⚠️ رسالة اليوم من IN CRYPTO Ai:\n\n"
+            "> التعامل مع البيتكوين يحتاج دائمًا إلى صبر وانضباط.\n"
+            "اختيار الفرص الواضحة أفضل بكثير من محاولة دخول كل موجة صغيرة.\n"
+            "حافظ على خطتك وإدارة المخاطر، ودع السوق يعمل لصالحك على المدى الأطول.\n"
+            "IN CRYPTO Ai 🤖"
+        )
+
+    text = f"""
+تصحيح تاريخ التحليل ✅
+
+🧭 تحليل الذكاء الاصطناعي لسوق البيتكوين – {today_str}
+
+🏦 السوق حاليًا يتحرك ضمن نطاق قصير المدى مع تركيز أساسى حول مستويات نفسية مهمة.
+السعر الحالي للبيتكوين يدور حول ${price_txt}.
+{day_move_desc}
+يتداول السعر خلال الفترة الأخيرة بين قاع تقريبى عند ${recent_low_txt} وقمّة قريبة من ${recent_high_txt}.
+
+---
+📊 المؤشرات الفنية:
+
+- {rsi_desc}
+- {trend_desc}
+- النطاق السعري الأخير يعكس توازناً نسبياً بين المشترين والبائعين بين ${recent_low_txt} و ${recent_high_txt}.
+
+---
+💎 تقييم الوضع العام:
+
+استثماريًا:
+- التماسك أعلى المنطقة ${level1_txt}–${level2_txt} يُعتبَر إشارة أولية لتحسن قصير المدى.
+- الإغلاق المستمر أعلى ${level3_txt} يفتح المجال لتحرك صعودى أوسع نحو مناطق أقرب من ${level4_txt} وما فوق.
+
+مضاربيًا:
+- فى حال زيادة التذبذب أو ظهور شموع هابطة قوية، يُفضَّل تقليل حجم المراكز وخاصة ذات الرافعة المالية العالية.
+- التركيز يكون على احترام نقاط الخروج وعدم ملاحقة الحركة العنيفة.
+
+---
+⚙️ التوقعات القادمة (وفق البيانات الحالية):
+
+- التماسك أعلى ${level2_txt} يعزّز فرص الاستقرار ومحاولات الصعود التدريجى.
+- كسر واضح ومتكرر أسفل القاع الأخير قرب ${recent_low_txt} قد يفتح المجال لتصحيح أعمق على المدى القصير.
+
+---
+📌 الملخص النهائي:
+
+> السوق على المدى القصير ما زال حساسًا لحركة السيولة، مع مزيج بين ضغط بيعى وفترات ارتداد.
+التركيز حاليًا على مراقبة المناطق ${level1_txt}–${level2_txt} كمناطق دعم، و${level3_txt} كمستوى مقاومة رئيسى.
+الالتزام بالانضباط وعدم الإفراط فى المخاطرة يظل هو العامل الأهم.
+
+---
+{ai_tail}
+""".strip()
+
+    return text
+
+
+def analyze_btc_for_alert(candles):
+    """
+    يقرر هل يتم إرسال تنبيه خاص بالبيتكوين الآن أم لا.
+    يرجع (should_alert, report_text)
+    """
+    closes = [c["close"] for c in candles]
+    last_candle = candles[-1]
+    prev_candle = candles[-2]
+
+    last_close = last_candle["close"]
+    prev_close = prev_candle["close"]
+
+    change_pct = (last_close - prev_close) / prev_close * 100 if prev_close != 0 else 0
+    rsi_val = rsi(closes, 14)
+    ema50 = ema(closes, 50)
+    ema200 = ema(closes, 200)
+
+    danger = False
+
+    # شروط بسيطة للخطر:
+    # 1) RSI أقل من 30 وهبوط يومى أقوى من -2%
+    if rsi_val is not None and rsi_val < 30 and change_pct < -2:
+        danger = True
+    # 2) هبوط يومى حاد أقل من -5%
+    elif change_pct <= -5:
+        danger = True
+    # 3) كسر سلبى أسفل المتوسطات مع هبوط واضح
+    elif ema50 and ema200 and last_close < ema50 < ema200 and change_pct < -2:
+        danger = True
+
+    if not danger:
+        return False, None
+
+    report_text = build_btc_ai_report(candles, danger=True)
+    return True, report_text
+
+
+def btc_monitor_loop():
+    """
+    حلقة مراقبة البيتكوين فى الخلفية.
+    بتشتغل كل 30 دقيقة وتبعت تقرير+تحذير لو لقت شروط خطر.
+    """
+    global LAST_BTC_ALERT_STATE, LAST_BTC_ALERT_TS
+
+    while True:
+        try:
+            logger.info("BTC monitor: checking market...")
+            candles = get_binance_klines("BTCUSDT", limit=200)
+            if not candles or len(candles) < 60:
+                logger.info("BTC monitor: not enough data for BTC.")
+            else:
+                should_alert, text = analyze_btc_for_alert(candles)
+                now_ts = time.time()
+
+                if should_alert and text:
+                    # نطبق كول داون: مايبعتش كل شوية
+                    if LAST_BTC_ALERT_STATE != "warning" or (now_ts - LAST_BTC_ALERT_TS) > BTC_ALERT_COOLDOWN:
+                        logger.info("BTC monitor: sending alert to owner...")
+                        send_message(OWNER_CHAT_ID, text)
+                        LAST_BTC_ALERT_STATE = "warning"
+                        LAST_BTC_ALERT_TS = now_ts
+                    else:
+                        logger.info("BTC monitor: warning detected but still in cooldown.")
+                else:
+                    LAST_BTC_ALERT_STATE = "normal"
+
+        except Exception as e:
+            logger.exception("BTC monitor error: %s", e)
+
+        # كل 30 دقيقة
+        time.sleep(1800)
+
+
+def start_btc_monitor_thread():
+    t = threading.Thread(target=btc_monitor_loop, daemon=True)
+    t.start()
+    logger.info("BTC monitor thread started.")
 
 
 # ==============================
@@ -277,7 +628,6 @@ def webhook():
     msg = update["message"]
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
-
     lower_text = text.lower()
 
     # /start
@@ -289,14 +639,31 @@ def webhook():
             "➤ <code>/vai</code>\n"
             "➤ <code>/coin btc</code>\n"
             "➤ <code>/coin btcusdt</code>\n"
-            "➤ <code>/coin hook</code> أو أى رمز آخر.\n\n"
+            "➤ <code>/coin vai</code> أو أى رمز آخر.\n\n"
             "البوت يحاول أولاً جلب البيانات من Binance، "
-            "وإذا لم يجد العملة يحاول تلقائياً من KuCoin."
+            "وإذا لم يجد العملة يحاول تلقائيًا من KuCoin.\n\n"
+            "🔔 بالإضافة لذلك، يقوم البوت بمراقبة البيتكوين على الإطار اليومى، "
+            "وعند ظهور ظروف خطرة يرسل لك تقريرًا وتحذيرًا تلقائيًا."
         )
         send_message(chat_id, welcome)
         return jsonify(ok=True)
 
-    # /btc
+    # أمر اختبار تقرير وتحذير BTC يدويًا
+    if lower_text in ("/btc_report", "/btcreport"):
+        try:
+            candles = get_binance_klines("BTCUSDT", limit=200)
+            if not candles or len(candles) < 60:
+                send_message(chat_id, "⚠️ لا توجد بيانات كافية الآن لإنشاء تقرير مفصل للبيتكوين.")
+            else:
+                # هنا danger=False لأن ده تقرير اختبار/يدوى، مش تنبيه خطر تلقائى
+                report = build_btc_ai_report(candles, danger=False)
+                send_message(chat_id, report)
+        except Exception as e:
+            logger.exception("Error building BTC report: %s", e)
+            send_message(chat_id, "⚠️ تعذّر إنشاء تقرير البيتكوين الآن، جرّب مرة أخرى لاحقًا.")
+        return jsonify(ok=True)
+
+    # /btc (تحليل مختصر من ticker)
     if lower_text == "/btc":
         reply = format_analysis("BTCUSDT")
         send_message(chat_id, reply)
@@ -355,5 +722,6 @@ def setup_webhook():
 if __name__ == "__main__":
     logger.info("Bot is starting...")
     setup_webhook()
+    start_btc_monitor_thread()  # تشغيل مراقبة BTC فى الخلفية
     # تشغيل Flask على 8080
     app.run(host="0.0.0.0", port=8080)
