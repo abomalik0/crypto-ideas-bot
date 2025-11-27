@@ -51,12 +51,21 @@ def send_message(chat_id: int, text: str, parse_mode: str = "HTML"):
         }
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code != 200:
-            logger.warning("Telegram sendMessage error: %s - %s", r.status_code, r.text)
+            logger.warning(
+                "Telegram sendMessage error: %s - %s",
+                r.status_code,
+                r.text,
+            )
     except Exception as e:
         logger.exception("Exception while sending message: %s", e)
 
 
-def send_message_with_keyboard(chat_id: int, text: str, reply_markup: dict, parse_mode: str = "HTML"):
+def send_message_with_keyboard(
+    chat_id: int,
+    text: str,
+    reply_markup: dict,
+    parse_mode: str = "HTML",
+):
     """إرسال رسالة مع كيبورد إنلاين (مثلاً زر عرض التفاصيل)."""
     try:
         url = f"{TELEGRAM_API}/sendMessage"
@@ -68,12 +77,20 @@ def send_message_with_keyboard(chat_id: int, text: str, reply_markup: dict, pars
         }
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code != 200:
-            logger.warning("Telegram sendMessage_with_keyboard error: %s - %s", r.status_code, r.text)
+            logger.warning(
+                "Telegram sendMessage_with_keyboard error: %s - %s",
+                r.status_code,
+                r.text,
+            )
     except Exception as e:
         logger.exception("Exception while sending message with keyboard: %s", e)
 
 
-def answer_callback_query(callback_query_id: str, text: str | None = None, show_alert: bool = False):
+def answer_callback_query(
+    callback_query_id: str,
+    text: str | None = None,
+    show_alert: bool = False,
+):
     """الرد على ضغط زر إنلاين عشان يوقف اللودنج."""
     try:
         url = f"{TELEGRAM_API}/answerCallbackQuery"
@@ -85,7 +102,11 @@ def answer_callback_query(callback_query_id: str, text: str | None = None, show_
             payload["text"] = text
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code != 200:
-            logger.warning("Telegram answerCallbackQuery error: %s - %s", r.status_code, r.text)
+            logger.warning(
+                "Telegram answerCallbackQuery error: %s - %s",
+                r.status_code,
+                r.text,
+            )
     except Exception as e:
         logger.exception("Exception while answering callback query: %s", e)
 
@@ -125,7 +146,12 @@ def fetch_from_binance(symbol: str):
         url = "https://api.binance.com/api/v3/ticker/24hr"
         r = requests.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
-            logger.info("Binance error %s for %s: %s", r.status_code, symbol, r.text)
+            logger.info(
+                "Binance error %s for %s: %s",
+                r.status_code,
+                symbol,
+                r.text,
+            )
             return None
 
         data = r.json()
@@ -158,7 +184,12 @@ def fetch_from_kucoin(symbol: str):
         url = "https://api.kucoin.com/api/v1/market/stats"
         r = requests.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
-            logger.info("KuCoin error %s for %s: %s", r.status_code, symbol, r.text)
+            logger.info(
+                "KuCoin error %s for %s: %s",
+                r.status_code,
+                symbol,
+                r.text,
+            )
             return None
 
         payload = r.json()
@@ -167,7 +198,6 @@ def fetch_from_kucoin(symbol: str):
             return None
 
         data = payload.get("data") or {}
-        # last: آخر سعر, changeRate: نسبة التغير (0.0123 يعنى 1.23%)
         price = float(data.get("last") or 0)
         change_rate = float(data.get("changeRate") or 0.0)
         change_pct = change_rate * 100.0
@@ -200,12 +230,10 @@ def fetch_price_data(user_symbol: str):
     if not base:
         return None
 
-    # جرّب Binance أولاً
     data = fetch_from_binance(binance_symbol)
     if data:
         return data
 
-    # لو ما نجحش، جرّب KuCoin
     data = fetch_from_kucoin(kucoin_symbol)
     if data:
         return data
@@ -224,7 +252,6 @@ def format_analysis(user_symbol: str) -> str:
     """
     data = fetch_price_data(user_symbol)
     if not data:
-        # لو فشلنا فى Binance و KuCoin
         return (
             "⚠️ لا يمكن جلب بيانات هذه العملة الآن.\n"
             "تأكد من الرمز (مثال: <code>BTC</code> أو <code>BTCUSDT</code>) "
@@ -235,16 +262,16 @@ def format_analysis(user_symbol: str) -> str:
     change = data["change_pct"]
     high = data["high"]
     low = data["low"]
-    exchange = data["exchange"]  # binance / kucoin
+    exchange = data["exchange"]
 
     base, binance_symbol, kucoin_symbol = normalize_symbol(user_symbol)
-    display_symbol = (binance_symbol if exchange == "binance" else kucoin_symbol).replace("-", "")
+    display_symbol = (
+        binance_symbol if exchange == "binance" else kucoin_symbol
+    ).replace("-", "")
 
-    # مستويات دعم / مقاومة بسيطة (تجريبية)
     support = round(low * 0.99, 6) if low > 0 else round(price * 0.95, 6)
     resistance = round(high * 1.01, 6) if high > 0 else round(price * 1.05, 6)
 
-    # RSI تجريبى مبنى على نسبة التغير (مش RSI حقيقى)
     rsi_raw = 50 + (change * 0.8)
     rsi = max(0, min(100, rsi_raw))
     if rsi >= 70:
@@ -254,7 +281,6 @@ def format_analysis(user_symbol: str) -> str:
     else:
         rsi_trend = "🔁 حيادى نسبياً"
 
-    # الاتجاه العام وفقاً لنسبة التغير
     if change > 2:
         trend_text = "الاتجاه العام يميل إلى الصعود مع زخم إيجابى ملحوظ."
     elif change > 0:
@@ -319,17 +345,14 @@ def compute_market_metrics() -> dict | None:
     high = data["high"]
     low = data["low"]
 
-    # مدى الحركة كنسبة مئوية
     if price > 0 and high >= low:
         range_pct = ((high - low) / price) * 100.0
     else:
         range_pct = 0.0
 
-    # درجة التقلب من 0 → 100
     volatility_raw = abs(change) * 1.5 + range_pct
     volatility_score = max(0.0, min(100.0, volatility_raw))
 
-    # قوة الاتجاه / قوة السوق
     if change >= 3:
         strength_label = "صعود قوى للبيتكوين وزخم واضح."
     elif change >= 1:
@@ -341,7 +364,6 @@ def compute_market_metrics() -> dict | None:
     else:
         strength_label = "هبوط قوى مع ضغوط بيعية عالية."
 
-    # نبض السيولة (دخول/خروج)
     if change >= 2 and range_pct <= 5:
         liquidity_pulse = "السيولة تميل إلى الدخول للسوق بشكل منظم."
     elif change >= 2 and range_pct > 5:
@@ -479,8 +501,11 @@ IN CRYPTO Ai 🤖
     return report
 
 
+# ==============================
+#   اختبار المخاطر السريع /risk_test
+# ==============================
+
 def format_risk_test() -> str:
-    """رسالة مختصرة لاختبار المخاطر السريع /risk_test"""
     metrics = compute_market_metrics()
     if not metrics:
         return (
@@ -576,11 +601,13 @@ def format_ai_alert() -> str:
     price = data["price"]
     change = data["change_pct"]
 
-    # التاريخ بتنسيق بسيط (اليوم — yyyy-mm-dd)
     now = datetime.utcnow()
-    # اسم اليوم تقريبى بالعربى
     weekday_names = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
-    weekday_name = weekday_names[now.weekday()] if 0 <= now.weekday() < len(weekday_names) else "اليوم"
+    weekday_name = (
+        weekday_names[now.weekday()]
+        if 0 <= now.weekday() < len(weekday_names)
+        else "اليوم"
+    )
     date_part = now.strftime("%Y-%m-%d")
 
     alert_text = f"""
@@ -680,7 +707,9 @@ IN CRYPTO Ai 🤖
 def format_ai_alert_details() -> str:
     """
     نسخة موسعة من التحذير للأدمن فقط:
-    - تفاصيل المدارس (من غير ذكر أسماءها للمستخدم العادى)
+    - تفاصيل المدارس
+    - مستويات موسعة
+    - قراءات أدق من التحذير العادي
     """
     metrics = compute_market_metrics()
     if not metrics:
@@ -703,7 +732,7 @@ def format_ai_alert_details() -> str:
     risk_emoji = risk["emoji"]
     risk_message = risk["message"]
 
-    # مستويات تقريبية نستخدمها فى التفاصيل
+    # مستويات تقريبية
     critical_support = round(low * 0.99, 0)
     deep_support_1 = round(low * 0.98, 0)
     deep_support_2 = round(low * 0.96, 0)
@@ -718,69 +747,73 @@ def format_ai_alert_details() -> str:
 📌 <b>تقرير التحذير الكامل — /alert (IN CRYPTO Ai)</b>
 📅 <b>التاريخ:</b> {today_str}
 💰 <b>سعر البيتكوين الحالى:</b> ${price:,.0f}  (تغير 24 ساعة: % {change:+.2f})
-📊 <b>مدى الحركة اليومى:</b> {range_pct:.2f}% — درجة التقلب: {volatility_score:.1f} / 100
+📊 <b>مدى الحركة اليومى:</b> {range_pct:.2f}% — التقلب: {volatility_score:.1f} / 100
 
-1️⃣ <b>قراءة عامة للسوق</b>
+1️⃣ <b>السوق العام</b>
 - {strength_label}
 - {liquidity_pulse}
-- مستوى المخاطر العام: {risk_emoji} <b>{risk_level}</b> — {risk_message}
+- مستوى الخطر: {risk_emoji} <b>{risk_level}</b>
+- {risk_message}
 
-2️⃣ <b>الهيكل والسلوك السعري</b>
-- السوق فى إطار هابط قصير المدى مع ضغوط بيعية واضحة.
-- السيولة الأبرز أسفل القيعان الأخيرة قرب: <b>${critical_support:,.0f}</b>.
-- توجد مناطق سعرية منخفضة (خصم) لكن بدون إشارات دخول قوى حتى الآن.
-- احتمال سحب سيولة أعمق نحو: <b>${deep_support_1:,.0f}</b> ثم <b>${deep_support_2:,.0f}</b> لو استمر الضغط البيعى.
+2️⃣ <b>سلوك السعر والهيكل</b>
+- اتجاه هابط قصير المدى.
+- سحب سيولة واضح من قمم قريبة.
+- مناطق سيولة أسفل: <b>${critical_support:,.0f}</b>
+- احتمالات زيارة أعمق: <b>${deep_support_1:,.0f}</b> ثم <b>${deep_support_2:,.0f}</b>
 
-3️⃣ <b>الزمن والجلسات (Time)</b>
-- الحركة خلال 24 ساعة تميل للهبوط مع زخم بيعى واضح.
-- الجلسة الحالية تميل أكثر لصالح البائعين.
-- احتمالات انعكاس قريبة متوسطة، وتحتاج لرفض سعرى واضح من الدعوم.
+3️⃣ <b>تحليل الجلسات والزمن</b>
+- الجلسة الحالية تميل للدببة.
+- احتمالات انعكاس تحتاج سلوك رفض سعرى واضح.
+- نشاط الحجم ضعيف → الارتدادات غير مؤكدة.
 
-4️⃣ <b>الموجة الحالية (Wave Logic مبسط)</b>
-- الموجة الحالية تميل لأن تكون موجة هابطة اندفاعية (Impulse).
-- توجد علامات إرهاق بيعى خفيفة قرب مناطق الدعم الحرجة، لكنها غير مؤكدة بعد.
-- موجات صغيرة متتابعة هابطة بدون ارتداد قوى حتى الآن.
+4️⃣ <b>الموجة الحالية (Wave Logic)</b>
+- موجة هابطة اندفاعية.
+- علامات إرهاق بيعى خفيفة لكنها غير مؤكدة.
+- الموجات الصغيرة تظهر زخم هابط متتابع.
 
-5️⃣ <b>النماذج الفنية (قنوات – نماذج انعكاس/استمرار)</b>
-- تقدير وجود كسر لقناة صاعدة سابقة → تحوّل إلى حركة هابطة.
-- شموع الصعود ضعيفة مقارنة بحجم شموع الهبوط.
-- لا يوجد نموذج رأس وكتفين مكتمل بوضوح، لكن توجد احتمالات لتكوين نماذج تصحيحية جانبية.
+5️⃣ <b>النماذج الفنية</b>
+- وجود كسر لقناة صاعدة → بداية هبوط.
+- شموع الهبوط أقوى من شموع الصعود.
+- محاولة تكوين نموذج تصحيح جانبى.
 
-6️⃣ <b>الهارمونيك (Harmonic Patterns)</b>
-- رصد تقريبى لنموذج ABCD هابط بالقرب من السعر الحالى.
-- منطقة الانعكاس المحتملة (PRZ) محسوبة فى النطاق:
-  • تقريبًا ما بين 88,800$ و 88,200$ (تقديرى).
-- النموذج يحتاج تأكيد بسلوك سعرى (شموع رفض قوية + زيادة فى الحجم).
+6️⃣ <b>الهارمونيك</b>
+- نموذج ABCD هابط رُصد قريب من السعر.
+- منطقة الانعكاس (PRZ):
+  • بين <b>88,800$</b> و <b>88,200$</b>
+- يحتاج تأكيد بحجم ورفض سعرى.
 
-7️⃣ <b>السيولة والتدفق (Liquidity Flow تقديرى)</b>
-- سلوك الحركة الحالية يشير إلى خروج سيولة من السوق أكثر من دخولها.
-- الحركة تشبه ضغط بيع من المحافظ الأكبر فى هذه المنطقة.
-- أى ارتداد بدون حجم حقيقى قد يكون ارتداد ضعيف مؤقت.
+7️⃣ <b>السيولة والتدفق</b>
+- سيولة خارجة من السوق.
+- عمليات بيع من المحافظ الكبيرة.
+- ارتدادات بلا حجم = غير موثوقة.
 
-8️⃣ <b>الزخم والحجم (Momentum & Volume)</b>
-- التغير السعرى مع مدى الحركة اليومية يشير لزخم هابط.
-- قوة الزخم تُعتبر من متوسطة إلى قوية طالما لا يوجد رفض سعرى واضح.
-- حجم التداول الحالى لا يدعم ارتداد قوى ومستمر.
+8️⃣ <b>الزخم والحجم</b>
+- زخم هابط متماسك.
+- حجم تداول ضعيف → يؤكد الهبوط.
 
-9️⃣ <b>نظرة استثمارية (مدى متوسط)</b>
-- يفضّل تجنب أى مراكز استثمارية جديدة قبل إغلاق واضح فوق تقريبًا: <b>${reentry_level:,.0f}</b>.
-- مناطق عودة إيجابية أفضل بعد تأكيد: ما بين <b>${invest_zone_low:,.0f}</b> و <b>${invest_zone_high:,.0f}</b>.
-- كسر واضح أسفل <b>${critical_support:,.0f}</b> يفتح المجال لتصحيح أعمق.
+9️⃣ <b>نظرة استثمارية</b>
+- لا دخول قبل:
+  • <b>${reentry_level:,.0f}</b>
+- مناطق إعادة الدخول الأفضل:
+  • <b>${invest_zone_low:,.0f}</b> → <b>${invest_zone_high:,.0f}</b>
 
-🔟 <b>نظرة مضاربية (قصير المدى)</b>
-- تجنب الرافعة المالية العالية طالما السعر أسفل: <b>${leverage_cancel_level:,.0f}</b>.
-- سيناريو سحب سيولة أعمق: زيارة محتملة لمناطق <b>${deep_support_1:,.0f}</b> ثم <b>${deep_support_2:,.0f}</b>.
-- التفكير فى صفقات قصيرة المدى (Scalp) فقط من مناطق دعم قوية مع وقف خسارة قريب.
+🔟 <b>نظرة مضاربية</b>
+- تجنب الرافعة تحت:
+  • <b>${leverage_cancel_level:,.0f}</b>
+- احتمالات زيارة مستويات أدنى:
+  • {deep_support_1:,.0f}$
+  • {deep_support_2:,.0f}$
+- السكالب فقط من دعوم قوية مع SL قريب.
 
-🧠 <b>ملخص قرار الذكاء الاصطناعى (وضع /alert)</b>
-- السوق حالياً فى وضع خطر نسبى، مع:
-  • زخم هابط.
-  • سيولة خارجة.
-  • عدم وجود إشارات قوية لانعكاس مؤكّد.
-- ما يفضّله النظام:
-  • التركيز على حماية رأس المال.
-  • عدم الإفراط فى استخدام الرافعة.
-  • انتظار سلوك سعرى واضح عند الدعوم قبل أى قرار عدوانى.
+🧠 <b>خلاصة الذكاء الاصطناعى</b>
+- السوق فى وضع خطر نسبى:
+  • زخم هابط  
+  • سيولة خارجة  
+  • غياب مشترين حقيقيين  
+- أفضل إجراء:
+  • حماية رأس المال  
+  • تجنب المخاطرة العالية  
+  • الانتظار لرفض سعرى واضح  
 
 IN CRYPTO Ai 🤖
 """.strip()
@@ -802,7 +835,9 @@ def webhook():
     update = request.get_json(force=True, silent=True) or {}
     logger.info("Update: %s", update)
 
-    # أولا: لو فيه callback_query (زر عرض التفاصيل)
+    # ================
+    #  callback_query
+    # ================
     if "callback_query" in update:
         cq = update["callback_query"]
         callback_id = cq.get("id")
@@ -813,13 +848,15 @@ def webhook():
         from_user = cq.get("from") or {}
         from_id = from_user.get("id")
 
+        # وقف اللودنج
         if callback_id:
             answer_callback_query(callback_id)
 
+        # زر عرض التفاصيل
         if data == "alert_details":
             if from_id != ADMIN_CHAT_ID:
                 if chat_id:
-                    send_message(chat_id, "❌ هذا الزر مخصص للاستخدام الإدارى فقط.")
+                    send_message(chat_id, "❌ هذا الزر مخصص للإدارة فقط.")
                 return jsonify(ok=True)
 
             details = format_ai_alert_details()
@@ -828,32 +865,30 @@ def webhook():
 
         return jsonify(ok=True)
 
-    # ثانياً: لو رسالة عادية
+    # ================
+    #  رسائل عادية
+    # ================
     if "message" not in update:
         return jsonify(ok=True)
 
     msg = update["message"]
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
-
     lower_text = text.lower()
 
     # /start
     if lower_text == "/start":
         welcome = (
-            "👋 أهلاً بك فى بوت <b>IN CRYPTO Ai</b>.\n\n"
-            "يمكنك طلب تحليل فنى لأى عملة:\n"
-            "➤ <code>/btc</code>\n"
-            "➤ <code>/vai</code>\n"
-            "➤ <code>/coin btc</code>\n"
-            "➤ <code>/coin btcusdt</code>\n"
-            "➤ <code>/coin hook</code> أو أى رمز آخر.\n\n"
-            "لتحليل السوق العام ونظام التحذير الذكى:\n"
-            "➤ <code>/market</code> — تقرير سوق مبنى على حركة البيتكوين.\n"
-            "➤ <code>/risk_test</code> — اختبار سريع لمستوى المخاطر.\n"
-            "➤ <code>/alert</code> — تحذير كامل خاص بالأدمن فقط.\n\n"
-            "البوت يحاول أولاً جلب البيانات من Binance، "
-            "وإذا لم يجد العملة يحاول تلقائيًا من KuCoin."
+            "👋 أهلاً بك فى <b>IN CRYPTO Ai</b>.\n\n"
+            "استخدم الأوامر التالية:\n"
+            "• <code>/btc</code> — تحليل BTC\n"
+            "• <code>/vai</code> — تحليل VAI\n"
+            "• <code>/coin btc</code> — تحليل أى عملة\n\n"
+            "تحليل السوق:\n"
+            "• <code>/market</code> — نظرة عامة\n"
+            "• <code>/risk_test</code> — اختبار مخاطر\n"
+            "• <code>/alert</code> — تحذير كامل (للأدمن فقط)\n\n"
+            "النظام يجلب البيانات أولاً من Binance ثم KuCoin تلقائيًا."
         )
         send_message(chat_id, welcome)
         return jsonify(ok=True)
@@ -870,25 +905,22 @@ def webhook():
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # /market - تقرير السوق العام
+    # /market
     if lower_text == "/market":
         reply = format_market_report()
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # /risk_test - اختبار المخاطر السريع
+    # /risk_test
     if lower_text == "/risk_test":
         reply = format_risk_test()
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # /alert - تحذير مختصر + زر تفاصيل (للأدمن فقط)
+    # /alert — الأدمن فقط
     if lower_text == "/alert":
         if chat_id != ADMIN_CHAT_ID:
-            send_message(
-                chat_id,
-                "❌ هذا الأمر مخصص للاستخدام الإدارى فقط.",
-            )
+            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
         alert_text = format_ai_alert()
@@ -896,7 +928,7 @@ def webhook():
             "inline_keyboard": [
                 [
                     {
-                        "text": "عرض التفاصيل الكاملة 📊",
+                        "text": "عرض التفاصيل 📊",
                         "callback_data": "alert_details",
                     }
                 ]
@@ -911,22 +943,20 @@ def webhook():
         if len(parts) < 2:
             send_message(
                 chat_id,
-                "⚠️ استخدم الأمر بهذا الشكل:\n"
+                "⚠️ استخدم الأمر هكذا:\n"
                 "<code>/coin btc</code>\n"
                 "<code>/coin btcusdt</code>\n"
                 "<code>/coin vai</code>",
             )
         else:
-            user_symbol = parts[1]
-            reply = format_analysis(user_symbol)
+            reply = format_analysis(parts[1])
             send_message(chat_id, reply)
         return jsonify(ok=True)
 
     # أى رسالة أخرى
     send_message(
         chat_id,
-        "⚙️ اكتب /start لعرض الأوامر المتاحة.\n"
-        "مثال سريع: <code>/btc</code> أو <code>/coin btc</code>.",
+        "⚙️ اكتب /start لعرض الأوامر.\nمثال: <code>/btc</code> أو <code>/coin btc</code>."
     )
     return jsonify(ok=True)
 
@@ -938,40 +968,41 @@ def webhook():
 @app.route("/auto_alert", methods=["GET"])
 def auto_alert():
     """
-    مسار لاستخدامه مع Cron Job (مثلاً من Koyeb):
-    - يراقب السوق كل دقيقة (أو حسب ما تضبط).
-    - لو فيه حالة خطر جديدة → يبعت التحذير المختصر للأدمن فقط.
-    - لو الحالة زى ما هى → ميبعتش تانى.
+    هذا المسار يتم استدعاؤه بواسطة Cron Job خارجى.
+    • يراقب السوق كل دقيقة.
+    • لو ظهر خطر جديد → يرسل تحذير تلقائى للأدمن فقط.
+    • لو نفس الخطر السابق → لا يعيد الإرسال.
     """
     global LAST_ALERT_REASON
 
     metrics = compute_market_metrics()
     if not metrics:
-        logger.warning("auto_alert: cannot fetch market metrics")
-        return jsonify(ok=False, alert_sent=False, reason="no_metrics"), 200
+        logger.warning("auto_alert: cannot fetch metrics")
+        return jsonify(ok=False, alert_sent=False, reason="metrics_failed"), 200
 
     risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
     reason = detect_alert_condition(metrics, risk)
 
+    # لا يوجد خطر
     if not reason:
-        # مفيش خطر دلوقتى → نرجع الحالة لفاضى (علشان لو حصل خطر جديد بعدين يبعت)
         if LAST_ALERT_REASON is not None:
-            logger.info("auto_alert: market back to normal, reset last_alert_reason")
+            logger.info("auto_alert: market normal again → reset alert state.")
         LAST_ALERT_REASON = None
-        return jsonify(ok=True, alert_sent=False, reason="no_alert_condition"), 200
+        return jsonify(ok=True, alert_sent=False, reason="no_alert"), 200
 
-    # لو نفس السبب القديم → متبعتش تانى
+    # نفس التحذير القديم → لا يعاد إرساله
     if reason == LAST_ALERT_REASON:
-        logger.info("auto_alert: same alert reason as before, skip sending.")
-        return jsonify(ok=True, alert_sent=False, reason="already_sent"), 200
+        logger.info("auto_alert: skipped (same reason).")
+        return jsonify(ok=True, alert_sent=False, reason="duplicate"), 200
 
-    # حالة خطر جديدة → نبعت التحذير للأدمن
+    # خطر جديد → ارسال التحذير المختصر
     alert_text = format_ai_alert()
     send_message(ADMIN_CHAT_ID, alert_text)
-    LAST_ALERT_REASON = reason
-    logger.info("auto_alert: alert sent to ADMIN_CHAT_ID. reason=%s", reason)
 
-    return jsonify(ok=True, alert_sent=True, reason="alert_sent"), 200
+    LAST_ALERT_REASON = reason
+    logger.info("auto_alert: NEW alert sent! reason=%s", reason)
+
+    return jsonify(ok=True, alert_sent=True, reason="sent"), 200
 
 
 # ==============================
@@ -979,7 +1010,7 @@ def auto_alert():
 # ==============================
 
 def setup_webhook():
-    """تعيين Webhook عند تشغيل السيرفر."""
+    """يتم تشغيله مرة واحدة عند بدء السيرفر"""
     webhook_url = f"{APP_BASE_URL}/webhook"
     try:
         r = requests.get(
@@ -989,11 +1020,14 @@ def setup_webhook():
         )
         logger.info("Webhook response: %s - %s", r.status_code, r.text)
     except Exception as e:
-        logger.exception("Error setting webhook: %s", e)
+        logger.exception("Error while setting webhook: %s", e)
 
+
+# ==============================
+#        تشغيل السيرفر
+# ==============================
 
 if __name__ == "__main__":
     logger.info("Bot is starting...")
     setup_webhook()
-    # تشغيل Flask على 8080
     app.run(host="0.0.0.0", port=8080)
