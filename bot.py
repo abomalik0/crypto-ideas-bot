@@ -1,6 +1,7 @@
 import os
 import logging
 import requests
+from datetime import datetime
 from flask import Flask, request, jsonify
 
 # ==============================
@@ -17,6 +18,9 @@ if not APP_BASE_URL:
     raise RuntimeError("البيئة لا تحتوى على APP_BASE_URL")
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+
+# ID بتاعك إنت بس للأوامر البرو
+ADMIN_CHAT_ID = 669209875  # عدّله لو احتجت
 
 # إعداد اللوج
 logging.basicConfig(
@@ -203,7 +207,7 @@ def format_analysis(user_symbol: str) -> str:
     support = round(low * 0.99, 6) if low > 0 else round(price * 0.95, 6)
     resistance = round(high * 1.01, 6) if high > 0 else round(price * 1.05, 6)
 
-    # RSI تجريبى مبنى على نسبة التغير
+    # RSI تجريبى مبنى على نسبة التغير (مش RSI حقيقى)
     rsi_raw = 50 + (change * 0.8)
     rsi = max(0, min(100, rsi_raw))
     if rsi >= 70:
@@ -256,7 +260,7 @@ def format_analysis(user_symbol: str) -> str:
 
 
 # ==============================
-#   محرك قوة السوق والسيولة والـ Risk
+#  محرك قوة السوق والسيولة والـ Risk
 # ==============================
 
 def compute_market_metrics() -> dict | None:
@@ -264,6 +268,7 @@ def compute_market_metrics() -> dict | None:
     يعتمد فقط على BTCUSDT من Binance/KuCoin.
     يرجّع dict فيها:
     - price, change_pct, high, low
+    - range_pct
     - volatility_score
     - strength_label
     - liquidity_pulse
@@ -363,6 +368,10 @@ def evaluate_risk_level(change_pct: float, volatility_score: float) -> dict:
     }
 
 
+# ==============================
+#   تقرير السوق /market الحالى
+# ==============================
+
 def format_market_report() -> str:
     """
     تقرير سوق كامل مبنى فقط على BTC:
@@ -397,10 +406,11 @@ def format_market_report() -> str:
     else:
         risk_level_text = "مرتفع"
 
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
     report = f"""
 ✅ <b>تحليل الذكاء الاصطناعى لسوق الكريبتو (مبنـى على حركة البيتكوين)</b>
-
-📅 <b>اليوم:</b> بيانات لحظية تقريبًا حسب آخر تحديث من المنصات.
+📅 <b>التاريخ:</b> {today_str}
 
 🏛 <b>نظرة عامة على البيتكوين:</b>
 - السعر الحالى للبيتكوين: <b>${price:,.0f}</b>
@@ -433,9 +443,7 @@ IN CRYPTO Ai 🤖
 
 
 def format_risk_test() -> str:
-    """
-    رسالة مختصرة لاختبار المخاطر السريع /risk_test
-    """
+    """رسالة مختصرة لاختبار المخاطر السريع /risk_test"""
     metrics = compute_market_metrics()
     if not metrics:
         return (
@@ -457,13 +465,213 @@ def format_risk_test() -> str:
     msg = f"""
 ⚙️ <b>اختبار المخاطر السريع</b>
 
-- تغير البيتكوين خلال 24 ساعة: <b>%{change:+.2f}</b>
-- درجة التقلب الحالية: <b>{volatility_score:.1f}</b> / 100
-
+تغير البيتكوين خلال 24 ساعة: <b>%{change:+.2f}</b>
+درجة التقلب الحالية: <b>{volatility_score:.1f}</b> / 100
 المخاطر الحالية: {risk['emoji']} <b>{level_text}</b>
-- {risk['message']}
+
+{risk['message']}
 
 💡 هذه القراءة مبنية بالكامل على حركة البيتكوين الحالية بدون أى مزود بيانات إضافى.
+""".strip()
+
+    return msg
+
+
+# ==============================
+#   نظام التحذير الذكى (Alerts)
+# ==============================
+
+def detect_alert_condition(metrics: dict, risk: dict) -> str | None:
+    """
+    يحدّد لو فيه حالة تستحق إرسال تحذير قوى.
+    يرجع سبب نصى لو فى تنبيه، أو None لو مفيش.
+    """
+    price = metrics["price"]
+    change = metrics["change_pct"]
+    range_pct = metrics["range_pct"]
+    volatility_score = metrics["volatility_score"]
+    risk_level = risk["level"]
+
+    reasons = []
+
+    # هبوط أو صعود حاد
+    if change <= -3:
+        reasons.append("هبوط حاد فى البيتكوين أكبر من -3% خلال 24 ساعة.")
+    elif change >= 4:
+        reasons.append("صعود قوى وسريع فى البيتكوين أكبر من +4% خلال 24 ساعة.")
+
+    # تقلب عالى
+    if volatility_score >= 60 or range_pct >= 7:
+        reasons.append("درجة التقلب مرتفعة بشكل ملحوظ فى الجلسة الحالية.")
+
+    # مستوى المخاطر
+    if risk_level == "high":
+        reasons.append("محرك المخاطر يشير إلى مستوى <b>مرتفع</b> حالياً.")
+
+    if not reasons:
+        return None
+
+    # نعيد سبب مجمّع
+    joined = " ".join(reasons)
+    return joined
+
+
+def format_smart_alert() -> str:
+    """
+    تحذير متكامل للمستخدم العادى
+    (نتيجة نهائية من كل المؤشرات بدون تفاصيل المدارس).
+    """
+    metrics = compute_market_metrics()
+    if not metrics:
+        return (
+            "⚠️ تعذّر جلب بيانات السوق حالياً من المزود.\n"
+            "حاول مرة أخرى بعد قليل."
+        )
+
+    price = metrics["price"]
+    change = metrics["change_pct"]
+    high = metrics["high"]
+    low = metrics["low"]
+    range_pct = metrics["range_pct"]
+    volatility_score = metrics["volatility_score"]
+    strength_label = metrics["strength_label"]
+    liquidity_pulse = metrics["liquidity_pulse"]
+
+    risk = evaluate_risk_level(change, volatility_score)
+    risk_reason = detect_alert_condition(metrics, risk)
+
+    if risk["level"] == "low":
+        risk_level_text = "منخفض"
+    elif risk["level"] == "medium":
+        risk_level_text = "متوسط"
+    else:
+        risk_level_text = "مرتفع"
+
+    # مستويات تقريبية للمضاربين / المستثمرين
+    support_zone = round(low * 0.98, 0)
+    defence_zone = round(low * 0.97, 0)
+    short_invalid = round(high * 1.02, 0)
+    invest_alert_up = round(high * 1.03, 0)
+
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+    header = "⚠️ <b>تنبيه هام — السوق يدخل مرحلة حساسة</b>" if risk_reason else "ℹ️ <b>تحديث حالة السوق</b>"
+
+    alert = f"""
+{header}
+📅 <b>التاريخ:</b> {today_str}
+
+🏛 <b>البيتكوين:</b>
+- السعر الحالى: <b>${price:,.0f}</b>
+- تغير آخر 24 ساعة: <b>%{change:+.2f}</b>
+- مدى الحركة اليومى: <b>{range_pct:.2f}%</b>
+
+📊 <b>صورة السوق المختصرة:</b>
+- {strength_label}
+- {liquidity_pulse}
+
+⚙️ <b>مستوى المخاطر (نظام التحذير الذكى):</b>
+- المخاطر حالياً: {risk['emoji']} <b>{risk_level_text}</b>
+- {risk['message']}
+"""
+
+    if risk_reason:
+        alert += f"\n🚨 <b>أسباب التحذير:</b> {risk_reason}\n"
+
+    alert += f"""
+💼 <b>استثماريًا (أرقام تقريبية):</b>
+- الحفاظ على المراكز يكون أفضل طالما السعر فوق منطقة <b>${support_zone:,.0f}</b>.
+- كسر واضح أسفل <b>${defence_zone:,.0f}</b> يزيد احتمال تصحيح أعمق.
+
+⚡ <b>مضاربيًا (تداول قصير المدى):</b>
+- يُفضّل تجنب الرافعة العالية فى أوقات التقلب الحالى.
+- سيناريو الحذر: أى إغلاق قوى أعلى من <b>${short_invalid:,.0f}</b> يلغى سيناريو الهبوط القصير.
+- سيناريو تحسن قوى: عودة سعر البيتكوين والإغلاق المستقر فوق <b>${invest_alert_up:,.0f}</b> تعيد الإيجابية تدريجياً.
+
+🤖 <b>رسالة IN CRYPTO Ai:</b>
+- اعتبر إدارة رأس المال جزء أساسى من الاستراتيجية، مش إضافة اختيارية.
+- لو السوق فى وضع ضبابى، أحياناً أفضل صفقة هى <b>عدم الدخول</b> حتى تتضح الصورة أكثر.
+""".strip()
+
+    return alert
+
+
+def format_pro_alert() -> str:
+    """
+    تنبيه احترافى /pro_alert — تفاصيل أكتر ليك إنت بس.
+    نفس النتيجة العامة لكن مع توضيح أقوى لأسباب القرار.
+    """
+    metrics = compute_market_metrics()
+    if not metrics:
+        return (
+            "⚠️ تعذّر جلب بيانات السوق حالياً من المزود.\n"
+            "حاول مرة أخرى بعد قليل."
+        )
+
+    price = metrics["price"]
+    change = metrics["change_pct"]
+    high = metrics["high"]
+    low = metrics["low"]
+    range_pct = metrics["range_pct"]
+    volatility_score = metrics["volatility_score"]
+    strength_label = metrics["strength_label"]
+    liquidity_pulse = metrics["liquidity_pulse"]
+
+    risk = evaluate_risk_level(change, volatility_score)
+    risk_reason = detect_alert_condition(metrics, risk)
+
+    if risk["level"] == "low":
+        risk_level_text = "منخفض"
+    elif risk["level"] == "medium":
+        risk_level_text = "متوسط"
+    else:
+        risk_level_text = "مرتفع"
+
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+    # مناطق تقريبية
+    intraday_support = round(low * 0.99, 0)
+    swing_support = round(low * 0.97, 0)
+    intraday_resist = round(high * 1.01, 0)
+    swing_resist = round(high * 1.03, 0)
+
+    header = "⚠️ <b>Pro Alert — السوق فى منطقة خطر</b>" if risk_reason else "ℹ️ <b>Pro Alert — تحديث احترافى للسوق</b>"
+
+    msg = f"""
+{header}
+📅 <b>التاريخ:</b> {today_str}
+
+🏛 <b>البيتكوين:</b>
+- السعر الحالى: <b>${price:,.0f}</b>
+- تغير 24 ساعة: <b>%{change:+.2f}</b>
+- مدى الحركة اليومى: <b>{range_pct:.2f}%</b>
+- درجة التقلب (0 → 100): <b>{volatility_score:.1f}</b>
+
+📊 <b>قراءة النظام (اتجاه + سيولة):</b>
+- {strength_label}
+- {liquidity_pulse}
+
+⚙️ <b>محرك المخاطر:</b>
+- المستوى الحالى: {risk['emoji']} <b>{risk_level_text}</b>
+- سبب تقييم المخاطر: {risk['message']}
+"""
+
+    if risk_reason:
+        msg += f"\n🚨 <b>تجميع أسباب التحذير:</b> {risk_reason}\n"
+
+    msg += f"""
+🎯 <b>استثمارياً (مدى متوسط):</b>
+- منطقة دعم متابعة: حوالى <b>${swing_support:,.0f}</b>.
+- عودة الإيجابية القوية تبدأ مع إغلاق مستقر أعلى <b>${swing_resist:,.0f}</b>.
+
+⚡ <b>مضاربياً (قصير المدى):</b>
+- دعم تداول يومى تقريبى: <b>${intraday_support:,.0f}</b>.
+- مقاومة تداول يومى تقريبية: <b>${intraday_resist:,.0f}</b>.
+- فى حالة بقاء التقلب الحالى، الأفضل تخفيض حجم العقود وتجنّب ملاحقة الحركة العنيفة.
+
+🤖 <b>ملاحظة IN CRYPTO Ai (وضع Pro):</b>
+- استخدم هذه القراءة كفلتر أولى قبل أى نماذج فنية أو هارمونيك.
+- لو المؤشرات الكلاسيكية عندك بتدى صعود لكن محرك المخاطر هنا فى حالة خطر، اعتبر الدخول جزء صغير فقط من رأس المال أو انتظر تأكيد أقوى.
 """.strip()
 
     return msg
@@ -503,8 +711,10 @@ def webhook():
             "➤ <code>/coin btcusdt</code>\n"
             "➤ <code>/coin hook</code> أو أى رمز آخر.\n\n"
             "لتحليل السوق العام ونظام التحذير الذكى:\n"
-            "➤ <code>/market</code> — تقرير سوق متكامل مبنى على حركة البيتكوين.\n"
-            "➤ <code>/risk_test</code> — اختبار سريع لمستوى المخاطر الحالى.\n\n"
+            "➤ <code>/market</code> — تقرير سوق مبنى على حركة البيتكوين.\n"
+            "➤ <code>/risk_test</code> — اختبار سريع لمستوى المخاطر.\n"
+            "➤ <code>/alert</code> — تنبيه ذكى مدمج (للمستخدم العادى).\n"
+            "➤ <code>/pro_alert</code> — تنبيه احترافى خاص (للأدمن فقط).\n\n"
             "البوت يحاول أولاً جلب البيانات من Binance، "
             "وإذا لم يجد العملة يحاول تلقائيًا من KuCoin."
         )
@@ -532,6 +742,24 @@ def webhook():
     # /risk_test - اختبار المخاطر السريع
     if lower_text == "/risk_test":
         reply = format_risk_test()
+        send_message(chat_id, reply)
+        return jsonify(ok=True)
+
+    # /alert - تنبيه ذكى مختصر
+    if lower_text == "/alert":
+        reply = format_smart_alert()
+        send_message(chat_id, reply)
+        return jsonify(ok=True)
+
+    # /pro_alert - تنبيه احترافى للأدمن فقط
+    if lower_text == "/pro_alert":
+        if chat_id != ADMIN_CHAT_ID:
+            send_message(
+                chat_id,
+                "❌ هذا الأمر مخصص للاستخدام الإدارى فقط.",
+            )
+            return jsonify(ok=True)
+        reply = format_pro_alert()
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
