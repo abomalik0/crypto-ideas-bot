@@ -128,8 +128,8 @@
 <body>
 
 <div class="header">
-    <!-- حط اسم ملف اللوجو اللى فى السيرفر (مثلاً logo.png) -->
-    <img src="logo.png" class="logo" alt="IN CRYPTO logo" />
+    <!-- تعديل المسار الصحيح هنا -->
+    <img src="/static/logo.png" class="logo" alt="IN CRYPTO logo" />
     <div class="title">IN CRYPTO — WAR ROOM</div>
     <div class="subtitle">
         لوحة مراقبة تحذيرات البيتكوين، السيولة، المخاطر، وأخطاء النظام فى الزمن الحقيقى.
@@ -226,10 +226,7 @@ async function loadMain() {
         const res = await fetch(apiUrl("/dashboard_api"));
         const data = await res.json();
 
-        if (!data.ok) {
-            console.log("API Error:", data);
-            return;
-        }
+        if (!data.ok) return;
 
         document.getElementById("price").innerHTML =
             "$" + data.price.toLocaleString();
@@ -248,14 +245,10 @@ async function loadMain() {
 
         const rl = document.getElementById("risk_level");
         rl.innerHTML = data.risk_emoji + " " + data.risk_level;
-        rl.className = "metric-main";
-        if (data.risk_level.includes("منخفض")) {
-            rl.className += " green";
-        } else if (data.risk_level.includes("متوسط")) {
-            rl.className += " yellow";
-        } else {
-            rl.className += " red";
-        }
+
+        if (data.risk_level.includes("منخفض")) rl.className = "metric-main green";
+        else if (data.risk_level.includes("متوسط")) rl.className = "metric-main yellow";
+        else rl.className = "metric-main red";
 
         document.getElementById("risk_msg").innerHTML = data.risk_message;
         document.getElementById("liquidity").innerHTML = data.liquidity_pulse;
@@ -264,82 +257,65 @@ async function loadMain() {
         document.getElementById("aa_time").innerHTML = aa.time || "N/A";
         document.getElementById("aa_reason").innerHTML = aa.reason || "N/A";
         document.getElementById("aa_sent").innerHTML =
-            aa.sent === true ? "نعم ✅" : (aa.sent === false ? "لا ❌" : "N/A");
+            aa.sent ? "نعم ✅" : "لا ❌";
 
         const err = data.last_error || {};
         document.getElementById("err_time").innerHTML = err.time || "N/A";
         document.getElementById("err_msg").textContent =
             err.message || "لا يوجد أخطاء مسجلة حتى الآن.";
-    } catch (err) {
-        console.log("Dashboard Error:", err);
-    }
+    } catch (err) {}
 }
 
 async function loadLogs() {
     try {
         const res = await fetch(apiUrl("/admin/logs"));
-        if (!res.ok) return;
         const txt = await res.text();
-        document.getElementById("err_msg").textContent = txt || "لا يوجد لوجات.";
-    } catch (e) {
-        console.log("Logs error:", e);
-    }
+        document.getElementById("err_msg").textContent = txt;
+    } catch {}
 }
 
 async function reloadAlerts() {
     try {
         const res = await fetch(apiUrl("/admin/alerts_history"));
         const data = await res.json();
-        if (!data.ok) {
-            document.getElementById("alerts_list").innerHTML = "لا يمكن تحميل السجل.";
-            return;
-        }
+        if (!data.ok) return;
+
         const list = data.alerts || [];
         if (!list.length) {
-            document.getElementById("alerts_list").innerHTML = "لا توجد تحذيرات مسجلة بعد.";
+            document.getElementById("alerts_list").innerHTML =
+                "لا توجد تحذيرات مسجلة بعد.";
             return;
         }
+
         const html = list.slice().reverse().map(a => {
             return (
-                "• [" + (a.time || "?") + "] " +
-                (a.source || "?") + " — " +
-                (a.reason || "") +
+                "• [" + a.time + "] " +
+                a.source + " — " + a.reason +
                 (a.change_pct != null ? (" (Δ " + a.change_pct.toFixed(2) + "%)") : "")
             );
-        }).join("<br />");
+        }).join("<br>");
+
         document.getElementById("alerts_list").innerHTML = html;
-    } catch (e) {
-        console.log("Alerts error:", e);
-    }
+    } catch {}
 }
 
 async function clearAlerts() {
-    if (!confirm("متأكد إنك عايز تمسح سجل التحذيرات؟")) return;
-    try {
-        const res = await fetch(apiUrl("/admin/clear_alerts"));
-        const data = await res.json();
-        alert(data.message || "تم.");
-        reloadAlerts();
-    } catch (e) {
-        console.log("clearAlerts error:", e);
-    }
+    if (!confirm("متأكد من المسح؟")) return;
+
+    const res = await fetch(apiUrl("/admin/clear_alerts"));
+    const data = await res.json();
+    alert(data.message);
+    reloadAlerts();
 }
 
 async function callAdmin(action) {
-    try {
-        const res = await fetch(apiUrl("/admin/" + action));
-        const data = await res.json();
-        alert(data.message || JSON.stringify(data));
-    } catch (e) {
-        console.log("admin action error:", e);
-    }
+    const res = await fetch(apiUrl("/admin/" + action));
+    const data = await res.json();
+    alert(data.message || "OK");
 }
 
-// أول تحميل
 loadMain();
 reloadAlerts();
-
-// تحديث مستمر
 setInterval(loadMain, 10000);
 setInterval(loadLogs, 30000);
 setInterval(reloadAlerts, 60000);
