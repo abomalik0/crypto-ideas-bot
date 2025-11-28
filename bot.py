@@ -46,6 +46,7 @@ LAST_ERROR_INFO = {
 
 LOG_BUFFER = deque(maxlen=200)  # آخر 200 سطر لوج
 
+
 class InMemoryLogHandler(logging.Handler):
     def emit(self, record):
         global LAST_ERROR_INFO
@@ -57,6 +58,7 @@ class InMemoryLogHandler(logging.Handler):
                 "message": msg,
             }
 
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -65,7 +67,9 @@ logger = logging.getLogger(__name__)
 
 _memory_handler = InMemoryLogHandler()
 _memory_handler.setLevel(logging.INFO)
-_memory_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+_memory_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
 logger.addHandler(_memory_handler)
 
 # ==============================
@@ -74,7 +78,10 @@ logger.addHandler(_memory_handler)
 
 ALERTS_HISTORY = deque(maxlen=100)  # آخر 100 تحذير
 
-def add_alert_history(source: str, reason: str, price: float | None = None, change: float | None = None):
+
+def add_alert_history(
+    source: str, reason: str, price: float | None = None, change: float | None = None
+):
     entry = {
         "time": datetime.utcnow().isoformat(timespec="seconds"),
         "source": source,  # "auto" أو "manual" أو "force"
@@ -84,6 +91,7 @@ def add_alert_history(source: str, reason: str, price: float | None = None, chan
     }
     ALERTS_HISTORY.append(entry)
     logger.info("Alert history added: %s", entry)
+
 
 # ✅ قائمة بالشاتات اللى استخدمت البوت (عشان نبعت لهم التقرير الأسبوعى)
 KNOWN_CHAT_IDS: set[int] = set()
@@ -95,6 +103,7 @@ app = Flask(__name__)
 # ==============================
 #  دوال مساعدة لـ Telegram API
 # ==============================
+
 
 def send_message(chat_id: int, text: str, parse_mode: str = "HTML"):
     """إرسال رسالة عادية بدون كيبورد."""
@@ -166,9 +175,11 @@ def answer_callback_query(
     except Exception as e:
         logger.exception("Exception while answering callback query: %s", e)
 
+
 # ==============================
 #   تجهيز رمز العملة + المنصات
 # ==============================
+
 
 def normalize_symbol(user_symbol: str):
     base = user_symbol.strip().upper()
@@ -180,9 +191,11 @@ def normalize_symbol(user_symbol: str):
     kucoin_symbol = base + "-USDT"
     return base, binance_symbol, kucoin_symbol
 
+
 # ==============================
 #   جلب البيانات من Binance / KuCoin
 # ==============================
+
 
 def fetch_from_binance(symbol: str):
     try:
@@ -273,9 +286,11 @@ def fetch_price_data(user_symbol: str):
 
     return None
 
+
 # ==============================
 #     صياغة رسالة التحليل للعملة
 # ==============================
+
 
 def format_analysis(user_symbol: str) -> str:
     data = fetch_price_data(user_symbol)
@@ -349,9 +364,11 @@ def format_analysis(user_symbol: str) -> str:
 
     return msg
 
+
 # ==============================
 #  محرك قوة السوق والسيولة والـ Risk
 # ==============================
+
 
 def compute_market_metrics() -> dict | None:
     data = fetch_price_data("BTCUSDT")
@@ -404,6 +421,7 @@ def compute_market_metrics() -> dict | None:
         "liquidity_pulse": liquidity_pulse,
     }
 
+
 def evaluate_risk_level(change_pct: float, volatility_score: float) -> dict:
     risk_score = abs(change_pct) + (volatility_score * 0.4)
 
@@ -436,6 +454,7 @@ def evaluate_risk_level(change_pct: float, volatility_score: float) -> dict:
         "score": risk_score,
     }
 
+
 def _risk_level_ar(level: str) -> str:
     if level == "low":
         return "منخفض"
@@ -445,9 +464,11 @@ def _risk_level_ar(level: str) -> str:
         return "مرتفع"
     return level
 
+
 # ==============================
 #   تقرير السوق /market الحالى
 # ==============================
+
 
 def format_market_report() -> str:
     metrics = compute_market_metrics()
@@ -511,9 +532,11 @@ IN CRYPTO Ai 🤖
 
     return report
 
+
 # ==============================
 #   اختبار المخاطر السريع /risk_test
 # ==============================
+
 
 def format_risk_test() -> str:
     metrics = compute_market_metrics()
@@ -548,9 +571,11 @@ def format_risk_test() -> str:
 
     return msg
 
+
 # ==============================
 #   نظام التحذير الذكى (Alerts)
 # ==============================
+
 
 def detect_alert_condition(metrics: dict, risk: dict) -> str | None:
     price = metrics["price"]
@@ -586,9 +611,95 @@ def detect_alert_condition(metrics: dict, risk: dict) -> str | None:
     )
     return joined
 
+
+# ==============================
+#   Fusion AI – محرك الدمج الذكى (مرحلة 0)
+# ==============================
+
+def fusion_ai_brain(metrics: dict, risk: dict) -> dict:
+    """
+    محرك داخلى يجمع أكثر من زاوية:
+    - قوة الاتجاه
+    - السيولة
+    - المخاطر
+    - شكل الحركة (تجميع / توزيع تقريبى)
+    الهدف: يطلع لنا تلخيص ذكاء اصطناعى يُستخدم داخل التحذير.
+    """
+    change = metrics["change_pct"]
+    range_pct = metrics["range_pct"]
+    vol = metrics["volatility_score"]
+    strength = metrics["strength_label"]
+    liquidity = metrics["liquidity_pulse"]
+    risk_level = risk["level"]
+
+    # تقدير Bias
+    if change >= 3:
+        bias = "bullish"
+        bias_text = "ميل صاعد قوى مع شهية مخاطرة مرتفعة نسبيًا."
+    elif change >= 1:
+        bias = "bullish_soft"
+        bias_text = "ميل صاعد هادئ مع تحسن تدريجى فى مزاج السوق."
+    elif change <= -3:
+        bias = "bearish"
+        bias_text = "ضغط بيعى واضح وسيطرة نسبية للدببة على الحركة."
+    elif change <= -1:
+        bias = "bearish_soft"
+        bias_text = "ميل هابط خفيف مع ضعف ملحوظ فى المشترين."
+    else:
+        bias = "neutral"
+        bias_text = "تذبذب بلا اتجاه حاسم، السوق يراقب قبل اتخاذ قرار."
+
+    # تقدير نمط SMC بسيط
+    if bias.startswith("bullish") and "الدخول" in liquidity:
+        smc_view = "السوق أقرب لمرحلة تجميع ذكى مع دخول سيولة بشكل منظم."
+    elif bias.startswith("bearish") and "خروج" in liquidity:
+        smc_view = "السوق يميل لمرحلة توزيع وخروج تدريجى للسيولة من القمم."
+    else:
+        smc_view = "لا توجد إشارة حاسمة على تجميع أو توزيع، الحركة أقرب لتوازن مؤقت."
+
+    # تقدير Phase بشكل وايكوف مبسط
+    if vol < 20 and abs(change) < 1:
+        wyckoff_phase = "المرحلة الحالية تشبه نطاق توازن / إعادة تجميع جانبى."
+    elif vol > 60 and abs(change) > 3:
+        wyckoff_phase = "السوق داخل مرحلة اندفاع (Impulse) عالية التقلب."
+    elif bias.startswith("bullish"):
+        wyckoff_phase = "السوق يحتمل أن يكون فى مرحلة Mark-Up مبكرة (بداية توسع صاعد)."
+    elif bias.startswith("bearish"):
+        wyckoff_phase = "السوق يميل لمرحلة Mark-Down أو تصحيح ممتد."
+    else:
+        wyckoff_phase = "مرحلة انتقالية بين الصعود والهبوط بدون وضوح كامل."
+
+    # دمج المخاطر
+    if risk_level == "high":
+        risk_comment = "مستوى المخاطر الحالى مرتفع، أى قرار بدون خطة صارمة قد يكون مكلف."
+    elif risk_level == "medium":
+        risk_comment = "المخاطر متوسطة، يمكن العمل لكن بأحجام عقود محسوبة."
+    else:
+        risk_comment = "المخاطر منخفضة نسبيًا لكن لا تزال إدارة رأس المال ضرورة أساسية."
+
+    ai_summary = (
+        f"{bias_text}\n"
+        f"{smc_view}\n"
+        f"{wyckoff_phase}\n"
+        f"{risk_comment}"
+    )
+
+    return {
+        "bias": bias,
+        "bias_text": bias_text,
+        "smc_view": smc_view,
+        "wyckoff_phase": wyckoff_phase,
+        "risk_comment": risk_comment,
+        "ai_summary": ai_summary,
+        "strength": strength,
+        "liquidity": liquidity,
+    }
+
+
 # ==============================
 #   التحذير الموحد المختصر - format_ai_alert
 # ==============================
+
 
 def format_ai_alert() -> str:
     """
@@ -596,9 +707,10 @@ def format_ai_alert() -> str:
     - بيانات BTC من Binance/KuCoin
     - محرك السوق compute_market_metrics
     - محرك المخاطر evaluate_risk_level
+    - محرك Fusion AI الداخلى (fusion_ai_brain)
 
-    الشكل ثابت زى التحذير اللى إنت كاتبه،
-    والمحتوى بيستخدم "Hybrid AI Logic" داخلياً.
+    الشكل ثابت قريب جداً من التحذير الأصلى،
+    لكن القرار داخلياً مبنى على منطق AI أعمق.
     """
     # نحاول نستخدم محرك السوق الكامل أولاً
     metrics = compute_market_metrics()
@@ -611,8 +723,20 @@ def format_ai_alert() -> str:
         price = data["price"]
         change = data["change_pct"]
         now = datetime.utcnow()
-        weekday_names = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
-        weekday_name = weekday_names[now.weekday()] if 0 <= now.weekday() < len(weekday_names) else "اليوم"
+        weekday_names = [
+            "الاثنين",
+            "الثلاثاء",
+            "الأربعاء",
+            "الخميس",
+            "الجمعة",
+            "السبت",
+            "الأحد",
+        ]
+        weekday_name = (
+            weekday_names[now.weekday()]
+            if 0 <= now.weekday() < len(weekday_names)
+            else "اليوم"
+        )
         date_part = now.strftime("%Y-%m-%d")
 
         fallback_text = f"""
@@ -647,6 +771,9 @@ def format_ai_alert() -> str:
     risk_level_text = _risk_level_ar(risk["level"])
     risk_emoji = risk["emoji"]
 
+    # Fusion AI
+    fusion = fusion_ai_brain(metrics, risk)
+
     # نحسب RSI تقديرى بسيط مبني على حركة السعر اليومية
     rsi_raw = 50 + (change * 0.8)
     rsi = max(0, min(100, rsi_raw))
@@ -671,8 +798,20 @@ def format_ai_alert() -> str:
 
     # وقت وتاريخ
     now = datetime.utcnow()
-    weekday_names = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
-    weekday_name = weekday_names[now.weekday()] if 0 <= now.weekday() < len(weekday_names) else "اليوم"
+    weekday_names = [
+        "الاثنين",
+        "الثلاثاء",
+        "الأربعاء",
+        "الخميس",
+        "الجمعة",
+        "السبت",
+        "الأحد",
+    ]
+    weekday_name = (
+        weekday_names[now.weekday()]
+        if 0 <= now.weekday() < len(weekday_names)
+        else "اليوم"
+    )
     date_part = now.strftime("%Y-%m-%d")
 
     # ========== نص التحذير المتطور بنفس شكل تحذيرك ==========
@@ -688,6 +827,7 @@ def format_ai_alert() -> str:
 🧭 ملخص سريع لوضع السوق
 
 • {dir_comment}
+• {fusion['bias_text']}
 • {strength_label}
 • مدى حركة اليوم بالنسبة للسعر: حوالى {range_pct:.2f}% مع درجة تقلب {volatility_score:.1f} / 100.
 • {liquidity_pulse}
@@ -753,12 +893,10 @@ def format_ai_alert() -> str:
 
 • تم دمج قراءات:
   (الاتجاه – السيولة – مدى الحركة – درجة التقلب – قوة السوق – سلوك المخاطر)
-  داخل محرك ذكاء اصطناعى هجين (Hybrid AI Engine).
+  داخل محرك ذكاء اصطناعى هجين (Fusion AI Engine).
 
 → النتيجة الحالية:
-  • ضغط بيعى مؤسسى خفيف إلى متوسط ما زال قائمًا.
-  • احتمالية امتداد الهبوط تظل قائمة طالما لا يوجد رفض واضح وقوى من مناطق الدعم.
-  • السوق يتحرك داخل مرحلة حساسة قبل اتخاذ قرار واضح للاتجاه القادم.
+  • {fusion['ai_summary'].replace('\n', '\n  • ')}
 
 • توصية النظام:
   → تجنب المبالغة فى المخاطرة حاليًا.
@@ -774,6 +912,7 @@ IN CRYPTO Ai 🤖
 # ==============================
 #   التحذير الموسع الخاص بالأدمن - /alert details
 # ==============================
+
 
 def format_ai_alert_details() -> str:
     metrics = compute_market_metrics()
@@ -824,14 +963,18 @@ IN CRYPTO Ai 🤖
 
     return details
 
+
 # ==============================
-#   التقرير الأسبوعى المتقدم – Deep AI Edition
+#   التقرير الأسبوعى المتقدم
 # ==============================
+
 
 def format_weekly_ai_report() -> str:
     metrics = compute_market_metrics()
     if not metrics:
-        return "⚠️ تعذّر إنشاء التقرير الأسبوعى حالياً بسبب مشكلة فى جلب بيانات السوق."
+        return (
+            "⚠️ تعذّر إنشاء التقرير الأسبوعى حالياً بسبب مشكلة فى جلب بيانات السوق."
+        )
 
     btc_price = metrics["price"]
     btc_change = metrics["change_pct"]
@@ -854,7 +997,15 @@ def format_weekly_ai_report() -> str:
 
     now = datetime.utcnow()
     date_str = now.strftime("%Y-%m-%d")
-    weekday_names = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
+    weekday_names = [
+        "الاثنين",
+        "الثلاثاء",
+        "الأربعاء",
+        "الخميس",
+        "الجمعة",
+        "السبت",
+        "الأحد",
+    ]
     weekday_name = (
         weekday_names[now.weekday()]
         if 0 <= now.weekday() < len(weekday_names)
@@ -878,7 +1029,7 @@ def format_weekly_ai_report() -> str:
     bears = max(10, min(45, round(base_bears)))
     neutral = max(0, 100 - bulls - bears)
 
-    # احتمالات الحركة (برضه مبنية بشكل ذكى على نفس المحركات)
+    # احتمالات الحركة
     if abs(btc_change) < 1 and vol < 30:
         p_up, p_side, p_down = 30, 55, 15
     elif btc_change >= 2 and vol <= 50:
@@ -889,7 +1040,7 @@ def format_weekly_ai_report() -> str:
         p_up, p_side, p_down = 37, 45, 18
 
     report = f"""
-🚀 <b>التقرير الأسبوعى المتقدم – Deep AI Edition</b>
+🚀 <b>التقرير الأسبوعى المتقدم</b>
 
 <b>IN CRYPTO Ai — Weekly Institutional Intelligence Report</b>
 📅 {weekday_name} – {date_str}
@@ -1045,7 +1196,7 @@ def format_weekly_ai_report() -> str:
 ⚠️ <b>القسم 9 — المخاطر (AI Risk Engine)</b>
 
 - التقلب الحالى: <b>{vol:.1f} / 100</b>
-- مستوى المخاطر العام: {risk["emoji"]} <b>{risk_level_text}</b>
+- مستوى المخاطر العام: {risk['emoji']} <b>{risk_level_text}</b>
 - السيولة: {liquidity_pulse}
 - نشاط الحيتان والمؤسسات: لا توجد إشارات انهيار أو ذعر كبير.
 
@@ -1077,20 +1228,25 @@ def format_weekly_ai_report() -> str:
 
     return report
 
+
 # ==============================
 #   صلاحيات الأدمن للوحة المراقبة
 # ==============================
 
+
 def _check_admin_auth(req) -> bool:
     return True
+
 
 # ==============================
 #          مسارات Flask الأساسية
 # ==============================
 
+
 @app.route("/", methods=["GET"])
 def index():
     return "Crypto ideas bot is running.", 200
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -1216,9 +1372,11 @@ def webhook():
     )
     return jsonify(ok=True)
 
+
 # ==============================
 #   مسار المراقبة التلقائية /auto_alert
 # ==============================
+
 
 @app.route("/auto_alert", methods=["GET"])
 def auto_alert():
@@ -1234,7 +1392,9 @@ def auto_alert():
         }
         return jsonify(ok=False, alert_sent=False, reason="metrics_failed"), 200
 
-    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
+    risk = evaluate_risk_level(
+        metrics["change_pct"], metrics["volatility_score"]
+    )
     reason = detect_alert_condition(metrics, risk)
 
     if not reason:
@@ -1268,13 +1428,20 @@ def auto_alert():
     }
     logger.info("auto_alert: NEW alert sent! reason=%s", reason)
 
-    add_alert_history("auto", reason, price=metrics["price"], change=metrics["change_pct"])
+    add_alert_history(
+        "auto",
+        reason,
+        price=metrics["price"],
+        change=metrics["change_pct"],
+    )
 
     return jsonify(ok=True, alert_sent=True, reason="sent"), 200
+
 
 # ==============================
 #   مسار اختبار بسيط من السيرفر
 # ==============================
+
 
 @app.route("/test_alert", methods=["GET"])
 def test_alert():
@@ -1289,9 +1456,11 @@ def test_alert():
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
 # ==============================
 #   API للداشبورد + مسارات الأدمن
 # ==============================
+
 
 @app.route("/dashboard_api", methods=["GET"])
 def dashboard_api():
@@ -1302,7 +1471,9 @@ def dashboard_api():
     if not metrics:
         return jsonify(ok=False, error="metrics_failed"), 200
 
-    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
+    risk = evaluate_risk_level(
+        metrics["change_pct"], metrics["volatility_score"]
+    )
 
     return jsonify(
         ok=True,
@@ -1319,6 +1490,7 @@ def dashboard_api():
         last_error=LAST_ERROR_INFO,
     )
 
+
 @app.route("/admin/dashboard", methods=["GET"])
 def admin_dashboard():
     if not _check_admin_auth(request):
@@ -1332,12 +1504,14 @@ def admin_dashboard():
 
     return Response(html, mimetype="text/html")
 
+
 @app.route("/admin/logs", methods=["GET"])
 def admin_logs():
     if not _check_admin_auth(request):
         return Response("Unauthorized", status=401)
     content = "\n".join(LOG_BUFFER)
     return Response(content, mimetype="text/plain")
+
 
 @app.route("/admin/alerts_history", methods=["GET"])
 def admin_alerts_history():
@@ -1349,6 +1523,7 @@ def admin_alerts_history():
         alerts=list(ALERTS_HISTORY),
     )
 
+
 @app.route("/admin/clear_alerts", methods=["GET"])
 def admin_clear_alerts():
     if not _check_admin_auth(request):
@@ -1357,6 +1532,7 @@ def admin_clear_alerts():
     ALERTS_HISTORY.clear()
     logger.info("Admin cleared alerts history from dashboard.")
     return jsonify(ok=True, message="تم مسح سجل التحذيرات.")
+
 
 @app.route("/admin/force_alert", methods=["GET"])
 def admin_force_alert():
@@ -1368,6 +1544,7 @@ def admin_force_alert():
     add_alert_history("force", "Force alert from admin dashboard")
     logger.info("Admin forced alert from dashboard.")
     return jsonify(ok=True, message="تم إرسال التحذير الفورى للأدمن.")
+
 
 @app.route("/admin/test_alert", methods=["GET"])
 def admin_test_alert():
@@ -1382,9 +1559,11 @@ def admin_test_alert():
     logger.info("Admin sent test alert from dashboard.")
     return jsonify(ok=True, message="تم إرسال تنبيه تجريبى للأدمن.")
 
+
 # ==============================
 #   مسار التقرير الأسبوعى
 # ==============================
+
 
 @app.route("/weekly_ai_report", methods=["GET"])
 def weekly_ai_report():
@@ -1400,10 +1579,13 @@ def weekly_ai_report():
             send_message(cid, report)
             sent_to.append(cid)
         except Exception as e:
-            logger.exception("Error sending weekly report to %s: %s", cid, e)
+            logger.exception(
+                "Error sending weekly report to %s: %s", cid, e
+            )
 
     logger.info("weekly_ai_report sent to chats: %s", sent_to)
     return jsonify(ok=True, sent_to=sent_to)
+
 
 @app.route("/admin/weekly_ai_test", methods=["GET"])
 def admin_weekly_ai_test():
@@ -1416,11 +1598,16 @@ def admin_weekly_ai_test():
     report = format_weekly_ai_report()
     send_message(ADMIN_CHAT_ID, report)
     logger.info("Admin requested weekly AI report test.")
-    return jsonify(ok=True, message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط.")
+    return jsonify(
+        ok=True,
+        message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط.",
+    )
+
 
 # ==============================
 #       تفعيل الـ Webhook
 # ==============================
+
 
 def setup_webhook():
     """يتم تشغيله مرة واحدة عند بدء السيرفر"""
@@ -1435,9 +1622,11 @@ def setup_webhook():
     except Exception as e:
         logger.exception("Error while setting webhook: %s", e)
 
+
 # ==============================
 #        تشغيل السيرفر
 # ==============================
+
 
 if __name__ == "__main__":
     logger.info("Bot is starting...")
