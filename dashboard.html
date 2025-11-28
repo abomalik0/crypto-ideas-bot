@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IN CRYPTO — WAR ROOM</title>
+
+<style>
+    body {
+        background: #06070a;
+        color: #fff;
+        font-family: "Cairo", system-ui, sans-serif;
+        margin: 0;
+        padding: 0;
+        direction: rtl;
+        text-align: center;
+    }
+    .header {
+        padding: 25px 0 10px;
+        border-bottom: 1px solid #151821;
+        background: radial-gradient(circle at top, #1a2538 0, #06070a 55%);
+    }
+    .logo {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        margin-bottom: 10px;
+        border: 3px solid #f6b044;
+        box-shadow: 0 0 18px rgba(246,176,68,.7);
+        object-fit: cover;
+        background: #000;
+    }
+    .title {
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        color: #f6b044;
+        text-shadow: 0 0 10px rgba(246,176,68,.7);
+    }
+    .subtitle {
+        font-size: 13px;
+        color: #8b94a7;
+        margin-top: 4px;
+    }
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+        padding: 18px;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    .card {
+        background: radial-gradient(circle at top, #151821 0, #06070a 60%);
+        border-radius: 14px;
+        padding: 16px 16px 18px;
+        box-shadow: 0 0 18px rgba(0,0,0,.9);
+        border: 1px solid #151821;
+        text-align: right;
+        position: relative;
+    }
+    .card h3 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        color: #e3e7ff;
+    }
+    .metric-main {
+        font-size: 24px;
+        font-weight: 800;
+        margin-bottom: 6px;
+    }
+    .metric-sub {
+        font-size: 14px;
+        color: #a5aec4;
+        line-height: 1.6;
+    }
+    .green { color: #00ff9d; }
+    .red { color: #ff4d4d; }
+    .yellow { color: #ffd747; }
+    .muted { color: #7b8397; }
+    .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 11px;
+        background: rgba(15, 185, 255, 0.12);
+        color: #9ad7ff;
+        margin-bottom: 8px;
+    }
+    .footer {
+        margin-top: 10px;
+        padding: 12px 0 18px;
+        font-size: 12px;
+        color: #525b70;
+    }
+    pre {
+        background: #05060a;
+        padding: 8px;
+        border-radius: 8px;
+        max-height: 150px;
+        overflow: auto;
+        font-size: 11px;
+        direction: ltr;
+        text-align: left;
+        border: 1px solid #151821;
+    }
+    button {
+        border-radius: 999px;
+        border: 0;
+        padding: 6px 14px;
+        font-size: 12px;
+        cursor: pointer;
+        margin-left: 4px;
+        margin-top: 4px;
+        background: #1d2535;
+        color: #e3e7ff;
+    }
+    button.primary {
+        background: #f6b044;
+        color: #151821;
+        font-weight: 700;
+    }
+</style>
+</head>
+
+<body>
+
+<div class="header">
+    <!-- حط اسم ملف اللوجو اللى فى السيرفر (مثلاً logo.png) -->
+    <img src="logo.png" class="logo" alt="IN CRYPTO logo" />
+    <div class="title">IN CRYPTO — WAR ROOM</div>
+    <div class="subtitle">
+        لوحة مراقبة تحذيرات البيتكوين، السيولة، المخاطر، وأخطاء النظام فى الزمن الحقيقى.
+    </div>
+</div>
+
+<div class="grid">
+
+    <div class="card">
+        <div class="pill">حالة السوق</div>
+        <h3>سعر البيتكوين الآن</h3>
+        <div id="price" class="metric-main">...</div>
+        <div id="change" class="metric-main muted">...</div>
+        <div class="metric-sub">
+            مدى حركة اليوم: <span id="range">...</span><br />
+            درجة التقلب: <span id="volatility">...</span> / 100
+        </div>
+        <div class="metric-sub" id="strength" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="card">
+        <div class="pill">المخاطر</div>
+        <h3>مستوى المخاطر الكلى</h3>
+        <div id="risk_level" class="metric-main">...</div>
+        <div id="risk_msg" class="metric-sub">...</div>
+    </div>
+
+    <div class="card">
+        <div class="pill">الاتجاه والسيولة</div>
+        <h3>نبض السيولة</h3>
+        <div id="liquidity" class="metric-sub">...</div>
+        <div class="metric-sub muted" style="margin-top:8px;">
+            يعتمد بالكامل على حركة BTCUSDT من Binance / KuCoin بدون أى مزود بيانات إضافى.
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="pill">نظام التحذير التلقائى</div>
+        <h3>آخر استخدام لمسار <code>/auto_alert</code></h3>
+        <div class="metric-sub">
+            آخر وقت: <span id="aa_time">N/A</span><br />
+            السبب: <span id="aa_reason">N/A</span><br />
+            تم إرسال تحذير؟ <span id="aa_sent">N/A</span>
+        </div>
+        <div style="margin-top:10px;">
+            <button class="primary" onclick="callAdmin('force_alert')">إرسال تحذير فورى ⚡</button>
+            <button onclick="callAdmin('test_alert')">تنبيه تجريبى 🧪</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="pill">آخر خطأ فى النظام</div>
+        <h3>Logs Snapshot</h3>
+        <div class="metric-sub">
+            الوقت: <span id="err_time">N/A</span>
+        </div>
+        <pre id="err_msg">لا يوجد أخطاء مسجلة حتى الآن.</pre>
+    </div>
+
+    <div class="card">
+        <div class="pill">سجل التحذيرات</div>
+        <h3>آخر التحذيرات المسجلة</h3>
+        <div class="metric-sub" id="alerts_list">
+            جارِ التحميل...
+        </div>
+        <div style="margin-top:10px;">
+            <button onclick="reloadAlerts()">تحديث السجل 🔄</button>
+            <button onclick="clearAlerts()">مسح السجل 🧹</button>
+        </div>
+    </div>
+
+</div>
+
+<div class="footer">
+    IN CRYPTO Ai — Live Market & Risk Monitor
+</div>
+
+<script>
+function getPassParam() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("pass") || "";
+}
+
+function apiUrl(path) {
+    const pass = getPassParam();
+    if (pass) {
+        return path + "?pass=" + encodeURIComponent(pass);
+    }
+    return path;
+}
+
+async function loadMain() {
+    try {
+        const res = await fetch(apiUrl("/dashboard_api"));
+        const data = await res.json();
+
+        if (!data.ok) {
+            console.log("API Error:", data);
+            return;
+        }
+
+        document.getElementById("price").innerHTML =
+            "$" + data.price.toLocaleString();
+
+        const changeEl = document.getElementById("change");
+        const ch = data.change_pct;
+        changeEl.innerHTML = (ch >= 0 ? "+" : "") + ch.toFixed(2) + "%";
+        changeEl.className = "metric-main " + (ch >= 0 ? "green" : "red");
+
+        document.getElementById("range").innerHTML =
+            data.range_pct.toFixed(2) + "%";
+        document.getElementById("volatility").innerHTML =
+            data.volatility_score.toFixed(1);
+        document.getElementById("strength").innerHTML =
+            data.strength_label;
+
+        const rl = document.getElementById("risk_level");
+        rl.innerHTML = data.risk_emoji + " " + data.risk_level;
+        rl.className = "metric-main";
+        if (data.risk_level.includes("منخفض")) {
+            rl.className += " green";
+        } else if (data.risk_level.includes("متوسط")) {
+            rl.className += " yellow";
+        } else {
+            rl.className += " red";
+        }
+
+        document.getElementById("risk_msg").innerHTML = data.risk_message;
+        document.getElementById("liquidity").innerHTML = data.liquidity_pulse;
+
+        const aa = data.last_auto_alert || {};
+        document.getElementById("aa_time").innerHTML = aa.time || "N/A";
+        document.getElementById("aa_reason").innerHTML = aa.reason || "N/A";
+        document.getElementById("aa_sent").innerHTML =
+            aa.sent === true ? "نعم ✅" : (aa.sent === false ? "لا ❌" : "N/A");
+
+        const err = data.last_error || {};
+        document.getElementById("err_time").innerHTML = err.time || "N/A";
+        document.getElementById("err_msg").textContent =
+            err.message || "لا يوجد أخطاء مسجلة حتى الآن.";
+    } catch (err) {
+        console.log("Dashboard Error:", err);
+    }
+}
+
+async function loadLogs() {
+    try {
+        const res = await fetch(apiUrl("/admin/logs"));
+        if (!res.ok) return;
+        const txt = await res.text();
+        document.getElementById("err_msg").textContent = txt || "لا يوجد لوجات.";
+    } catch (e) {
+        console.log("Logs error:", e);
+    }
+}
+
+async function reloadAlerts() {
+    try {
+        const res = await fetch(apiUrl("/admin/alerts_history"));
+        const data = await res.json();
+        if (!data.ok) {
+            document.getElementById("alerts_list").innerHTML = "لا يمكن تحميل السجل.";
+            return;
+        }
+        const list = data.alerts || [];
+        if (!list.length) {
+            document.getElementById("alerts_list").innerHTML = "لا توجد تحذيرات مسجلة بعد.";
+            return;
+        }
+        const html = list.slice().reverse().map(a => {
+            return (
+                "• [" + (a.time || "?") + "] " +
+                (a.source || "?") + " — " +
+                (a.reason || "") +
+                (a.change_pct != null ? (" (Δ " + a.change_pct.toFixed(2) + "%)") : "")
+            );
+        }).join("<br />");
+        document.getElementById("alerts_list").innerHTML = html;
+    } catch (e) {
+        console.log("Alerts error:", e);
+    }
+}
+
+async function clearAlerts() {
+    if (!confirm("متأكد إنك عايز تمسح سجل التحذيرات؟")) return;
+    try {
+        const res = await fetch(apiUrl("/admin/clear_alerts"));
+        const data = await res.json();
+        alert(data.message || "تم.");
+        reloadAlerts();
+    } catch (e) {
+        console.log("clearAlerts error:", e);
+    }
+}
+
+async function callAdmin(action) {
+    try {
+        const res = await fetch(apiUrl("/admin/" + action));
+        const data = await res.json();
+        alert(data.message || JSON.stringify(data));
+    } catch (e) {
+        console.log("admin action error:", e);
+    }
+}
+
+// أول تحميل
+loadMain();
+reloadAlerts();
+
+// تحديث مستمر
+setInterval(loadMain, 10000);
+setInterval(loadLogs, 30000);
+setInterval(reloadAlerts, 60000);
+</script>
+
+</body>
+</html>
