@@ -1700,4 +1700,4 @@ def setup_webhook():
             params={"url": webhook_url},
             timeout=10,
         )
-        logger.info("Webhook response: %s - %s", r
+        logger.info("Webhook response: %s - %s", r.status_code, r.text)
