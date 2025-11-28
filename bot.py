@@ -1694,6 +1694,7 @@ def admin_weekly_ai_test():
 def setup_webhook():
     """يتم تشغيله مرة واحدة عند بدء السيرفر"""
     webhook_url = f"{APP_BASE_URL}/webhook"
+
     try:
         r = requests.get(
             f"{TELEGRAM_API}/setWebhook",
@@ -1701,3 +1702,6 @@ def setup_webhook():
             timeout=10,
         )
         logger.info("Webhook response: %s - %s", r.status_code, r.text)
+
+    except Exception as e:
+        logger.exception("Error while setting webhook: %s", e)
