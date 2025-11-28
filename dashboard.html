@@ -1,434 +1,261 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
+
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>IN CRYPTO — WAR ROOM</title>
+    <meta charset="UTF-8" />
+    <title>IN CRYPTO AI — Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<style>
-    body {
-        background: #06070a;
-        color: #fff;
-        font-family: "Cairo", system-ui, sans-serif;
-        margin: 0;
-        padding: 0;
-        direction: rtl;
-        text-align: center;
-        transition: background 0.5s ease;
-    }
+    <!-- GOOGLE FONTS -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
 
-    /* ألوان حسب مستوى المخاطر */
-    body.risk-low {
-        background: radial-gradient(circle at top, #0b261a 0, #040607 55%);
-    }
-    body.risk-medium {
-        background: radial-gradient(circle at top, #292510 0, #06070a 55%);
-    }
-    body.risk-high {
-        background: radial-gradient(circle at top, #2b1214 0, #06070a 55%);
-    }
+        body {
+            font-family: 'Cairo', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #0b0f19;
+            color: #fff;
+        }
 
-    .header {
-        padding: 22px 0 8px;
-        border-bottom: 1px solid #151821;
-        background: rgba(0,0,0,0.45);
-        backdrop-filter: blur(10px);
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
+        /* ===== TOP BTC BAR ===== */
+        .btc-bar {
+            width: 100%;
+            padding: 15px 25px;
+            background: linear-gradient(90deg, #111827, #1f2937);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 20px;
+            font-weight: 700;
+            border-bottom: 2px solid #1e293b;
+        }
 
-    .title {
-        font-size: 26px;
-        font-weight: 800;
-        letter-spacing: 1px;
-        color: #f6b044;
-        text-shadow: 0 0 10px rgba(246,176,68,.7);
-    }
+        .btc-green {
+            color: #00ff9d;
+        }
 
-    .pair {
-        font-size: 13px;
-        color: #9ea6bd;
-        margin-top: 4px;
-    }
+        .btc-red {
+            color: #ff5c5c;
+        }
 
-    .subtitle {
-        font-size: 12px;
-        color: #8b94a7;
-        margin-top: 4px;
-    }
+        /* ===== CONTAINER ===== */
+        .container {
+            padding: 25px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+            gap: 20px;
+        }
 
-    .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 16px;
-        padding: 18px;
-        max-width: 1200px;
-        margin: 0 auto;
-    }
+        /* ===== CARD ===== */
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 22px;
+            border-radius: 16px;
+            box-shadow: 0 0 18px rgba(0, 255, 255, 0.1);
+            backdrop-filter: blur(9px);
+            transition: 0.2s;
+        }
 
-    .card {
-        background: radial-gradient(circle at top, #151821 0, #06070a 60%);
-        border-radius: 14px;
-        padding: 16px 16px 18px;
-        box-shadow: 0 0 18px rgba(0,0,0,.9);
-        border: 1px solid #151821;
-        text-align: right;
-        position: relative;
-        overflow: hidden;
-    }
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 0 28px rgba(0, 255, 255, 0.2);
+        }
 
-    .card::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: radial-gradient(circle at top right, rgba(246,176,68,0.15), transparent 60%);
-        opacity: 0.7;
-        pointer-events: none;
-    }
+        .title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #6ee7ff;
+        }
 
-    .card h3 {
-        margin: 0 0 10px;
-        font-size: 16px;
-        color: #e3e7ff;
-    }
+        /* ===== ALERT FLASH ===== */
+        .flash {
+            animation: flashAnim 0.9s infinite alternate;
+        }
 
-    .metric-main {
-        font-size: 24px;
-        font-weight: 800;
-        margin-bottom: 6px;
-    }
+        @keyframes flashAnim {
+            from {
+                box-shadow: 0 0 18px red;
+                border-color: red;
+            }
 
-    .metric-sub {
-        font-size: 14px;
-        color: #a5aec4;
-        line-height: 1.6;
-    }
+            to {
+                box-shadow: 0 0 28px yellow;
+                border-color: yellow;
+            }
+        }
 
-    .green { color: #00ff9d; }
-    .red { color: #ff4d4d; }
-    .yellow { color: #ffd747; }
-    .muted { color: #7b8397; }
+        /* ===== RISK COLORS ===== */
+        .risk-low {
+            color: #00ff9d;
+        }
 
-    .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 3px 9px;
-        border-radius: 999px;
-        font-size: 11px;
-        background: rgba(15, 185, 255, 0.12);
-        color: #9ad7ff;
-        margin-bottom: 8px;
-    }
+        .risk-medium {
+            color: #ffe152;
+        }
 
-    .footer {
-        margin-top: 10px;
-        padding: 12px 0 18px;
-        font-size: 12px;
-        color: #525b70;
-    }
+        .risk-high {
+            color: #ff5c5c;
+        }
 
-    pre {
-        background: #05060a;
-        padding: 8px;
-        border-radius: 8px;
-        max-height: 150px;
-        overflow: auto;
-        font-size: 11px;
-        direction: ltr;
-        text-align: left;
-        border: 1px solid #151821;
-    }
+        .value {
+            font-size: 26px;
+            margin-top: 10px;
+            font-weight: 700;
+        }
 
-    button {
-        border-radius: 999px;
-        border: 0;
-        padding: 6px 14px;
-        font-size: 12px;
-        cursor: pointer;
-        margin-left: 4px;
-        margin-top: 4px;
-        background: #1d2535;
-        color: #e3e7ff;
-        transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.2s;
-    }
+        .note {
+            margin-top: 8px;
+            font-size: 15px;
+            opacity: 0.8;
+        }
 
-    button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 0 8px rgba(0,0,0,0.6);
-        background: #242f44;
-    }
+        /* ===== MINI STATUS BADGE ===== */
+        .badge {
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            display: inline-block;
+            margin-top: 7px;
+        }
 
-    button.primary {
-        background: #f6b044;
-        color: #151821;
-        font-weight: 700;
-    }
+        .badge-green {
+            background: rgba(0, 255, 155, 0.15);
+            color: #00ff9d;
+        }
 
-    button.primary:hover {
-        background: #ffbe4f;
-    }
+        .badge-red {
+            background: rgba(255, 0, 0, 0.15);
+            color: #ff5c5c;
+        }
 
-    /* أنيميشن خفيف على نسبة التغير */
-    .pulse {
-        animation: pulse 1.4s ease-out infinite;
-    }
-
-    @keyframes pulse {
-        0% { transform: scale(1); opacity: 1; }
-        70% { transform: scale(1.05); opacity: 0.85; }
-        100% { transform: scale(1); opacity: 1; }
-    }
-</style>
+        .badge-yellow {
+            background: rgba(255, 255, 0, 0.15);
+            color: #ffe152;
+        }
+    </style>
 </head>
 
 <body>
 
-<div class="header">
-    <div class="title">IN CRYPTO — WAR ROOM</div>
-    <div class="pair">BTCUSDT — بيتكوين مقابل USDT</div>
-    <div class="subtitle">
-        لوحة مراقبة مباشرة لحركة البيتكوين، السيولة، المخاطر، وسلوك نظام التحذير الآلى.
-    </div>
-</div>
+    <!-- ===== BTC LIVE BAR ===== -->
+    <div id="btcBar" class="btc-bar">جارى التحميل...</div>
 
-<div class="grid">
+    <!-- ===== DASHBOARD CARDS ===== -->
+    <div class="container">
 
-    <!-- كارد البيتكوين -->
-    <div class="card">
-        <div class="pill">حالة السوق — Bitcoin</div>
-        <h3>سعر البيتكوين الآن</h3>
-        <div id="price" class="metric-main">...</div>
-        <div id="change" class="metric-main muted">...</div>
-        <div class="metric-sub">
-            مدى حركة اليوم: <span id="range">...</span><br />
-            درجة التقلب: <span id="volatility">...</span> / 100
+        <div class="card" id="marketStrength">
+            <div class="title">قوة السوق</div>
+            <div class="value" id="strengthValue">...</div>
         </div>
-        <div class="metric-sub" id="strength" style="margin-top:6px;"></div>
-    </div>
 
-    <!-- كارد المخاطر -->
-    <div class="card">
-        <div class="pill">المخاطر</div>
-        <h3>مستوى المخاطر الكلى (IN CRYPTO Ai)</h3>
-        <div id="risk_level" class="metric-main">...</div>
-        <div id="risk_msg" class="metric-sub">...</div>
-    </div>
+        <div class="card" id="riskCard">
+            <div class="title">مستوى المخاطر</div>
+            <div class="value" id="riskValue">...</div>
+            <div class="note" id="riskNote"></div>
+        </div>
 
-    <!-- كارد السيولة -->
-    <div class="card">
-        <div class="pill">الاتجاه والسيولة</div>
-        <h3>نبض السيولة</h3>
-        <div id="liquidity" class="metric-sub">...</div>
-        <div class="metric-sub muted" style="margin-top:8px;">
-            القراءة مبنية بالكامل على حركة BTCUSDT من Binance / KuCoin بدون أى مزود بيانات إضافى.
+        <div class="card">
+            <div class="title">التقلب اليومى</div>
+            <div class="value" id="volatilityValue">...</div>
         </div>
-    </div>
 
-    <!-- كارد نظام التحذير التلقائى -->
-    <div class="card">
-        <div class="pill">نظام التحذير التلقائى</div>
-        <h3>آخر استخدام لمسار <code>/auto_alert</code></h3>
-        <div class="metric-sub">
-            آخر وقت: <span id="aa_time">N/A</span><br />
-            السبب: <span id="aa_reason">N/A</span><br />
-            تم إرسال تحذير؟ <span id="aa_sent">N/A</span>
+        <div class="card">
+            <div class="title">السيولة</div>
+            <div class="value" id="liquidityValue">...</div>
         </div>
-        <div style="margin-top:10px;">
-            <button class="primary" onclick="callAdmin('force_alert')">إرسال تحذير فورى ⚡</button>
-            <button onclick="callAdmin('test_alert')">تنبيه تجريبى 🧪</button>
+
+        <div class="card">
+            <div class="title">آخر خطأ</div>
+            <div class="value" id="lastError">لا يوجد أخطاء</div>
         </div>
+
+        <div class="card" id="alertFlashCard">
+            <div class="title">آخر تحذير تلقائى</div>
+            <div class="value" id="alertReason">لا يوجد</div>
+            <div class="note" id="alertTime">---</div>
+        </div>
+
     </div>
 
-    <!-- كارد اللوج -->
-    <div class="card">
-        <div class="pill">آخر خطأ فى النظام</div>
-        <h3>Logs Snapshot</h3>
-        <div class="metric-sub">
-            الوقت: <span id="err_time">N/A</span>
-        </div>
-        <pre id="err_msg">لا يوجد أخطاء مسجلة حتى الآن.</pre>
-    </div>
+    <!-- ===== JAVASCRIPT ===== -->
+    <script>
+        async function loadStats() {
+            try {
+                let res = await fetch("/dashboard_api");
+                let data = await res.json();
 
-    <!-- كارد سجل التحذيرات -->
-    <div class="card">
-        <div class="pill">سجل التحذيرات</div>
-        <h3>آخر التحذيرات المسجلة</h3>
-        <div class="metric-sub" id="alerts_list">
-            جارِ التحميل...
-        </div>
-        <div style="margin-top:10px;">
-            <button onclick="reloadAlerts()">تحديث السجل 🔄</button>
-            <button onclick="clearAlerts()">مسح السجل 🧹</button>
-        </div>
-    </div>
+                if (!data.ok) return;
 
-</div>
+                // ===== BTC LIVE BAR =====
+                let btc = data.price;
+                let change = data.change_pct;
+                let risk = data.risk_level;
 
-<div class="footer">
-    IN CRYPTO Ai — Live Market & Risk Monitor
-</div>
+                let bar = document.getElementById("btcBar");
 
-<script>
-function getPassParam() {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("pass") || "";
-}
+                let changeColor = change > 0 ? "btc-green" : "btc-red";
 
-function apiUrl(path) {
-    const pass = getPassParam();
-    if (pass) {
-        return path + "?pass=" + encodeURIComponent(pass);
-    }
-    return path;
-}
+                bar.innerHTML = `
+                    <span>BTC: ${btc.toLocaleString()}</span>
+                    <span class="${changeColor}">%${change.toFixed(2)}</span>
+                    <span> | 👁‍🗨 ${risk}</span>
+                `;
 
-function applyRiskTheme(riskLevelText) {
-    document.body.classList.remove("risk-low", "risk-medium", "risk-high");
+                // ===== MARKET STRENGTH =====
+                document.getElementById("strengthValue").innerText = data.strength_label;
 
-    if (!riskLevelText) return;
+                // ===== RISK CARD =====
+                let riskCard = document.getElementById("riskCard");
+                let riskVal = document.getElementById("riskValue");
+                let riskNote = document.getElementById("riskNote");
 
-    if (riskLevelText.includes("منخفض")) {
-        document.body.classList.add("risk-low");
-    } else if (riskLevelText.includes("متوسط")) {
-        document.body.classList.add("risk-medium");
-    } else {
-        document.body.classList.add("risk-high");
-    }
-}
+                riskVal.innerHTML = data.risk_emoji + " " + data.risk_level;
+                riskNote.innerText = data.risk_message;
 
-async function loadMain() {
-    try {
-        const res = await fetch(apiUrl("/dashboard_api"));
-        const data = await res.json();
+                riskCard.classList.remove("risk-low", "risk-medium", "risk-high");
+                if (data.risk_level === "منخفض") riskCard.classList.add("risk-low");
+                if (data.risk_level === "متوسط") riskCard.classList.add("risk-medium");
+                if (data.risk_level === "مرتفع") riskCard.classList.add("risk-high");
 
-        if (!data.ok) return;
+                // ===== VOLATILITY =====
+                document.getElementById("volatilityValue").innerText =
+                    data.volatility_score.toFixed(1) + " / 100";
 
-        // السعر
-        document.getElementById("price").innerHTML =
-            "$" + data.price.toLocaleString();
+                // ===== LIQUIDITY =====
+                document.getElementById("liquidityValue").innerText = data.liquidity_pulse;
 
-        // نسبة التغير
-        const changeEl = document.getElementById("change");
-        const ch = data.change_pct;
-        changeEl.innerHTML = (ch >= 0 ? "+" : "") + ch.toFixed(2) + "%";
-        changeEl.className = "metric-main " + (ch >= 0 ? "green" : "red") + " pulse";
+                // ===== LAST ERROR =====
+                if (data.last_error.message)
+                    document.getElementById("lastError").innerText = data.last_error.message;
+                else
+                    document.getElementById("lastError").innerText = "لا يوجد أخطاء";
 
-        // المدى والتقلب
-        document.getElementById("range").innerHTML =
-            data.range_pct.toFixed(2) + "%";
-        document.getElementById("volatility").innerHTML =
-            data.volatility_score.toFixed(1);
+                // ===== ALERT FLASH =====
+                let alertCard = document.getElementById("alertFlashCard");
+                let aReason = data.last_auto_alert.reason;
+                let aTime = data.last_auto_alert.time;
 
-        // قوة الاتجاه
-        document.getElementById("strength").innerHTML =
-            data.strength_label;
+                document.getElementById("alertReason").innerText = aReason;
+                document.getElementById("alertTime").innerText = aTime || "---";
 
-        // المخاطر
-        const rl = document.getElementById("risk_level");
-        rl.innerHTML = data.risk_emoji + " " + data.risk_level;
+                if (aReason !== "no_alert" && aReason !== "duplicate")
+                    alertCard.classList.add("flash");
+                else
+                    alertCard.classList.remove("flash");
 
-        if (data.risk_level.includes("منخفض")) rl.className = "metric-main green";
-        else if (data.risk_level.includes("متوسط")) rl.className = "metric-main yellow";
-        else rl.className = "metric-main red";
-
-        document.getElementById("risk_msg").innerHTML = data.risk_message;
-
-        // ثيم الخلفية حسب المخاطر
-        applyRiskTheme(data.risk_level);
-
-        // السيولة
-        document.getElementById("liquidity").innerHTML = data.liquidity_pulse;
-
-        // بيانات آخر /auto_alert
-        const aa = data.last_auto_alert || {};
-        document.getElementById("aa_time").innerHTML = aa.time || "N/A";
-        document.getElementById("aa_reason").innerHTML = aa.reason || "N/A";
-        document.getElementById("aa_sent").innerHTML =
-            aa.sent === true ? "نعم ✅" :
-            (aa.sent === false ? "لا ❌" : "N/A");
-
-        // آخر خطأ
-        const err = data.last_error || {};
-        document.getElementById("err_time").innerHTML = err.time || "N/A";
-        document.getElementById("err_msg").textContent =
-            err.message || "لا يوجد أخطاء مسجلة حتى الآن.";
-    } catch (err) {
-        console.log("Dashboard Error:", err);
-    }
-}
-
-async function loadLogs() {
-    try {
-        const res = await fetch(apiUrl("/admin/logs"));
-        if (!res.ok) return;
-        const txt = await res.text();
-        document.getElementById("err_msg").textContent = txt || "لا يوجد لوجات.";
-    } catch (e) {
-        console.log("Logs error:", e);
-    }
-}
-
-async function reloadAlerts() {
-    try {
-        const res = await fetch(apiUrl("/admin/alerts_history"));
-        const data = await res.json();
-        if (!data.ok) {
-            document.getElementById("alerts_list").innerHTML = "لا يمكن تحميل السجل.";
-            return;
+            } catch (e) {
+                console.log("Error updating dashboard:", e);
+            }
         }
-        const list = data.alerts || [];
-        if (!list.length) {
-            document.getElementById("alerts_list").innerHTML = "لا توجد تحذيرات مسجلة بعد.";
-            return;
-        }
-        const html = list.slice().reverse().map(a => {
-            return (
-                "• [" + (a.time || "?") + "] " +
-                (a.source || "?") + " — " +
-                (a.reason || "") +
-                (a.change_pct != null ? (" (Δ " + a.change_pct.toFixed(2) + "%)") : "")
-            );
-        }).join("<br />");
-        document.getElementById("alerts_list").innerHTML = html;
-    } catch (e) {
-        console.log("Alerts error:", e);
-    }
-}
 
-async function clearAlerts() {
-    if (!confirm("متأكد إنك عايز تمسح سجل التحذيرات؟")) return;
-    try {
-        const res = await fetch(apiUrl("/admin/clear_alerts"));
-        const data = await res.json();
-        alert(data.message || "تم.");
-        reloadAlerts();
-    } catch (e) {
-        console.log("clearAlerts error:", e);
-    }
-}
-
-async function callAdmin(action) {
-    try {
-        const res = await fetch(apiUrl("/admin/" + action));
-        const data = await res.json();
-        alert(data.message || JSON.stringify(data));
-        reloadAlerts();
-    } catch (e) {
-        console.log("admin action error:", e);
-    }
-}
-
-// أول تحميل
-loadMain();
-reloadAlerts();
-
-// تحديث مستمر
-setInterval(loadMain, 10000);
-setInterval(loadLogs, 30000);
-setInterval(reloadAlerts, 60000);
-</script>
+        setInterval(loadStats, 2500);
+        loadStats();
+    </script>
 
 </body>
+
 </html>
