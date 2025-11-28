@@ -11,9 +11,9 @@ from flask import Flask, request, jsonify, Response
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 APP_BASE_URL = (os.getenv("APP_BASE_URL") or "").rstrip("/")
-ADMIN_CHAT_ID = 669209875  # عدّله لو احتجت
+ADMIN_CHAT_ID = 669209875  # لو حابب تغيّره لاحقاً
 
-# باسورد لوحة تحكم الأدمن (حطه فى Environment variable على Koyeb)
+# باسورد لوحة تحكم الأدمن (حطها فى Environment variable على Koyeb)
 ADMIN_DASH_PASSWORD = os.getenv("ADMIN_DASH_PASSWORD", "change_me")
 
 if not TELEGRAM_TOKEN:
@@ -24,20 +24,38 @@ if not APP_BASE_URL:
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# حالة آخر تحذير اتبعت تلقائى (عشان ما يتكررش)
+# حالة آخر تحذير اتبعت تلقائى
 LAST_ALERT_REASON = None
+
+# آخر استدعاء لـ /auto_alert (للوحة المراقبة)
+LAST_AUTO_ALERT_INFO = {
+    "time": None,
+    "reason": None,
+    "sent": False,
+}
+
+# آخر خطأ فى اللوج (يتحدث تلقائياً)
+LAST_ERROR_INFO = {
+    "time": None,
+    "message": None,
+}
 
 # ==============================
 #  إعداد اللوج + Log Buffer للـ Dashboard
 # ==============================
 
-# Buffer لآخر 200 log سطر للعرض فى الـ Dashboard
-LOG_BUFFER = deque(maxlen=200)
+LOG_BUFFER = deque(maxlen=200)  # آخر 200 سطر لوج
 
 class InMemoryLogHandler(logging.Handler):
     def emit(self, record):
+        global LAST_ERROR_INFO
         msg = self.format(record)
         LOG_BUFFER.append(msg)
+        if record.levelno >= logging.ERROR:
+            LAST_ERROR_INFO = {
+                "time": datetime.utcnow().isoformat(timespec="seconds"),
+                "message": msg,
+            }
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,10 +85,8 @@ def add_alert_history(source: str, reason: str, price: float | None = None, chan
     ALERTS_HISTORY.append(entry)
     logger.info("Alert history added: %s", entry)
 
-
 # Flask
 app = Flask(__name__)
-
 
 # ==============================
 #  دوال مساعدة لـ Telegram API
@@ -146,38 +162,25 @@ def answer_callback_query(
     except Exception as e:
         logger.exception("Exception while answering callback query: %s", e)
 
-
 # ==============================
 #   تجهيز رمز العملة + المنصات
 # ==============================
 
 def normalize_symbol(user_symbol: str):
-    """
-    يرجّع:
-    - base: اسم العملة بدون USDT
-    - binance_symbol: للـ Binance مثل BTCUSDT
-    - kucoin_symbol: للـ KuCoin مثل BTC-USDT
-    """
     base = user_symbol.strip().upper()
     base = base.replace("USDT", "").replace("-", "").strip()
     if not base:
         return None, None, None
 
-    binance_symbol = base + "USDT"       # مثال: BTC → BTCUSDT
-    kucoin_symbol = base + "-USDT"       # مثال: BTC → BTC-USDT
-
+    binance_symbol = base + "USDT"
+    kucoin_symbol = base + "-USDT"
     return base, binance_symbol, kucoin_symbol
-
 
 # ==============================
 #   جلب البيانات من Binance / KuCoin
 # ==============================
 
 def fetch_from_binance(symbol: str):
-    """
-    يحاول يجلب بيانات من Binance.
-    يرجّع dict قياسية أو None.
-    """
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr"
         r = requests.get(url, params={"symbol": symbol}, timeout=10)
@@ -212,10 +215,6 @@ def fetch_from_binance(symbol: str):
 
 
 def fetch_from_kucoin(symbol: str):
-    """
-    يحاول يجلب بيانات من KuCoin.
-    symbol بشكل BTC-USDT.
-    """
     try:
         url = "https://api.kucoin.com/api/v1/market/stats"
         r = requests.get(url, params={"symbol": symbol}, timeout=10)
@@ -256,12 +255,6 @@ def fetch_from_kucoin(symbol: str):
 
 
 def fetch_price_data(user_symbol: str):
-    """
-    يحاول يجلب بيانات السعر:
-    1) من Binance
-    2) لو فشلت أو الرمز مش موجود → من KuCoin
-    يرجع dict موحدة أو None.
-    """
     base, binance_symbol, kucoin_symbol = normalize_symbol(user_symbol)
     if not base:
         return None
@@ -276,16 +269,11 @@ def fetch_price_data(user_symbol: str):
 
     return None
 
-
 # ==============================
 #     صياغة رسالة التحليل للعملة
 # ==============================
 
 def format_analysis(user_symbol: str) -> str:
-    """
-    يرجّع نص التحليل النهائى لإرساله لتليجرام.
-    فيه دعم تلقائى لأى رمز (BTC, VAI, ...).
-    """
     data = fetch_price_data(user_symbol)
     if not data:
         return (
@@ -357,21 +345,11 @@ def format_analysis(user_symbol: str) -> str:
 
     return msg
 
-
 # ==============================
 #  محرك قوة السوق والسيولة والـ Risk
 # ==============================
 
 def compute_market_metrics() -> dict | None:
-    """
-    يعتمد فقط على BTCUSDT من Binance/KuCoin.
-    يرجّع dict فيها:
-    - price, change_pct, high, low
-    - range_pct
-    - volatility_score
-    - strength_label
-    - liquidity_pulse
-    """
     data = fetch_price_data("BTCUSDT")
     if not data:
         return None
@@ -422,15 +400,7 @@ def compute_market_metrics() -> dict | None:
         "liquidity_pulse": liquidity_pulse,
     }
 
-
 def evaluate_risk_level(change_pct: float, volatility_score: float) -> dict:
-    """
-    محرك المخاطر:
-    يرجّع:
-    - level: low / medium / high
-    - emoji
-    - message
-    """
     risk_score = abs(change_pct) + (volatility_score * 0.4)
 
     if risk_score < 25:
@@ -462,19 +432,20 @@ def evaluate_risk_level(change_pct: float, volatility_score: float) -> dict:
         "score": risk_score,
     }
 
+def _risk_level_ar(level: str) -> str:
+    if level == "low":
+        return "منخفض"
+    if level == "medium":
+        return "متوسط"
+    if level == "high":
+        return "مرتفع"
+    return level
 
 # ==============================
 #   تقرير السوق /market الحالى
 # ==============================
 
 def format_market_report() -> str:
-    """
-    تقرير سوق كامل مبنى فقط على BTC:
-    - قوة الاتجاه
-    - نبض السيولة
-    - التقلب
-    - تقييم المخاطر
-    """
     metrics = compute_market_metrics()
     if not metrics:
         return (
@@ -536,7 +507,6 @@ IN CRYPTO Ai 🤖
 
     return report
 
-
 # ==============================
 #   اختبار المخاطر السريع /risk_test
 # ==============================
@@ -574,16 +544,11 @@ def format_risk_test() -> str:
 
     return msg
 
-
 # ==============================
 #   نظام التحذير الذكى (Alerts)
 # ==============================
 
 def detect_alert_condition(metrics: dict, risk: dict) -> str | None:
-    """
-    يحدّد لو فيه حالة تستحق إرسال تحذير قوى.
-    يرجع سبب نصى لو فى تنبيه، أو None لو مفيش.
-    """
     price = metrics["price"]
     change = metrics["change_pct"]
     range_pct = metrics["range_pct"]
@@ -592,17 +557,14 @@ def detect_alert_condition(metrics: dict, risk: dict) -> str | None:
 
     reasons = []
 
-    # هبوط أو صعود حاد
     if change <= -3:
         reasons.append("هبوط حاد فى البيتكوين أكبر من -3% خلال 24 ساعة.")
     elif change >= 4:
         reasons.append("صعود قوى وسريع فى البيتكوين أكبر من +4% خلال 24 ساعة.")
 
-    # تقلب عالى
     if volatility_score >= 60 or range_pct >= 7:
         reasons.append("درجة التقلب مرتفعة بشكل ملحوظ فى الجلسة الحالية.")
 
-    # مستوى المخاطر
     if risk_level == "high":
         reasons.append("محرك المخاطر يشير إلى مستوى مرتفع حالياً.")
 
@@ -620,16 +582,11 @@ def detect_alert_condition(metrics: dict, risk: dict) -> str | None:
     )
     return joined
 
-
 # ==============================
 #   التحذير الموحد المختصر - format_ai_alert
 # ==============================
 
 def format_ai_alert() -> str:
-    """
-    التحذير الرئيسي الموحد (التلقائي + اليدوي المختصر)
-    يعتمد على النص المعتمد + ملء السعر والتغير والتاريخ.
-    """
     data = fetch_price_data("BTCUSDT")
     if not data:
         return "⚠️ تعذّر جلب بيانات البيتكوين حاليًا. حاول بعد قليل."
@@ -658,95 +615,33 @@ def format_ai_alert() -> str:
 
 • الاتجاه العام يميل للهبوط مع ضغط بيعي متزايد.
 • السوق يفقد الزخم بشكل واضح — المشترين ضعاف والسيولة تخرج تدريجيًا.
-• السعر يقترب من مناطق دعم حساسة جدًا بين 89,000$ و 88,500$.
+• السعر يقترب من مناطق دعم حساسة.
 • احتمالية استمرار الهبوط أعلى من احتمالية الارتداد اللحظى.
-
----
-
-🔵 المدرسة الفنية 
-
-• خروج من قناة صاعدة قديمة → كسر هابط واضح.
-• ضعف كبير فى شموع الصعود مع ظهور شموع اندفاع بيعية.
-• النطاق الحالي قريب من منطقة سعرية منخفضة (Discount) لكن بدون ظهور دخول قوى من المشترين.
-• حركة السعر خلال الساعات الأخيرة داخل نطاق ضيق يميل للدببة.
-
----
-
-🟣 الهارمونيك (Harmonic View)
-
-• رصد نموذج ABCD هابط قرب المنطقة الحالية.
-• منطقة الانعكاس المحتملة تقع بين:
-  → 88,800$ و 88,200$
-• دقة النموذج متوسطة، ويحتاج شمعة تأكيد قبل الاعتماد عليه.
 
 ---
 
 📉 المؤشرات الفنية
 
-• RSI عند 27 → تشبع بيعي واضح.
-• MACD سلبى → ميل هابط مستمر.
-• الزخم العام يضعف بدون إشارات انعكاس قوية.
-• الحركة اليومية: -3.8% خلال آخر 4 ساعات.
-• حجم التداول منخفض → أى ارتداد قد يكون ضعيف.
-
----
-
-🔗 بيانات الـ On-Chain (مختصرة وقوية)
-
-• الحيتان ضخت حوالى 1.8B$ للبورصات → ضغط بيع مؤسسى مباشر.
-• زيادة في التدفقات السلبية → خروج سيولة من السوق.
-• نشاط الشبكة منخفض → عمليات الشراء ضعيفة جدًا.
-• سلوك المحافظ الكبيرة يشير لمخاطر مرتفعة فى المدى القصير.
-
----
-
-💎 استثماريًا (مدى متوسط)
-
-• لا دخول قبل إغلاق ثابت فوق 91,500$.
-• أفضل مناطق عودة محتملة: 96,000$ – 98,000$ بعد تأكيد إيجابي.
-• كسر منطقة 88,000$ قد يفتح تصحيحًا أعمق.
-
----
-
-⚡ مضاربيًا (قصير المدى)
-
-• تجنب أى تداول برافعة طالما السعر تحت 90,800$.
-• كسر 88,000$ قد يفتح الطريق نحو:
-  → 86,800$
-  → 85,900$
-• أفضل نطاق ارتداد سريع محتمل:
-  → 89,300$ – 89,700$ (مع وقف خسارة صارم)
+• تغير السعر اليومى: {change:+.2f}% خلال آخر 24 ساعة.
+• درجة التقلب الحالية مرتبطة بزخم بيعى واضح.
 
 ---
 
 🤖 ملخص الذكاء الاصطناعي (IN CRYPTO Ai)
 
-• دمج نتائج: (الاتجاه – السيولة – النماذج – الحجم – النشاط – الزخم)
-  يشير إلى:
-  → استمرار ضغط بيعي مؤسسى خفيف إلى متوسط.
-  → احتمالية امتداد الهبوط طالما لا يوجد رفض سعرى قوى من مناطق الدعم.
-
-• توصية النظام:
-  → تجنب المخاطرة المفرطة حاليًا.
-  → التركيز على حماية رأس المال بدل البحث عن فرص دخول غير مؤكدة.
+• السوق فى وضع خطر نسبى.
+• التركيز الآن على حماية رأس المال أهم من البحث عن صفقات جديدة عالية المخاطرة.
 
 IN CRYPTO Ai 🤖
 """.strip()
 
     return alert_text
 
-
 # ==============================
 #   التحذير الموسع الخاص بالأدمن - /alert details
 # ==============================
 
 def format_ai_alert_details() -> str:
-    """
-    نسخة موسعة من التحذير للأدمن فقط:
-    - تفاصيل المدارس
-    - مستويات موسعة
-    - قراءات أدق من التحذير العادي
-    """
     metrics = compute_market_metrics()
     if not metrics:
         return (
@@ -768,15 +663,6 @@ def format_ai_alert_details() -> str:
     risk_emoji = risk["emoji"]
     risk_message = risk["message"]
 
-    # مستويات تقريبية
-    critical_support = round(low * 0.99, 0)
-    deep_support_1 = round(low * 0.98, 0)
-    deep_support_2 = round(low * 0.96, 0)
-    invest_zone_low = round(high * 1.06, 0)
-    invest_zone_high = round(high * 1.08, 0)
-    reentry_level = round(high * 1.02, 0)
-    leverage_cancel_level = round(price * 1.01, 0)
-
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
 
     details = f"""
@@ -788,74 +674,32 @@ def format_ai_alert_details() -> str:
 1️⃣ <b>السوق العام</b>
 - {strength_label}
 - {liquidity_pulse}
-- مستوى الخطر: {risk_emoji} <b>{risk_level}</b>
+- مستوى الخطر: {risk_emoji} <b>{_risk_level_ar(risk_level)}</b>
 - {risk_message}
 
-2️⃣ <b>سلوك السعر والهيكل</b>
-- اتجاه هابط قصير المدى.
-- سحب سيولة واضح من قمم قريبة.
-- مناطق سيولة أسفل: <b>${critical_support:,.0f}</b>
-- احتمالات زيارة أعمق: <b>${deep_support_1:,.0f}</b> ثم <b>${deep_support_2:,.0f}</b>
-
-3️⃣ <b>تحليل الجلسات والزمن</b>
-- الجلسة الحالية تميل للدببة.
-- احتمالات انعكاس تحتاج سلوك رفض سعرى واضح.
-- نشاط الحجم ضعيف → الارتدادات غير مؤكدة.
-
-4️⃣ <b>الموجة الحالية (Wave Logic)</b>
-- موجة هابطة اندفاعية.
-- علامات إرهاق بيعى خفيفة لكنها غير مؤكدة.
-- الموجات الصغيرة تظهر زخم هابط متتابع.
-
-5️⃣ <b>النماذج الفنية</b>
-- وجود كسر لقناة صاعدة → بداية هبوط.
-- شموع الهبوط أقوى من شموع الصعود.
-- محاولة تكوين نموذج تصحيح جانبى.
-
-6️⃣ <b>الهارمونيك</b>
-- نموذج ABCD هابط رُصد قريب من السعر.
-- منطقة الانعكاس (PRZ):
-  • بين <b>88,800$</b> و <b>88,200$</b>
-- يحتاج تأكيد بحجم ورفض سعرى.
-
-7️⃣ <b>السيولة والتدفق</b>
-- سيولة خارجة من السوق.
-- عمليات بيع من المحافظ الكبيرة.
-- ارتدادات بلا حجم = غير موثوقة.
-
-8️⃣ <b>الزخم والحجم</b>
-- زخم هابط متماسك.
-- حجم تداول ضعيف → يؤكد الهبوط.
-
-9️⃣ <b>نظرة استثمارية</b>
-- لا دخول قبل:
-  • <b>${reentry_level:,.0f}</b>
-- مناطق إعادة الدخول الأفضل:
-  • <b>${invest_zone_low:,.0f}</b> → <b>${invest_zone_high:,.0f}</b>
-
-🔟 <b>نظرة مضاربية</b>
-- تجنب الرافعة تحت:
-  • <b>${leverage_cancel_level:,.0f}</b>
-- احتمالات زيارة مستويات أدنى:
-  • {deep_support_1:,.0f}$
-  • {deep_support_2:,.0f}$
-- السكالب فقط من دعوم قوية مع SL قريب.
+2️⃣ <b>ملخص الأسعار</b>
+- أعلى سعر اليوم: <b>${high:,.0f}</b>
+- أقل سعر اليوم: <b>${low:,.0f}</b>
 
 🧠 <b>خلاصة الذكاء الاصطناعى</b>
-- السوق فى وضع خطر نسبى:
-  • زخم هابط  
-  • سيولة خارجة  
-  • غياب مشترين حقيقيين  
-- أفضل إجراء:
-  • حماية رأس المال  
-  • تجنب المخاطرة العالية  
-  • الانتظار لرفض سعرى واضح  
+- السوق فى وضع غير مريح للمخاطرة العالية.
+- التركيز على حماية رأس المال وانتظار فرص أوضح أفضل حالياً.
 
 IN CRYPTO Ai 🤖
 """.strip()
 
     return details
 
+# ==============================
+#   صلاحيات الأدمن للوحة المراقبة
+# ==============================
+
+def _check_admin_auth(req) -> bool:
+    token = req.args.get("pass") or req.headers.get("X-Admin-Token")
+    if not ADMIN_DASH_PASSWORD or ADMIN_DASH_PASSWORD == "change_me":
+        # للتجارب فقط لو نسيت تضبط الباسورد
+        return True
+    return token == ADMIN_DASH_PASSWORD
 
 # ==============================
 #          مسارات Flask الأساسية
@@ -865,15 +709,12 @@ IN CRYPTO Ai 🤖
 def index():
     return "Crypto ideas bot is running.", 200
 
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = request.get_json(force=True, silent=True) or {}
     logger.info("Update: %s", update)
 
-    # ================
-    #  callback_query
-    # ================
+    # callback_query
     if "callback_query" in update:
         cq = update["callback_query"]
         callback_id = cq.get("id")
@@ -884,11 +725,9 @@ def webhook():
         from_user = cq.get("from") or {}
         from_id = from_user.get("id")
 
-        # وقف اللودنج
         if callback_id:
             answer_callback_query(callback_id)
 
-        # زر عرض التفاصيل
         if data == "alert_details":
             if from_id != ADMIN_CHAT_ID:
                 if chat_id:
@@ -901,9 +740,7 @@ def webhook():
 
         return jsonify(ok=True)
 
-    # ================
-    #  رسائل عادية
-    # ================
+    # رسائل عادية
     if "message" not in update:
         return jsonify(ok=True)
 
@@ -929,31 +766,26 @@ def webhook():
         send_message(chat_id, welcome)
         return jsonify(ok=True)
 
-    # /btc
     if lower_text == "/btc":
         reply = format_analysis("BTCUSDT")
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # /vai
     if lower_text == "/vai":
         reply = format_analysis("VAIUSDT")
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # /market
     if lower_text == "/market":
         reply = format_market_report()
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # /risk_test
     if lower_text == "/risk_test":
         reply = format_risk_test()
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # /alert — الأدمن فقط
     if lower_text == "/alert":
         if chat_id != ADMIN_CHAT_ID:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
@@ -971,13 +803,9 @@ def webhook():
             ]
         }
         send_message_with_keyboard(chat_id, alert_text, keyboard)
-
-        # سجل التحذير اليدوى فى التاريخ
         add_alert_history("manual", "Manual /alert command")
-
         return jsonify(ok=True)
 
-    # /coin xxx
     if lower_text.startswith("/coin"):
         parts = lower_text.split()
         if len(parts) < 2:
@@ -993,13 +821,11 @@ def webhook():
             send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # أى رسالة أخرى
     send_message(
         chat_id,
         "⚙️ اكتب /start لعرض الأوامر.\nمثال: <code>/btc</code> أو <code>/coin btc</code>."
     )
     return jsonify(ok=True)
-
 
 # ==============================
 #   مسار المراقبة التلقائية /auto_alert
@@ -1007,46 +833,165 @@ def webhook():
 
 @app.route("/auto_alert", methods=["GET"])
 def auto_alert():
-    """
-    هذا المسار يتم استدعاؤه بواسطة Cron Job خارجى.
-    • يراقب السوق كل دقيقة.
-    • لو ظهر خطر جديد → يرسل تحذير تلقائى للأدمن فقط.
-    • لو نفس الخطر السابق → لا يعيد الإرسال.
-    """
-    global LAST_ALERT_REASON
+    global LAST_ALERT_REASON, LAST_AUTO_ALERT_INFO
 
     metrics = compute_market_metrics()
     if not metrics:
         logger.warning("auto_alert: cannot fetch metrics")
+        LAST_AUTO_ALERT_INFO = {
+            "time": datetime.utcnow().isoformat(timespec="seconds"),
+            "reason": "metrics_failed",
+            "sent": False,
+        }
         return jsonify(ok=False, alert_sent=False, reason="metrics_failed"), 200
 
     risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
     reason = detect_alert_condition(metrics, risk)
 
-    # لا يوجد خطر
     if not reason:
         if LAST_ALERT_REASON is not None:
             logger.info("auto_alert: market normal again → reset alert state.")
         LAST_ALERT_REASON = None
+        LAST_AUTO_ALERT_INFO = {
+            "time": datetime.utcnow().isoformat(timespec="seconds"),
+            "reason": "no_alert",
+            "sent": False,
+        }
         return jsonify(ok=True, alert_sent=False, reason="no_alert"), 200
 
-    # نفس التحذير القديم → لا يعاد إرساله
     if reason == LAST_ALERT_REASON:
         logger.info("auto_alert: skipped (same reason).")
+        LAST_AUTO_ALERT_INFO = {
+            "time": datetime.utcnow().isoformat(timespec="seconds"),
+            "reason": "duplicate",
+            "sent": False,
+        }
         return jsonify(ok=True, alert_sent=False, reason="duplicate"), 200
 
-    # خطر جديد → ارسال التحذير المختصر
     alert_text = format_ai_alert()
     send_message(ADMIN_CHAT_ID, alert_text)
 
     LAST_ALERT_REASON = reason
+    LAST_AUTO_ALERT_INFO = {
+        "time": datetime.utcnow().isoformat(timespec="seconds"),
+        "reason": reason,
+        "sent": True,
+    }
     logger.info("auto_alert: NEW alert sent! reason=%s", reason)
 
-    # سجل التحذير فى التاريخ
     add_alert_history("auto", reason, price=metrics["price"], change=metrics["change_pct"])
 
     return jsonify(ok=True, alert_sent=True, reason="sent"), 200
 
+# ==============================
+#   مسار اختبار بسيط من السيرفر
+# ==============================
+
+@app.route("/test_alert", methods=["GET"])
+def test_alert():
+    try:
+        alert_message = (
+            "🚨 *تنبيه تجريبي من السيرفر*\n"
+            "تم إرسال هذا التنبيه لاختبار النظام.\n"
+            "كل شيء شغال بنجاح 👍"
+        )
+        send_message(ADMIN_CHAT_ID, alert_message)
+        return {"ok": True, "sent": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+# ==============================
+#   API للداشبورد + مسارات الأدمن
+# ==============================
+
+@app.route("/dashboard_api", methods=["GET"])
+def dashboard_api():
+    if not _check_admin_auth(request):
+        return jsonify(ok=False, error="unauthorized"), 401
+
+    metrics = compute_market_metrics()
+    if not metrics:
+        return jsonify(ok=False, error="metrics_failed"), 200
+
+    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
+
+    return jsonify(
+        ok=True,
+        price=metrics["price"],
+        change_pct=metrics["change_pct"],
+        range_pct=metrics["range_pct"],
+        volatility_score=metrics["volatility_score"],
+        strength_label=metrics["strength_label"],
+        liquidity_pulse=metrics["liquidity_pulse"],
+        risk_level=_risk_level_ar(risk["level"]),
+        risk_emoji=risk["emoji"],
+        risk_message=risk["message"],
+        last_auto_alert=LAST_AUTO_ALERT_INFO,
+        last_error=LAST_ERROR_INFO,
+    )
+
+@app.route("/admin/dashboard", methods=["GET"])
+def admin_dashboard():
+    if not _check_admin_auth(request):
+        return Response("Unauthorized", status=401)
+
+    try:
+        with open("dashboard.html", encoding="utf-8") as f:
+            html = f.read()
+    except FileNotFoundError:
+        html = "<h1>dashboard.html غير موجود فى نفس مجلد bot.py</h1>"
+
+    return Response(html, mimetype="text/html")
+
+@app.route("/admin/logs", methods=["GET"])
+def admin_logs():
+    if not _check_admin_auth(request):
+        return Response("Unauthorized", status=401)
+    content = "\n".join(LOG_BUFFER)
+    return Response(content, mimetype="text/plain")
+
+@app.route("/admin/alerts_history", methods=["GET"])
+def admin_alerts_history():
+    if not _check_admin_auth(request):
+        return jsonify(ok=False, error="unauthorized"), 401
+
+    return jsonify(
+        ok=True,
+        alerts=list(ALERTS_HISTORY),
+    )
+
+@app.route("/admin/clear_alerts", methods=["GET"])
+def admin_clear_alerts():
+    if not _check_admin_auth(request):
+        return jsonify(ok=False, error="unauthorized"), 401
+
+    ALERTS_HISTORY.clear()
+    logger.info("Admin cleared alerts history from dashboard.")
+    return jsonify(ok=True, message="تم مسح سجل التحذيرات.")
+
+@app.route("/admin/force_alert", methods=["GET"])
+def admin_force_alert():
+    if not _check_admin_auth(request):
+        return jsonify(ok=False, error="unauthorized"), 401
+
+    text = format_ai_alert()
+    send_message(ADMIN_CHAT_ID, text)
+    add_alert_history("force", "Force alert from admin dashboard")
+    logger.info("Admin forced alert from dashboard.")
+    return jsonify(ok=True, message="تم إرسال التحذير الفورى للأدمن.")
+
+@app.route("/admin/test_alert", methods=["GET"])
+def admin_test_alert():
+    if not _check_admin_auth(request):
+        return jsonify(ok=False, error="unauthorized"), 401
+
+    test_msg = (
+        "🧪 <b>تنبيه تجريبى من لوحة التحكم</b>\n"
+        "هذا التنبيه للتأكد من أن نظام الإشعارات يعمل بشكل سليم."
+    )
+    send_message(ADMIN_CHAT_ID, test_msg)
+    logger.info("Admin sent test alert from dashboard.")
+    return jsonify(ok=True, message="تم إرسال تنبيه تجريبى للأدمن.")
 
 # ==============================
 #       تفعيل الـ Webhook
@@ -1064,424 +1009,6 @@ def setup_webhook():
         logger.info("Webhook response: %s - %s", r.status_code, r.text)
     except Exception as e:
         logger.exception("Error while setting webhook: %s", e)
-
-
-# ==============================
-#     دوال مساعدة لـ Dashboard
-# ==============================
-
-def _check_admin_auth(req: request) -> bool:
-    """
-    تأكيد إن المتصل معا باسورد الأدمن الصحيح.
-    بيقرأ من:
-    - query param: ?password=...
-    - أو الهيدر: X-Admin-Token
-    """
-    pwd = req.args.get("password") or req.headers.get("X-Admin-Token")
-    if not pwd:
-        return False
-    return pwd == ADMIN_DASH_PASSWORD
-
-
-def _unauthorized_response():
-    return Response(
-        """
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="utf-8" />
-<title>IN CRYPTO Ai — Admin</title>
-<style>
-body{background:#050816;color:#eee;font-family:system-ui,Arial;margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100vh;}
-.box{background:#0b1020;border-radius:16px;padding:24px;max-width:420px;width:90%;box-shadow:0 0 25px rgba(0,0,0,0.6);}
-h1{margin-top:0;font-size:22px;color:#fff;}
-label{display:block;margin-bottom:8px;font-size:14px;color:#ccc;}
-input[type=password]{width:100%;padding:10px;border-radius:10px;border:1px solid #222;background:#060a14;color:#eee;outline:none;}
-button{margin-top:14px;width:100%;padding:10px;border-radius:10px;border:none;background:#3b82f6;color:#fff;font-weight:bold;cursor:pointer;}
-small{color:#888;font-size:12px;}
-</style>
-</head>
-<body>
-<div class="box">
-  <h1>لوحة تحكم IN CRYPTO Ai</h1>
-  <form method="GET">
-    <label>كلمة سر الأدمن:</label>
-    <input type="password" name="password" placeholder="أدخل كلمة السر" />
-    <button type="submit">دخول</button>
-    <small>لو نسيت الباسورد، غيّره من متغير <b>ADMIN_DASH_PASSWORD</b> فى Koyeb.</small>
-  </form>
-</div>
-</body>
-</html>
-""",
-        status=401,
-        mimetype="text/html; charset=utf-8",
-    )
-
-
-# ==============================
-#         واجهة الـ Dashboard
-# ==============================
-
-@app.route("/admin", methods=["GET"])
-def admin_dashboard():
-    if not _check_admin_auth(request):
-        return _unauthorized_response()
-
-    html = """
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="utf-8" />
-<title>IN CRYPTO Ai — Admin Dashboard</title>
-<style>
-*{box-sizing:border-box}
-body{margin:0;font-family:system-ui,Arial;background:#020617;color:#e5e7eb;}
-.topbar{position:sticky;top:0;z-index:10;background:#020617ee;border-bottom:1px solid #111827;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;}
-.topbar h1{margin:0;font-size:18px;color:#fff;}
-.topbar .tag{font-size:11px;padding:3px 8px;border-radius:999px;background:#111827;color:#9ca3af;}
-.container{padding:16px;display:flex;flex-direction:column;gap:16px;}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
-.card{background:#020617;border-radius:16px;border:1px solid #111827;padding:14px 14px 10px;box-shadow:0 0 30px rgba(15,23,42,.6);}
-.card h2{margin:0 0 8px;font-size:15px;color:#f9fafb;}
-.card small{color:#6b7280;font-size:11px;}
-.metric-row{display:flex;justify-content:space-between;margin:4px 0;font-size:13px;}
-.metric-label{color:#9ca3af;}
-.metric-value{color:#e5e7eb;font-weight:500;}
-.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:999px;background:#0f172a;color:#9ca3af;margin-top:4px;}
-.badge span{font-size:14px;}
-.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
-button.action{border:none;border-radius:999px;padding:6px 10px;font-size:12px;cursor:pointer;background:#1d4ed8;color:#e5e7eb;}
-button.action.red{background:#b91c1c;}
-button.action.yellow{background:#a16207;}
-button.action.gray{background:#374151;}
-section{margin-top:8px;}
-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px;}
-th,td{border-bottom:1px solid #111827;padding:4px 6px;text-align:right;white-space:nowrap;}
-th{color:#9ca3af;font-weight:500;background:#020617;}
-tbody tr:hover{background:#020617;}
-pre.log{background:#020617;border-radius:8px;padding:8px;font-size:11px;max-height:260px;overflow:auto;direction:ltr;text-align:left;}
-footer{margin:10px 16px 16px;font-size:11px;color:#6b7280;text-align:center;}
-.chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:999px;background:#111827;color:#9ca3af;margin-left:4px;}
-.chip span{font-size:10px;}
-</style>
-</head>
-<body>
-<div class="topbar">
-  <div>
-    <h1>IN CRYPTO Ai — Admin</h1>
-    <div class="tag">لوحة تحكم مباشرة للبوت + نظام التحذير</div>
-  </div>
-  <div id="top-status" class="chip">
-    <span>●</span>
-    <span>Idle</span>
-  </div>
-</div>
-
-<div class="container">
-  <div class="grid">
-    <div class="card">
-      <h2>حالة السوق العامة</h2>
-      <small>مبنية على BTCUSDT</small>
-      <div id="market-metrics">
-        <div class="metric-row"><div class="metric-label">سعر البيتكوين:</div><div class="metric-value" id="m-price">—</div></div>
-        <div class="metric-row"><div class="metric-label">تغير 24 ساعة:</div><div class="metric-value" id="m-change">—</div></div>
-        <div class="metric-row"><div class="metric-label">مدى الحركة اليومى:</div><div class="metric-value" id="m-range">—</div></div>
-        <div class="metric-row"><div class="metric-label">درجة التقلب:</div><div class="metric-value" id="m-vol">—</div></div>
-        <div class="metric-row"><div class="metric-label">مستوى المخاطر:</div><div class="metric-value" id="m-risk">—</div></div>
-        <div class="badge" id="m-liq">نبض السيولة: —</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>نظام التحذير التلقائى</h2>
-      <small>متابعة /auto_alert</small>
-      <div id="alert-status">
-        <div class="metric-row"><div class="metric-label">آخر حالة:</div><div class="metric-value" id="a-last-reason">لا يوجد</div></div>
-        <div class="metric-row"><div class="metric-label">آخر مصدر:</div><div class="metric-value" id="a-last-source">—</div></div>
-        <div class="metric-row"><div class="metric-label">آخر سعر وقت التحذير:</div><div class="metric-value" id="a-last-price">—</div></div>
-        <div class="metric-row"><div class="metric-label">آخر تغير:</div><div class="metric-value" id="a-last-change">—</div></div>
-      </div>
-      <div class="btn-row">
-        <button class="action" onclick="forceAlert()">🚨 إرسال تحذير الآن</button>
-        <button class="action yellow" onclick="sendTest()">🧪 تنبيه تجريبى</button>
-        <button class="action gray" onclick="clearAlerts()">🧹 مسح سجل التحذيرات</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>التحذيرات الأخيرة</h2>
-      <small>آخر 100 تحذير (تلقائى + يدوى)</small>
-      <section id="alerts-table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>الوقت (UTC)</th>
-              <th>المصدر</th>
-              <th>السعر</th>
-              <th>التغير %</th>
-              <th>السبب</th>
-            </tr>
-          </thead>
-          <tbody id="alerts-body">
-          </tbody>
-        </table>
-      </section>
-    </div>
-
-    <div class="card">
-      <h2>آخر اللوجات</h2>
-      <small>آخر ~200 سطر Log من البوت</small>
-      <pre class="log" id="log-box">جارى التحميل...</pre>
-      <div class="btn-row">
-        <button class="action gray" onclick="refreshLogs()">🔄 تحديث اللوج</button>
-        <button class="action red" onclick="clearLogs()">🧹 مسح اللوج المحلى</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<footer>
-  IN CRYPTO Ai — Admin Dashboard • التحديث كل 5 ثوانى تلقائياً
-</footer>
-
-<script>
-const params = new URLSearchParams(window.location.search);
-const adminPassword = params.get("password") || "";
-
-async function apiGet(path){
-  const url = path + (path.includes("?") ? "&" : "?") + "password=" + encodeURIComponent(adminPassword);
-  const res = await fetch(url);
-  if(!res.ok) throw new Error("HTTP " + res.status);
-  return await res.json();
-}
-
-async function loadStatus(){
-  try{
-    const data = await apiGet("/admin/status");
-    document.getElementById("top-status").innerHTML = "<span style='color:#22c55e'>●</span><span>شغال</span>";
-
-    if(data.market){
-      const m = data.market;
-      document.getElementById("m-price").textContent = m.price ? ("$" + m.price.toLocaleString("en-US")) : "—";
-      document.getElementById("m-change").textContent = (m.change_pct !== null && m.change_pct !== undefined) ? (m.change_pct.toFixed(2) + "%") : "—";
-      document.getElementById("m-range").textContent = m.range_pct !== null ? m.range_pct.toFixed(2) + "%" : "—";
-      document.getElementById("m-vol").textContent = m.volatility_score !== null ? m.volatility_score.toFixed(1) + " / 100" : "—";
-      document.getElementById("m-risk").textContent = (m.risk_emoji || "") + " " + (m.risk_level_text || "—");
-      document.getElementById("m-liq").textContent = "نبض السيولة: " + (m.liquidity_pulse || "—");
-    }
-
-    if(data.last_alert){
-      const a = data.last_alert;
-      document.getElementById("a-last-reason").textContent = a.reason || "لا يوجد";
-      document.getElementById("a-last-source").textContent = a.source || "—";
-      document.getElementById("a-last-price").textContent = a.price ? ("$" + a.price.toLocaleString("en-US")) : "—";
-      document.getElementById("a-last-change").textContent = (a.change_pct !== null && a.change_pct !== undefined) ? a.change_pct.toFixed(2) + "%" : "—";
-    }
-
-  }catch(e){
-    document.getElementById("top-status").innerHTML = "<span style='color:#ef4444'>●</span><span>خطأ</span>";
-    console.error(e);
-  }
-}
-
-async function loadAlerts(){
-  try{
-    const data = await apiGet("/admin/alerts_history");
-    const body = document.getElementById("alerts-body");
-    body.innerHTML = "";
-    (data.alerts || []).forEach(a => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${a.time || ""}</td>
-        <td>${a.source || ""}</td>
-        <td>${a.price ? "$" + Number(a.price).toLocaleString("en-US") : "—"}</td>
-        <td>${(a.change_pct !== null && a.change_pct !== undefined) ? Number(a.change_pct).toFixed(2) + "%" : "—"}</td>
-        <td title="${a.reason || ""}">${(a.reason || "").slice(0,40)}${(a.reason && a.reason.length>40) ? "..." : ""}</td>
-      `;
-      body.appendChild(tr);
-    });
-  }catch(e){
-    console.error(e);
-  }
-}
-
-async function loadLogs(){
-  try{
-    const data = await apiGet("/admin/logs");
-    const box = document.getElementById("log-box");
-    box.textContent = (data.logs || []).join("\\n");
-    box.scrollTop = box.scrollHeight;
-  }catch(e){
-    console.error(e);
-  }
-}
-
-async function forceAlert(){
-  if(!confirm("متأكد إنك عايز تبعت تحذير فورى للأدمن؟")) return;
-  try{
-    const data = await apiGet("/admin/force_alert");
-    alert(data.message || "تم إرسال التحذير.");
-    loadAlerts();
-  }catch(e){
-    alert("حصل خطأ أثناء إرسال التحذير.");
-  }
-}
-
-async function sendTest(){
-  try{
-    const data = await apiGet("/admin/test_alert");
-    alert(data.message || "تم إرسال تنبيه تجريبى للأدمن.");
-  }catch(e){
-    alert("حصل خطأ أثناء إرسال التنبيه التجريبى.");
-  }
-}
-
-async function clearAlerts(){
-  if(!confirm("مسح سجل التحذيرات بالكامل؟")) return;
-  try{
-    const data = await apiGet("/admin/clear_alerts");
-    alert(data.message || "تم مسح سجل التحذيرات.");
-    loadAlerts();
-  }catch(e){
-    alert("حصل خطأ أثناء المسح.");
-  }
-}
-
-async function clearLogs(){
-  if(!confirm("مسح اللوج المحلى (buffer)؟")) return;
-  try{
-    const data = await apiGet("/admin/clear_logs");
-    alert(data.message || "تم مسح اللوج.");
-    loadLogs();
-  }catch(e){
-    alert("حصل خطأ أثناء المسح.");
-  }
-}
-
-function refreshLogs(){ loadLogs(); }
-
-function loop(){
-  loadStatus();
-  loadAlerts();
-  loadLogs();
-}
-
-loop();
-setInterval(loadStatus, 5000);
-setInterval(loadAlerts, 8000);
-</script>
-</body>
-</html>
-"""
-    return Response(html, mimetype="text/html; charset=utf-8")
-
-
-# ==============================
-#       REST API للـ Dashboard
-# ==============================
-
-@app.route("/admin/status", methods=["GET"])
-def admin_status():
-    if not _check_admin_auth(request):
-        return jsonify(ok=False, error="unauthorized"), 401
-
-    metrics = compute_market_metrics()
-    if metrics:
-        risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
-        market_obj = {
-            "price": metrics["price"],
-            "change_pct": metrics["change_pct"],
-            "range_pct": metrics["range_pct"],
-            "volatility_score": metrics["volatility_score"],
-            "risk_level": risk["level"],
-            "risk_emoji": risk["emoji"],
-            "risk_level_text": {
-                "low": "منخفض",
-                "medium": "متوسط",
-                "high": "مرتفع",
-            }.get(risk["level"], "غير محدد"),
-            "liquidity_pulse": metrics["liquidity_pulse"],
-        }
-    else:
-        market_obj = None
-
-    last_alert = ALERTS_HISTORY[-1] if ALERTS_HISTORY else None
-
-    return jsonify(
-        ok=True,
-        market=market_obj,
-        last_alert=last_alert,
-    )
-
-
-@app.route("/admin/logs", methods=["GET"])
-def admin_logs():
-    if not _check_admin_auth(request):
-        return jsonify(ok=False, error="unauthorized"), 401
-
-    return jsonify(
-        ok=True,
-        logs=list(LOG_BUFFER),
-    )
-
-
-@app.route("/admin/clear_logs", methods=["GET"])
-def admin_clear_logs():
-    if not _check_admin_auth(request):
-        return jsonify(ok=False, error="unauthorized"), 401
-
-    LOG_BUFFER.clear()
-    logger.info("Admin cleared log buffer from dashboard.")
-    return jsonify(ok=True, message="تم مسح اللوج المحلى.")
-
-
-@app.route("/admin/alerts_history", methods=["GET"])
-def admin_alerts_history():
-    if not _check_admin_auth(request):
-        return jsonify(ok=False, error="unauthorized"), 401
-
-    return jsonify(
-        ok=True,
-        alerts=list(ALERTS_HISTORY),
-    )
-
-
-@app.route("/admin/clear_alerts", methods=["GET"])
-def admin_clear_alerts():
-    if not _check_admin_auth(request):
-        return jsonify(ok=False, error="unauthorized"), 401
-
-    ALERTS_HISTORY.clear()
-    logger.info("Admin cleared alerts history from dashboard.")
-    return jsonify(ok=True, message="تم مسح سجل التحذيرات.")
-
-
-@app.route("/admin/force_alert", methods=["GET"])
-def admin_force_alert():
-    if not _check_admin_auth(request):
-        return jsonify(ok=False, error="unauthorized"), 401
-
-    text = format_ai_alert()
-    send_message(ADMIN_CHAT_ID, text)
-    add_alert_history("force", "Force alert from admin dashboard")
-    logger.info("Admin forced alert from dashboard.")
-    return jsonify(ok=True, message="تم إرسال التحذير الفورى للأدمن.")
-
-
-@app.route("/admin/test_alert", methods=["GET"])
-def admin_test_alert():
-    if not _check_admin_auth(request):
-        return jsonify(ok=False, error="unauthorized"), 401
-
-    test_msg = (
-        "🧪 <b>تنبيه تجريبى من لوحة التحكم</b>\n"
-        "هذا التنبيه للتأكد من أن نظام الإشعارات يعمل بشكل سليم."
-    )
-    send_message(ADMIN_CHAT_ID, test_msg)
-    logger.info("Admin sent test alert from dashboard.")
-    return jsonify(ok=True, message="تم إرسال تنبيه تجريبى للأدمن.")
-
 
 # ==============================
 #        تشغيل السيرفر
