@@ -22,8 +22,17 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 # ID بتاعك إنت بس للأوامر الخاصة
 ADMIN_CHAT_ID = 669209875  # عدّله لو احتجت
 
+# توكن خاص لصفحة الـ Dashboard (اختيارى)
+ADMIN_DASH_TOKEN = os.getenv("ADMIN_DASH_TOKEN")
+
 # حالة آخر تحذير اتبعت تلقائى (عشان ما يتكررش)
 LAST_ALERT_REASON = None
+
+# متغيرات مراقبة النظام (Dashboard)
+LAST_METRICS = None
+LAST_AUTO_ALERT_INFO = None
+LAST_ALERT_SENT_AT = None
+LAST_ERROR_INFO = None
 
 # إعداد اللوج
 logging.basicConfig(
@@ -336,6 +345,8 @@ def compute_market_metrics() -> dict | None:
     - strength_label
     - liquidity_pulse
     """
+    global LAST_METRICS
+
     data = fetch_price_data("BTCUSDT")
     if not data:
         return None
@@ -375,7 +386,7 @@ def compute_market_metrics() -> dict | None:
     else:
         liquidity_pulse = "يوجد بعض الضغوط البيعية لكن بدون ذعر كبير."
 
-    return {
+    metrics = {
         "price": price,
         "change_pct": change,
         "high": high,
@@ -384,7 +395,11 @@ def compute_market_metrics() -> dict | None:
         "volatility_score": volatility_score,
         "strength_label": strength_label,
         "liquidity_pulse": liquidity_pulse,
+        "updated_at": datetime.utcnow().isoformat(timespec="seconds"),
     }
+
+    LAST_METRICS = metrics
+    return metrics
 
 
 def evaluate_risk_level(change_pct: float, volatility_score: float) -> dict:
@@ -822,6 +837,21 @@ IN CRYPTO Ai 🤖
 
 
 # ==============================
+#   فلتر أخطاء عام عشان الـ Dashboard
+# ==============================
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    global LAST_ERROR_INFO
+    LAST_ERROR_INFO = {
+        "time": datetime.utcnow().isoformat(timespec="seconds"),
+        "error": repr(e),
+    }
+    logger.exception("Unhandled exception: %s", e)
+    return "Internal Server Error", 500
+
+
+# ==============================
 #          مسارات Flask
 # ==============================
 
@@ -973,11 +1003,16 @@ def auto_alert():
     • لو ظهر خطر جديد → يرسل تحذير تلقائى للأدمن فقط.
     • لو نفس الخطر السابق → لا يعيد الإرسال.
     """
-    global LAST_ALERT_REASON
+    global LAST_ALERT_REASON, LAST_AUTO_ALERT_INFO, LAST_ALERT_SENT_AT
 
     metrics = compute_market_metrics()
     if not metrics:
         logger.warning("auto_alert: cannot fetch metrics")
+        LAST_AUTO_ALERT_INFO = {
+            "time": datetime.utcnow().isoformat(timespec="seconds"),
+            "alert_sent": False,
+            "reason": "metrics_failed",
+        }
         return jsonify(ok=False, alert_sent=False, reason="metrics_failed"), 200
 
     risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
@@ -988,11 +1023,21 @@ def auto_alert():
         if LAST_ALERT_REASON is not None:
             logger.info("auto_alert: market normal again → reset alert state.")
         LAST_ALERT_REASON = None
+        LAST_AUTO_ALERT_INFO = {
+            "time": datetime.utcnow().isoformat(timespec="seconds"),
+            "alert_sent": False,
+            "reason": "no_alert",
+        }
         return jsonify(ok=True, alert_sent=False, reason="no_alert"), 200
 
     # نفس التحذير القديم → لا يعاد إرساله
     if reason == LAST_ALERT_REASON:
         logger.info("auto_alert: skipped (same reason).")
+        LAST_AUTO_ALERT_INFO = {
+            "time": datetime.utcnow().isoformat(timespec="seconds"),
+            "alert_sent": False,
+            "reason": "duplicate",
+        }
         return jsonify(ok=True, alert_sent=False, reason="duplicate"), 200
 
     # خطر جديد → ارسال التحذير المختصر
@@ -1000,6 +1045,12 @@ def auto_alert():
     send_message(ADMIN_CHAT_ID, alert_text)
 
     LAST_ALERT_REASON = reason
+    LAST_ALERT_SENT_AT = datetime.utcnow().isoformat(timespec="seconds")
+    LAST_AUTO_ALERT_INFO = {
+        "time": LAST_ALERT_SENT_AT,
+        "alert_sent": True,
+        "reason": reason,
+    }
     logger.info("auto_alert: NEW alert sent! reason=%s", reason)
 
     return jsonify(ok=True, alert_sent=True, reason="sent"), 200
@@ -1031,14 +1082,169 @@ def setup_webhook():
 def test_alert():
     try:
         alert_message = (
-            "🚨 *تنبيه تجريبي*\n"
-            "تم إرسال هذا التنبيه لاختبار النظام.\n"
+            "🚨 <b>تنبيه تجريبي</b>\n"
+            "تم إرسال هذا التنبيه لاختبار نظام التحذيرات.\n"
             "كل شيء شغال بنجاح 👍"
         )
         send_message(ADMIN_CHAT_ID, alert_message)
         return {"ok": True, "sent": True}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        logger.exception("Error in /test_alert: %s", e)
+        return {"ok": False, "error": str(e)}, 500
+
+
+# ==============================
+#       Dashboard بسيطة للمراقبة
+# ==============================
+
+@app.route("/dashboard")
+def dashboard():
+    # حماية بسيطة بالـ token إن وجد
+    if ADMIN_DASH_TOKEN:
+        token = request.args.get("token")
+        if token != ADMIN_DASH_TOKEN:
+            return "Forbidden", 403
+
+    metrics = LAST_METRICS
+    auto_info = LAST_AUTO_ALERT_INFO
+    error_info = LAST_ERROR_INFO
+
+    price = metrics["price"] if metrics else "N/A"
+    change = metrics["change_pct"] if metrics else "N/A"
+    vol_score = metrics["volatility_score"] if metrics else "N/A"
+    range_pct = metrics["range_pct"] if metrics else "N/A"
+    strength_label = metrics["strength_label"] if metrics else "لا توجد بيانات"
+    liquidity_pulse = metrics["liquidity_pulse"] if metrics else "لا توجد بيانات"
+    updated_at = metrics["updated_at"] if metrics else "لم يتم التحديث بعد"
+
+    if metrics:
+        risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
+        risk_level = risk["level"]
+        risk_emoji = risk["emoji"]
+        risk_msg = risk["message"]
+    else:
+        risk_level = "unknown"
+        risk_emoji = "⚪"
+        risk_msg = "لا توجد بيانات كافية عن المخاطر بعد."
+
+    last_auto_time = auto_info["time"] if auto_info else "N/A"
+    last_auto_reason = auto_info["reason"] if auto_info else "N/A"
+    last_auto_sent = auto_info["alert_sent"] if auto_info else False
+
+    last_error_time = error_info["time"] if error_info else "N/A"
+    last_error_text = error_info["error"] if error_info else "لا يوجد أخطاء مسجلة."
+
+    html = f"""
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>IN CRYPTO Ai — Dashboard</title>
+  <style>
+    body {{
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      margin: 0;
+      padding: 20px;
+    }}
+    h1, h2 {{
+      color: #f9fafb;
+    }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }}
+    .card {{
+      background: #020617;
+      border-radius: 16px;
+      padding: 16px 18px;
+      border: 1px solid #1f2937;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+    }}
+    .tag {{
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      margin-left: 4px;
+    }}
+    .tag-green {{ background: #065f46; }}
+    .tag-yellow {{ background: #854d0e; }}
+    .tag-red {{ background: #7f1d1d; }}
+    .muted {{ color: #9ca3af; font-size: 13px; }}
+    .value {{ font-size: 20px; font-weight: 600; }}
+    .danger {{ color: #fecaca; }}
+    .ok {{ color: #bbf7d0; }}
+    .warn {{ color: #facc15; }}
+    code {{
+      background: #111827;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 12px;
+    }}
+  </style>
+</head>
+<body>
+  <h1>IN CRYPTO Ai — لوحة مراقبة النظام</h1>
+  <p class="muted">مراقبة حية لتحذيرات البيتكوين، المخاطر، وأى أخطاء فى البوت.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>حالة السوق</h2>
+      <p>سعر البيتكوين الحالى:</p>
+      <p class="value">${price if isinstance(price, str) else f"{price:,.0f}"}</p>
+      <p>تغير 24 ساعة: <span class="value">{change if isinstance(change, str) else f"{change:+.2f}"}%</span></p>
+      <p>مدى الحركة اليومى: {range_pct if isinstance(range_pct, str) else f"{range_pct:.2f}%"}<br>
+         درجة التقلب: {vol_score if isinstance(vol_score, str) else f"{vol_score:.1f}"} / 100</p>
+      <p class="muted">آخر تحديث: {updated_at}</p>
+    </div>
+
+    <div class="card">
+      <h2>المخاطر</h2>
+      <p>مستوى المخاطر الحالى:</p>
+      <p class="value">
+        {risk_emoji} {risk_level}
+      </p>
+      <p>{risk_msg}</p>
+    </div>
+
+    <div class="card">
+      <h2>الاتجاه والسيولة</h2>
+      <p><b>قوة الاتجاه:</b><br>{strength_label}</p>
+      <p><b>نبض السيولة:</b><br>{liquidity_pulse}</p>
+    </div>
+
+    <div class="card">
+      <h2>نظام التحذير التلقائى</h2>
+      <p>آخر استدعاء لـ <code>/auto_alert</code>:</p>
+      <p class="value">{last_auto_time}</p>
+      <p>السبب: {last_auto_reason}</p>
+      <p>تم إرسال تحذير؟ 
+        {"<span class='ok'>نعم ✅</span>" if last_auto_sent else "<span class='muted'>لا</span>"}
+      </p>
+      <p class="muted">آخر تحذير فعلى تم إرساله فى:<br>{LAST_ALERT_SENT_AT or "لم يتم إرسال تحذير بعد"}</p>
+    </div>
+
+    <div class="card">
+      <h2>آخر خطأ فى النظام</h2>
+      <p class="muted">الوقت:</p>
+      <p class="value danger">{last_error_time}</p>
+      <p class="muted">التفاصيل الخام:</p>
+      <pre style="white-space: pre-wrap; font-size:12px; background:#020617; padding:8px; border-radius:8px; border:1px solid #1f2937; max-height:200px; overflow:auto;">{last_error_text}</pre>
+    </div>
+  </div>
+
+  <p class="muted" style="margin-top:24px;">
+    تلميح: يمكنك اختبار التنبيهات سريعًا من خلال زيارة <code>/test_alert</code> أو مراقبة <code>/auto_alert</code> من الـ Cron Job.
+  </p>
+</body>
+</html>
+    """.strip()
+
+    return html
 
 
 # ==============================
