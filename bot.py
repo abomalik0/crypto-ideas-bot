@@ -1705,3 +1705,16 @@ def setup_webhook():
 
     except Exception as e:
         logger.exception("Error while setting webhook: %s", e)
+        
+# =====================================
+# تشغيل البوت — Main Runner
+# =====================================
+if __name__ == "__main__":
+    try:
+        logger.info("Setting webhook on startup...")
+        setup_webhook()
+    except Exception as e:
+        logger.exception("Webhook setup failed on startup: %s", e)
+
+    logger.info("Starting Flask server...")
+    app.run(host="0.0.0.0", port=8080)
