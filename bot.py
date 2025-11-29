@@ -7,10 +7,6 @@ from collections import deque
 from flask import Flask, request, jsonify, Response
 import threading  # ✅ لإدارة الـ scheduler الداخلى
 
-# ✅ جلسة HTTP واحدة مشتركة لكل الطلبات (Turbo خفيف)
-SESSION = requests.Session()
-SESSION.headers.update({"Connection": "keep-alive"})
-
 # =====================================================
 #  الجزء الأول: الإعدادات، الدوال المساعدة، التحليلات
 # =====================================================
@@ -114,6 +110,17 @@ KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
 app = Flask(__name__)
 
 # ==============================
+#   HTTP Session موحد للسرعة
+# ==============================
+
+HTTP_SESSION = requests.Session()
+HTTP_SESSION.headers.update(
+    {
+        "User-Agent": "InCryptoAI-Bot/1.0",
+    }
+)
+
+# ==============================
 #  دوال مساعدة لـ Telegram API
 # ==============================
 
@@ -127,8 +134,7 @@ def send_message(chat_id: int, text: str, parse_mode: str = "HTML"):
             "text": text,
             "parse_mode": parse_mode,
         }
-        # 🔁 استخدام SESSION بدل requests.post
-        r = SESSION.post(url, json=payload, timeout=10)
+        r = HTTP_SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram sendMessage error: %s - %s",
@@ -154,7 +160,7 @@ def send_message_with_keyboard(
             "parse_mode": parse_mode,
             "reply_markup": reply_markup,
         }
-        r = SESSION.post(url, json=payload, timeout=10)
+        r = HTTP_SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram sendMessage_with_keyboard error: %s - %s",
@@ -179,7 +185,7 @@ def answer_callback_query(
         }
         if text:
             payload["text"] = text
-        r = SESSION.post(url, json=payload, timeout=10)
+        r = HTTP_SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram answerCallbackQuery error: %s - %s",
@@ -238,7 +244,7 @@ def _set_cached(key: str, data: dict):
 def fetch_from_binance(symbol: str):
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr"
-        r = SESSION.get(url, params={"symbol": symbol}, timeout=10)
+        r = HTTP_SESSION.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
             logger.info(
                 "Binance error %s for %s: %s",
@@ -272,7 +278,7 @@ def fetch_from_binance(symbol: str):
 def fetch_from_kucoin(symbol: str):
     try:
         url = "https://api.kucoin.com/api/v1/market/stats"
-        r = SESSION.get(url, params={"symbol": symbol}, timeout=10)
+        r = HTTP_SESSION.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
             logger.info(
                 "KuCoin error %s for %s: %s",
@@ -585,6 +591,7 @@ def fusion_ai_brain(metrics: dict, risk: dict) -> dict:
 # ==============================
 #  دالة مساعدة لضبط طول رسالة تيليجرام
 # ==============================
+
 
 def _shrink_text_preserve_content(text: str, limit: int = 4000) -> str:
     """
@@ -1270,8 +1277,81 @@ ETH يتحرك فى اتجاه جانبى مرتبط بدرجة كبيرة بح�
 
 
 # =====================================================
-#  الجزء الثانى: صلاحيات الأدمن، المسارات، الـ Scheduler
+#  الجزء الثانى: Real-Time Cache + صلاحيات الأدمن، المسارات، الـ Scheduler
 # =====================================================
+
+# ==============================
+#   Real-Time Cache للردود الجاهزة
+# ==============================
+
+REALTIME_CACHE = {
+    "btc_analysis": None,
+    "market_report": None,
+    "risk_test": None,
+    "weekly_report": None,
+    "alert_text": None,
+    "last_update": None,
+}
+REALTIME_TTL_SECONDS = 8  # صلاحية الردود الجاهزة
+
+
+def get_cached_response(key: str, builder):
+    """
+    لو فى رد جاهز حديث → استخدمه.
+    لو لأ → ابنيه بالطريقة العادية.
+    """
+    try:
+        now = time.time()
+        last_update = REALTIME_CACHE.get("last_update")
+        cached_value = REALTIME_CACHE.get(key)
+
+        if cached_value and last_update and (now - last_update) <= REALTIME_TTL_SECONDS:
+            return cached_value
+
+        # fallback: ابنى الرد فورًا بالطريقة العادية
+        return builder()
+    except Exception as e:
+        logger.exception("get_cached_response error for %s: %s", key, e)
+        return builder()
+
+
+def realtime_engine_loop():
+    """
+    محرك Real-Time:
+    - كل 5 ثوانى يبنى:
+        * تحليل BTC
+        * تقرير السوق
+        * اختبار المخاطر
+        * التقرير الأسبوعى
+        * التحذير
+    - يحطهم فى REALTIME_CACHE عشان الأوامر ترد فورًا.
+    """
+    global REALTIME_CACHE
+    logger.info("Realtime engine loop started.")
+
+    while True:
+        try:
+            btc_msg = format_analysis("BTCUSDT")
+            market_msg = format_market_report()
+            risk_msg = format_risk_test()
+            weekly_msg = format_weekly_ai_report()
+            alert_msg = format_ai_alert()
+
+            REALTIME_CACHE = {
+                "btc_analysis": btc_msg,
+                "market_report": market_msg,
+                "risk_test": risk_msg,
+                "weekly_report": weekly_msg,
+                "alert_text": alert_msg,
+                "last_update": time.time(),
+            }
+
+            logger.debug("Realtime engine: cache updated.")
+            time.sleep(5)
+        except Exception as e:
+            logger.exception("Error in realtime engine loop: %s", e)
+            time.sleep(5)
+
 
 # ==============================
 #   صلاحيات الأدمن للوحة المراقبة
@@ -1357,22 +1437,22 @@ def webhook():
         return jsonify(ok=True)
 
     if lower_text == "/btc":
-        reply = format_analysis("BTCUSDT")
+        reply = get_cached_response("btc_analysis", lambda: format_analysis("BTCUSDT"))
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
     if lower_text == "/vai":
-        reply = format_analysis("VAIUSDT")
+        reply = format_analysis("VAIUSDT")  # VAI مش فى الكاش لأنها عملة خاصة
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
     if lower_text == "/market":
-        reply = format_market_report()
+        reply = get_cached_response("market_report", format_market_report)
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
     if lower_text == "/risk_test":
-        reply = format_risk_test()
+        reply = get_cached_response("risk_test", format_risk_test)
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
@@ -1381,7 +1461,7 @@ def webhook():
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
-        alert_text = format_ai_alert()
+        alert_text = get_cached_response("alert_text", format_ai_alert)
         keyboard = {
             "inline_keyboard": [
                 [
@@ -1618,7 +1698,8 @@ def send_weekly_report_to_all_chats() -> list[int]:
     - /weekly_ai_report
     - الـ Scheduler الداخلى
     """
-    report = format_weekly_ai_report()
+    # استخدم التقرير الجاهز لو موجود وحديث، وإلا ابنِ واحد جديد
+    report = get_cached_response("weekly_report", format_weekly_ai_report)
     sent_to: list[int] = []
 
     for cid in list(KNOWN_CHAT_IDS):
@@ -1656,7 +1737,7 @@ def admin_weekly_ai_test():
     if not _check_admin_auth(request):
         return jsonify(ok=False, error="unauthorized"), 401
 
-    report = format_weekly_ai_report()
+    report = get_cached_response("weekly_report", format_weekly_ai_report)
     send_message(ADMIN_CHAT_ID, report)
     logger.info("Admin requested weekly AI report test.")
     return jsonify(
@@ -1708,7 +1789,7 @@ def setup_webhook():
     webhook_url = f"{APP_BASE_URL}/webhook"
 
     try:
-        r = SESSION.get(
+        r = HTTP_SESSION.get(
             f"{TELEGRAM_API}/setWebhook",
             params={"url": webhook_url},
             timeout=10,
@@ -1732,11 +1813,19 @@ if __name__ == "__main__":
 
     # ✅ تشغيل الـ Scheduler فى Thread منفصل
     try:
-        t = threading.Thread(target=weekly_scheduler_loop, daemon=True)
-        t.start()
+        t_weekly = threading.Thread(target=weekly_scheduler_loop, daemon=True)
+        t_weekly.start()
         logger.info("Weekly scheduler thread started.")
     except Exception as e:
         logger.exception("Failed to start weekly scheduler thread: %s", e)
+
+    # ✅ تشغيل محرك الـ Real-Time فى Thread منفصل
+    try:
+        t_rt = threading.Thread(target=realtime_engine_loop, daemon=True)
+        t_rt.start()
+        logger.info("Realtime engine thread started.")
+    except Exception as e:
+        logger.exception("Failed to start realtime engine thread: %s", e)
 
     logger.info("Starting Flask server...")
     app.run(host="0.0.0.0", port=8080)
