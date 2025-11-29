@@ -7,6 +7,10 @@ from collections import deque
 from flask import Flask, request, jsonify, Response
 import threading  # ✅ لإدارة الـ scheduler الداخلى
 
+# ✅ جلسة HTTP واحدة مشتركة لكل الطلبات (Turbo خفيف)
+SESSION = requests.Session()
+SESSION.headers.update({"Connection": "keep-alive"})
+
 # =====================================================
 #  الجزء الأول: الإعدادات، الدوال المساعدة، التحليلات
 # =====================================================
@@ -123,7 +127,8 @@ def send_message(chat_id: int, text: str, parse_mode: str = "HTML"):
             "text": text,
             "parse_mode": parse_mode,
         }
-        r = requests.post(url, json=payload, timeout=10)
+        # 🔁 استخدام SESSION بدل requests.post
+        r = SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram sendMessage error: %s - %s",
@@ -149,7 +154,7 @@ def send_message_with_keyboard(
             "parse_mode": parse_mode,
             "reply_markup": reply_markup,
         }
-        r = requests.post(url, json=payload, timeout=10)
+        r = SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram sendMessage_with_keyboard error: %s - %s",
@@ -174,7 +179,7 @@ def answer_callback_query(
         }
         if text:
             payload["text"] = text
-        r = requests.post(url, json=payload, timeout=10)
+        r = SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram answerCallbackQuery error: %s - %s",
@@ -233,7 +238,7 @@ def _set_cached(key: str, data: dict):
 def fetch_from_binance(symbol: str):
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr"
-        r = requests.get(url, params={"symbol": symbol}, timeout=10)
+        r = SESSION.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
             logger.info(
                 "Binance error %s for %s: %s",
@@ -267,7 +272,7 @@ def fetch_from_binance(symbol: str):
 def fetch_from_kucoin(symbol: str):
     try:
         url = "https://api.kucoin.com/api/v1/market/stats"
-        r = requests.get(url, params={"symbol": symbol}, timeout=10)
+        r = SESSION.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
             logger.info(
                 "KuCoin error %s for %s: %s",
@@ -1703,7 +1708,7 @@ def setup_webhook():
     webhook_url = f"{APP_BASE_URL}/webhook"
 
     try:
-        r = requests.get(
+        r = SESSION.get(
             f"{TELEGRAM_API}/setWebhook",
             params={"url": webhook_url},
             timeout=10,
