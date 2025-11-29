@@ -22,6 +22,9 @@ ADMIN_CHAT_ID = 669209875  # لو حابب تغيّره لاحقاً
 # باسورد لوحة تحكم الأدمن (حطها فى Environment variable على Koyeb)
 ADMIN_DASH_PASSWORD = os.getenv("ADMIN_DASH_PASSWORD", "change_me")
 
+# [Z-PRIME] وضع الديبج / السرعة
+BOT_DEBUG = os.getenv("BOT_DEBUG", "0") == "1"
+
 if not TELEGRAM_TOKEN:
     raise RuntimeError("البيئة لا تحتوى على TELEGRAM_TOKEN")
 
@@ -49,10 +52,6 @@ LAST_ERROR_INFO = {
 # 🔁 آخر مرة تبعت فيها التقرير الأسبوعى أوتوماتيك (YYYY-MM-DD)
 LAST_WEEKLY_SENT_DATE: str | None = None
 
-# ثوابت للـ Timeouts
-TELEGRAM_TIMEOUT = 10
-EXCHANGE_TIMEOUT = 8
-
 # ==============================
 #  إعداد اللوج + Log Buffer للـ Dashboard
 # ==============================
@@ -72,8 +71,11 @@ class InMemoryLogHandler(logging.Handler):
             }
 
 
+# [Z-PRIME] مستوى اللوج حسب وضع الديبج
+LOG_LEVEL = logging.DEBUG if BOT_DEBUG else logging.INFO
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=LOG_LEVEL,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -138,7 +140,7 @@ def send_message(chat_id: int, text: str, parse_mode: str = "HTML"):
             "text": text,
             "parse_mode": parse_mode,
         }
-        r = HTTP_SESSION.post(url, json=payload, timeout=TELEGRAM_TIMEOUT)
+        r = HTTP_SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram sendMessage error: %s - %s",
@@ -164,7 +166,7 @@ def send_message_with_keyboard(
             "parse_mode": parse_mode,
             "reply_markup": reply_markup,
         }
-        r = HTTP_SESSION.post(url, json=payload, timeout=TELEGRAM_TIMEOUT)
+        r = HTTP_SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram sendMessage_with_keyboard error: %s - %s",
@@ -189,7 +191,7 @@ def answer_callback_query(
         }
         if text:
             payload["text"] = text
-        r = HTTP_SESSION.post(url, json=payload, timeout=TELEGRAM_TIMEOUT)
+        r = HTTP_SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram answerCallbackQuery error: %s - %s",
@@ -222,7 +224,6 @@ def normalize_symbol(user_symbol: str):
 
 PRICE_CACHE: dict[str, dict] = {}
 CACHE_TTL_SECONDS = 5  # الكاش يعيش 5 ثوانى فقط
-PRICE_CACHE_MAX_AGE = CACHE_TTL_SECONDS * 6  # بعد 30 ثانية نمسحه نهائياً
 
 
 def _get_cached(key: str):
@@ -241,22 +242,6 @@ def _set_cached(key: str, data: dict):
     }
 
 
-def clean_price_cache():
-    """تنظيف بسيط للكاش لتجنب تضخمه"""
-    try:
-        now = time.time()
-        to_delete = []
-        for k, v in PRICE_CACHE.items():
-            if now - v["time"] > PRICE_CACHE_MAX_AGE:
-                to_delete.append(k)
-        for k in to_delete:
-            PRICE_CACHE.pop(k, None)
-        if to_delete:
-            logger.debug("Price cache cleaned: removed %d keys", len(to_delete))
-    except Exception as e:
-        logger.exception("Error while cleaning price cache: %s", e)
-
-
 # ==============================
 #   جلب البيانات من Binance / KuCoin
 # ==============================
@@ -265,7 +250,7 @@ def clean_price_cache():
 def fetch_from_binance(symbol: str):
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr"
-        r = HTTP_SESSION.get(url, params={"symbol": symbol}, timeout=EXCHANGE_TIMEOUT)
+        r = HTTP_SESSION.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
             logger.info(
                 "Binance error %s for %s: %s",
@@ -299,7 +284,7 @@ def fetch_from_binance(symbol: str):
 def fetch_from_kucoin(symbol: str):
     try:
         url = "https://api.kucoin.com/api/v1/market/stats"
-        r = HTTP_SESSION.get(url, params={"symbol": symbol}, timeout=EXCHANGE_TIMEOUT)
+        r = HTTP_SESSION.get(url, params={"symbol": symbol}, timeout=10)
         if r.status_code != 200:
             logger.info(
                 "KuCoin error %s for %s: %s",
@@ -439,6 +424,33 @@ def compute_market_metrics() -> dict | None:
         data["high"],
         data["low"],
     )
+
+
+# [Z-PRIME] كاش خاص بالمتركس العامة للسوق (BTC)
+MARKET_METRICS_CACHE = {
+    "data": None,
+    "time": 0.0,
+}
+MARKET_TTL_SECONDS = 4  # صلاحية قراءة السوق العامة (ثوانى قليلة)
+
+
+def get_market_metrics_cached() -> dict | None:
+    """
+    - لو فيه متركس حديثة → استخدمها.
+    - لو لأ → نعيد حسابها مرة واحدة ونخزنها.
+    """
+    now = time.time()
+    data = MARKET_METRICS_CACHE.get("data")
+    ts = MARKET_METRICS_CACHE.get("time", 0.0)
+
+    if data and (now - ts) <= MARKET_TTL_SECONDS:
+        return data
+
+    data = compute_market_metrics()
+    if data:
+        MARKET_METRICS_CACHE["data"] = data
+        MARKET_METRICS_CACHE["time"] = now
+    return data
 
 
 def evaluate_risk_level(change_pct: float, volatility_score: float) -> dict:
@@ -736,7 +748,7 @@ def format_analysis(user_symbol: str) -> str:
 
 
 def format_market_report() -> str:
-    metrics = compute_market_metrics()
+    metrics = get_market_metrics_cached()
     if not metrics:
         return (
             "⚠️ تعذّر جلب بيانات السوق العامة حاليًا.\n"
@@ -810,7 +822,7 @@ def format_market_report() -> str:
 
 
 def format_risk_test() -> str:
-    metrics = compute_market_metrics()
+    metrics = get_market_metrics_cached()
     if not metrics:
         return (
             "⚠️ تعذّر جلب بيانات المخاطر حاليًا من المصدر.\n"
@@ -891,7 +903,7 @@ def detect_alert_condition(metrics: dict, risk: dict) -> str | None:
 
 
 def format_ai_alert() -> str:
-    metrics = compute_market_metrics()
+    metrics = get_market_metrics_cached()
     if not metrics:
         data = fetch_price_data("BTCUSDT")
         if not data:
@@ -1048,7 +1060,7 @@ def format_ai_alert() -> str:
 
 
 def format_ai_alert_details() -> str:
-    metrics = compute_market_metrics()
+    metrics = get_market_metrics_cached()
     if not metrics:
         return (
             "⚠️ تعذّر جلب بيانات السوق حالياً من المزود.\n"
@@ -1117,7 +1129,7 @@ def format_ai_alert_details() -> str:
 
 
 def format_weekly_ai_report() -> str:
-    metrics = compute_market_metrics()
+    metrics = get_market_metrics_cached()
     if not metrics:
         return (
             "⚠️ تعذّر إنشاء التقرير الأسبوعى حالياً بسبب مشكلة فى جلب بيانات السوق."
@@ -1314,7 +1326,6 @@ REALTIME_CACHE = {
     "last_update": None,
 }
 REALTIME_TTL_SECONDS = 8  # صلاحية الردود الجاهزة
-REALTIME_LOCK = threading.Lock()  # 🔐 لقفل الكاش بين الـ Threads
 
 
 def get_cached_response(key: str, builder):
@@ -1324,9 +1335,8 @@ def get_cached_response(key: str, builder):
     """
     try:
         now = time.time()
-        with REALTIME_LOCK:
-            last_update = REALTIME_CACHE.get("last_update")
-            cached_value = REALTIME_CACHE.get(key)
+        last_update = REALTIME_CACHE.get("last_update")
+        cached_value = REALTIME_CACHE.get(key)
 
         if cached_value and last_update and (now - last_update) <= REALTIME_TTL_SECONDS:
             return cached_value
@@ -1360,7 +1370,7 @@ def realtime_engine_loop():
             weekly_msg = format_weekly_ai_report()
             alert_msg = format_ai_alert()
 
-            new_cache = {
+            REALTIME_CACHE = {
                 "btc_analysis": btc_msg,
                 "market_report": market_msg,
                 "risk_test": risk_msg,
@@ -1369,10 +1379,6 @@ def realtime_engine_loop():
                 "last_update": time.time(),
             }
 
-            with REALTIME_LOCK:
-                REALTIME_CACHE = new_cache
-
-            clean_price_cache()  # 🧹 تنظيف الكاش السعرى بشكل دورى
             logger.debug("Realtime engine: cache updated.")
             time.sleep(5)
         except Exception as e:
@@ -1403,7 +1409,12 @@ def index():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = request.get_json(force=True, silent=True) or {}
-    logger.info("Update: %s", update)
+
+    # [Z-PRIME] لوج أخف للوبوك فى وضع الإنتاج
+    if BOT_DEBUG:
+        logger.info("Update: %s", update)
+    else:
+        logger.debug("Update keys: %s", list(update.keys()))
 
     # callback_query
     if "callback_query" in update:
@@ -1534,7 +1545,7 @@ def webhook():
 def auto_alert():
     global LAST_ALERT_REASON, LAST_AUTO_ALERT_INFO
 
-    metrics = compute_market_metrics()
+    metrics = get_market_metrics_cached()
     if not metrics:
         logger.warning("auto_alert: cannot fetch metrics")
         LAST_AUTO_ALERT_INFO = {
@@ -1619,7 +1630,7 @@ def dashboard_api():
     if not _check_admin_auth(request):
         return jsonify(ok=False, error="unauthorized"), 401
 
-    metrics = compute_market_metrics()
+    metrics = get_market_metrics_cached()
     if not metrics:
         return jsonify(ok=False, error="metrics_failed"), 200
 
@@ -1807,32 +1818,6 @@ def weekly_scheduler_loop():
 
 
 # ==============================
-#   Keep-Alive Loop لمنع النوم
-# ==============================
-
-
-def keepalive_loop():
-    """
-    Loop خفيف:
-    - كل 180 ثانية يضرب GET على APP_BASE_URL أو /health
-    - الهدف: منع السيرفر إنه ينام مع قلة الترافيك
-    """
-    if not APP_BASE_URL:
-        logger.warning("Keepalive loop: APP_BASE_URL not set, skipping.")
-        return
-
-    url = APP_BASE_URL + "/"
-    logger.info("Keepalive loop started. Pinging: %s", url)
-
-    while True:
-        try:
-            HTTP_SESSION.get(url, timeout=5)
-        except Exception as e:
-            logger.debug("Keepalive ping failed: %s", e)
-        time.sleep(180)
-
-
-# ==============================
 #       تفعيل الـ Webhook
 # ==============================
 
@@ -1845,7 +1830,7 @@ def setup_webhook():
         r = HTTP_SESSION.get(
             f"{TELEGRAM_API}/setWebhook",
             params={"url": webhook_url},
-            timeout=TELEGRAM_TIMEOUT,
+            timeout=10,
         )
         logger.info("Webhook response: %s - %s", r.status_code, r.text)
 
@@ -1879,14 +1864,6 @@ if __name__ == "__main__":
         logger.info("Realtime engine thread started.")
     except Exception as e:
         logger.exception("Failed to start realtime engine thread: %s", e)
-
-    # ✅ تشغيل Keepalive loop (منع النوم)
-    try:
-        t_keep = threading.Thread(target=keepalive_loop, daemon=True)
-        t_keep.start()
-        logger.info("Keepalive thread started.")
-    except Exception as e:
-        logger.exception("Failed to start keepalive thread: %s", e)
 
     logger.info("Starting Flask server...")
     app.run(host="0.0.0.0", port=8080)
