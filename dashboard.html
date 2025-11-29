@@ -9,16 +9,17 @@
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 
         :root {
-            --bg-main: #020617;
-            --bg-main-grad: radial-gradient(circle at top, #111827 0, #020617 55%);
-            --bg-card: #050814;
-            --bg-card-soft: #060919;
+            --bg-main: #02040a;
+            --bg-main-grad: radial-gradient(circle at top, #111827 0, #02040a 55%);
+            --bg-card: rgba(8, 11, 20, 0.96);
+            --bg-card-soft: rgba(8, 11, 20, 0.86);
             --border-soft: rgba(148, 163, 184, 0.28);
-            --accent-yellow: #fcd34d;
-            --accent-yellow-soft: rgba(252, 211, 77, 0.16);
+            --accent-gold: #fbbf24;
+            --accent-gold-soft: rgba(251, 191, 36, 0.18);
+            --accent-red: #fb7185;
             --accent-green: #22c55e;
-            --accent-red: #f97373;
             --accent-blue: #38bdf8;
+            --accent-orange: #f97316;
             --text-main: #f9fafb;
             --text-muted: #9ca3af;
         }
@@ -33,81 +34,91 @@
             font-family: "Cairo", system-ui, sans-serif;
             background:
                 radial-gradient(circle at top left, rgba(248, 250, 252, 0.05), transparent 55%),
-                radial-gradient(circle at top right, rgba(252, 211, 77, 0.12), transparent 55%),
+                radial-gradient(circle at top right, rgba(251, 191, 36, 0.09), transparent 55%),
                 var(--bg-main-grad);
             color: var(--text-main);
             min-height: 100vh;
         }
 
-        /* ===== TOP BTC BAR (Binance-style ticker) ===== */
-        .top-ticker {
+        /* ===== TOP BTC BAR ===== */
+        .btc-bar {
             width: 100%;
-            padding: 8px 16px;
-            background: linear-gradient(90deg, #020617, #040713);
+            padding: 10px 18px;
+            background: linear-gradient(90deg, #020617, #050816);
             border-bottom: 1px solid rgba(148, 163, 184, 0.25);
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
             justify-content: space-between;
             font-size: 13px;
         }
 
-        .ticker-left {
+        .btc-bar-left {
             display: flex;
-            align-items: center;
-            gap: 10px;
             flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
         }
 
-        .mode-pill {
+        .btc-pill-main {
             padding: 3px 10px;
             border-radius: 999px;
-            background: #020617;
-            border: 1px solid rgba(148, 163, 184, 0.6);
-            font-size: 10px;
+            background: radial-gradient(circle at top, #fbbf24, #f59e0b);
+            color: #111827;
+            font-weight: 800;
+            font-size: 11px;
             letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: var(--text-muted);
         }
 
-        .mode-pill span {
-            color: var(--accent-yellow);
-        }
-
-        .ticker-pair {
+        .btc-title-mini {
+            font-weight: 600;
+            color: #e5e7eb;
             font-size: 12px;
-            color: var(--text-muted);
         }
 
-        .ticker-right {
+        .btc-bar-right {
             display: flex;
-            gap: 12px;
             flex-wrap: wrap;
+            gap: 12px;
             align-items: center;
         }
 
-        .ticker-metric {
+        .btc-metric {
             display: flex;
-            gap: 4px;
             align-items: baseline;
-            font-size: 12px;
+            gap: 4px;
         }
 
-        .ticker-label {
+        .btc-label {
             color: var(--text-muted);
+            font-size: 11px;
         }
 
-        .ticker-value {
+        .btc-val {
             font-weight: 600;
+            font-size: 13px;
         }
 
-        .up { color: var(--accent-green); }
-        .down { color: var(--accent-red); }
+        .btc-green { color: var(--accent-green); }
+        .btc-red   { color: var(--accent-red); }
+
+        .btc-mode-chip {
+            padding: 4px 11px;
+            border-radius: 999px;
+            border: 1px solid rgba(251, 191, 36, 0.7);
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: #fef3c7;
+            background:
+                radial-gradient(circle at top, rgba(251, 191, 36, 0.35), transparent 60%),
+                rgba(5, 6, 15, 0.97);
+        }
 
         /* ===== HEADER ===== */
         .header {
-            padding: 14px 18px 8px;
+            padding: 14px 18px 4px;
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
@@ -121,11 +132,11 @@
         }
 
         .header-title {
-            font-size: 21px;
+            font-size: 20px;
             font-weight: 800;
-            letter-spacing: 0.18em;
+            letter-spacing: 0.2em;
             text-transform: uppercase;
-            color: var(--accent-yellow);
+            color: #fef3c7;
         }
 
         .header-sub {
@@ -133,11 +144,7 @@
             color: var(--text-muted);
         }
 
-        .header-sub b {
-            color: #e5e7eb;
-        }
-
-        .header-badges {
+        .header-badge-row {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
@@ -145,8 +152,8 @@
         }
 
         .header-badge {
-            font-size: 11px;
-            padding: 4px 9px;
+            font-size: 10px;
+            padding: 3px 8px;
             border-radius: 999px;
             border: 1px solid rgba(148, 163, 184, 0.4);
             background: rgba(15, 23, 42, 0.9);
@@ -159,10 +166,10 @@
 
         /* ===== GRID LAYOUT ===== */
         .grid {
-            padding: 12px 18px 22px;
+            padding: 16px 18px 22px;
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 14px;
+            gap: 16px;
         }
 
         @media (max-width: 1180px) {
@@ -171,30 +178,30 @@
             }
         }
 
-        @media (max-width: 820px) {
+        @media (max-width: 768px) {
             .header {
-                padding: 12px 10px 8px;
+                padding: 12px 10px 4px;
             }
-            .top-ticker {
-                padding: 8px 10px;
+            .btc-bar {
+                padding: 10px 10px;
             }
             .grid {
                 grid-template-columns: minmax(0, 1fr);
-                padding: 10px 10px 18px;
+                padding: 14px 10px 20px;
             }
         }
 
         /* ===== CARD BASE ===== */
         .card {
             background: var(--bg-card);
-            border-radius: 16px;
+            border-radius: 18px;
             border: 1px solid var(--border-soft);
-            padding: 12px 12px 11px;
+            padding: 14px 14px 13px;
             position: relative;
             overflow: hidden;
             box-shadow:
-                0 16px 32px rgba(0, 0, 0, 0.85),
-                0 0 0 1px rgba(15, 23, 42, 0.8);
+                0 20px 40px rgba(0, 0, 0, 0.9),
+                0 0 0 1px rgba(15, 23, 42, 0.9);
         }
 
         .card::before {
@@ -202,9 +209,9 @@
             position: absolute;
             inset: 0;
             background:
-                radial-gradient(circle at top left, rgba(252, 211, 77, 0.12), transparent 55%);
+                radial-gradient(circle at top left, rgba(251, 191, 36, 0.12), transparent 55%);
             opacity: 0;
-            transition: opacity 0.20s ease-out;
+            transition: opacity 0.2s;
             pointer-events: none;
         }
 
@@ -216,14 +223,14 @@
             display: flex;
             align-items: baseline;
             justify-content: space-between;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
             gap: 6px;
         }
 
         .card-title {
             font-size: 13px;
             font-weight: 700;
-            color: #e5e7eb;
+            color: #fef3c7;
         }
 
         .card-tag {
@@ -232,24 +239,24 @@
             border-radius: 999px;
             border: 1px solid rgba(148, 163, 184, 0.4);
             color: var(--text-muted);
-            background: var(--bg-card-soft);
+            background: rgba(15, 23, 42, 0.92);
         }
 
         .card-main {
-            font-size: 20px;
+            font-size: 22px;
             font-weight: 800;
-            margin-top: 4px;
+            margin-top: 5px;
         }
 
         .card-main span.small {
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 500;
             color: var(--text-muted);
         }
 
         .subtext {
             font-size: 11px;
-            margin-top: 3px;
+            margin-top: 4px;
             color: var(--text-muted);
             line-height: 1.6;
         }
@@ -257,15 +264,15 @@
         .kpi-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 8px;
+            gap: 8px;
+            margin-top: 9px;
         }
 
         .kpi-pill {
             padding: 4px 9px;
             border-radius: 999px;
             background: var(--bg-card-soft);
-            border: 1px solid rgba(148, 163, 184, 0.35);
+            border: 1px solid rgba(148, 163, 184, 0.38);
             font-size: 10px;
             display: inline-flex;
             gap: 4px;
@@ -280,16 +287,16 @@
             font-weight: 600;
         }
 
-        .green { color: var(--accent-green); }
-        .red   { color: var(--accent-red); }
-        .yellow { color: var(--accent-yellow); }
-        .blue  { color: var(--accent-blue); }
+        .green  { color: var(--accent-green); }
+        .red    { color: var(--accent-red); }
+        .gold   { color: var(--accent-gold); }
+        .blue   { color: var(--accent-blue); }
 
         /* ===== HEATBAR ===== */
         .heatbar {
-            margin-top: 9px;
+            margin-top: 10px;
             width: 100%;
-            height: 6px;
+            height: 7px;
             border-radius: 999px;
             overflow: hidden;
             position: relative;
@@ -304,8 +311,8 @@
             position: absolute;
             inset: 0;
             background: linear-gradient(90deg,
-                        rgba(34,197,94,0.08),
-                        rgba(250,204,21,0.12),
+                        rgba(34,197,94,0.05),
+                        rgba(250,204,21,0.1),
                         rgba(248,250,252,0.05));
             mix-blend-mode: soft-light;
         }
@@ -313,12 +320,12 @@
         .heatbar-dot {
             position: absolute;
             top: 50%;
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             border-radius: 999px;
             transform: translate(-50%, -50%);
-            border: 2px solid #020617;
-            box-shadow: 0 0 14px rgba(248, 250, 252, 0.9);
+            border: 2px solid #111827;
+            box-shadow: 0 0 18px rgba(248, 250, 252, 0.9);
             background: #fef3c7;
         }
 
@@ -327,18 +334,18 @@
             justify-content: space-between;
             font-size: 9px;
             color: var(--text-muted);
-            margin-top: 3px;
+            margin-top: 4px;
         }
 
         /* ===== LOG AREA ===== */
         pre {
-            margin: 6px 0 0;
-            padding: 7px;
+            margin: 8px 0 0;
+            padding: 8px;
             border-radius: 10px;
             background: #020617;
             border: 1px solid rgba(148, 163, 184, 0.35);
             font-size: 10px;
-            max-height: 145px;
+            max-height: 160px;
             overflow: auto;
             direction: ltr;
             text-align: left;
@@ -352,8 +359,8 @@
 
         @keyframes flashAnim {
             from {
-                box-shadow: 0 0 18px rgba(252, 211, 77, 0.6);
-                border-color: rgba(252, 211, 77, 0.9);
+                box-shadow: 0 0 18px rgba(251, 191, 36, 0.4);
+                border-color: rgba(251, 191, 36, 0.9);
             }
             to {
                 box-shadow: 0 0 26px rgba(248, 113, 113, 0.9);
@@ -366,7 +373,7 @@
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
-            margin-top: 8px;
+            margin-top: 9px;
         }
 
         button {
@@ -377,12 +384,12 @@
             cursor: pointer;
             background: #020617;
             color: #e5e7eb;
-            border: 1px solid rgba(148, 163, 184, 0.7);
+            border: 1px solid rgba(148, 163, 184, 0.6);
         }
 
         button.primary {
             background: radial-gradient(circle at top,
-                        #fbbf24,
+                        #facc15,
                         #f59e0b);
             color: #111827;
             font-weight: 700;
@@ -395,7 +402,7 @@
 
         /* ===== ALERTS LIST ===== */
         .alerts-list {
-            margin-top: 3px;
+            margin-top: 4px;
             font-size: 10px;
             max-height: 140px;
             overflow: auto;
@@ -403,7 +410,24 @@
         }
 
         .alert-item {
-            margin-bottom: 3px;
+            margin-bottom: 4px;
+        }
+
+        /* ===== AI COMMENT CARD ===== */
+        .ai-comment {
+            grid-column: span 3;
+        }
+
+        @media (max-width: 1180px) {
+            .ai-comment {
+                grid-column: span 2;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .ai-comment {
+                grid-column: span 1;
+            }
         }
 
         /* ===== FOOTER ===== */
@@ -415,7 +439,7 @@
         }
 
         .footer span {
-            color: var(--accent-yellow);
+            color: #fbbf24;
         }
     </style>
 </head>
@@ -423,29 +447,26 @@
 <body>
 
     <!-- ========== TOP BTC BAR ========== -->
-    <div class="top-ticker" id="btcBar">
-        <div class="ticker-left">
-            <div class="mode-pill">
-                WAR ROOM • <span>غرفة عمليات IN CRYPTO</span>
-            </div>
-            <div class="ticker-pair">BTCUSDT • Live Snapshot</div>
+    <div id="btcBar" class="btc-bar">
+        <div class="btc-bar-left">
+            <span class="btc-pill-main">IN CRYPTO Ai</span>
+            <span class="btc-title-mini">غرفة عمليات IN CRYPTO — WAR ROOM</span>
         </div>
-        <div class="ticker-right">
-            <div class="ticker-metric">
-                <span class="ticker-label">السعر:</span>
-                <span class="ticker-value" id="barPrice">-</span>
+        <div class="btc-bar-right">
+            <div class="btc-metric">
+                <span class="btc-label">السعر:</span>
+                <span id="barPrice" class="btc-val">-</span>
             </div>
-            <div class="ticker-metric">
-                <span class="ticker-label">تغير 24 س:</span>
-                <span class="ticker-value" id="barChange">-</span>
+            <div class="btc-metric">
+                <span class="btc-label">تغير 24 س:</span>
+                <span id="barChange" class="btc-val">-</span>
             </div>
-            <div class="ticker-metric">
-                <span class="ticker-label">مدى اليوم:</span>
-                <span class="ticker-value" id="barRange">-</span>
+            <div class="btc-metric">
+                <span class="btc-label">مدى اليوم:</span>
+                <span id="barRange" class="btc-val">-</span>
             </div>
-            <div class="ticker-metric">
-                <span class="ticker-label">وضع السوق:</span>
-                <span class="ticker-value" id="badgeMode">-</span>
+            <div id="marketModeChip" class="btc-mode-chip">
+                NORMAL MODE
             </div>
         </div>
     </div>
@@ -455,16 +476,18 @@
         <div class="header-main">
             <div class="header-title">IN CRYPTO — WAR ROOM</div>
             <div class="header-sub">
-                لوحة مراقبة ذكية مبنية على <b>حركة البيتكوين فقط</b>، تدمج قوة السوق، المخاطر،
-                السيولة، التقلبات، وتاريخ التحذيرات لصناعة قرارات تداول منظمة.
+                غرفة عمليات IN CRYPTO لمراقبة قوة السوق، المخاطر، السيولة، التقلبات وسلوك الأوامر لحظيًا — مبنى بالكامل على حركة البيتكوين فقط.
             </div>
         </div>
-        <div class="header-badges">
+        <div class="header-badge-row">
+            <div class="header-badge">
+                وضع التشغيل: <strong id="badgeMode">NORMAL</strong>
+            </div>
             <div class="header-badge">
                 آخر تحديث Real-Time: <strong id="badgeRealtime">---</strong>
             </div>
             <div class="header-badge">
-                الشاتات المسجلة: <strong id="badgeChats">0</strong>
+                عدد الشاتات المعروفة: <strong id="badgeChats">0</strong>
             </div>
         </div>
     </div>
@@ -480,8 +503,7 @@
             </div>
             <div class="card-main" id="strengthValue">...</div>
             <div class="subtext">
-                قراءة مدمجة لاتجاه البيتكوين ومدى الحركة اليومية إعتمادًا على بيانات Binance / KuCoin فقط،
-                بدون أى مزود بيانات خارجى.
+                قراءة مدمجة لاتجاه البيتكوين ومدى الحركة اليومية اعتمادًا على بيانات Binance / KuCoin فقط، بدون أى مزود خارجى.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -489,7 +511,7 @@
                     <span class="kpi-val" id="kpiChange">...</span>
                 </div>
                 <div class="kpi-pill">
-                    <span class="kpi-label">مدى الحركة %:</span>
+                    <span class="kpi-label">مدى %:</span>
                     <span class="kpi-val" id="kpiRange">...</span>
                 </div>
                 <div class="kpi-pill">
@@ -499,7 +521,7 @@
             </div>
             <div class="heatbar">
                 <div class="heatbar-track"></div>
-                <div id="heatDot" class="heatbar-dot" style="left:10%;"></div>
+                <div id="heatDot" class="heatbar-dot" style="left: 10%;"></div>
             </div>
             <div class="heatbar-labels">
                 <span>هادئ</span>
@@ -512,11 +534,13 @@
         <!-- بطاقة المخاطر -->
         <div class="card" id="riskCard">
             <div class="card-header">
-                <div class="card-title">محرك المخاطر (IN CRYPTO Ai)</div>
+                <div class="card-title">مستوى المخاطر (IN CRYPTO Ai)</div>
                 <div class="card-tag">Risk Engine</div>
             </div>
             <div class="card-main" id="riskValue">...</div>
-            <div class="subtext" id="riskNote">...</div>
+            <div class="subtext" id="riskNote">
+                ...
+            </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
                     <span class="kpi-label">درجة التقلب:</span>
@@ -529,7 +553,7 @@
             </div>
         </div>
 
-        <!-- نبض السيولة -->
+        <!-- نبض السيولة والاتجاه -->
         <div class="card">
             <div class="card-header">
                 <div class="card-title">نبض السيولة بين المشترين والبائعين</div>
@@ -537,7 +561,7 @@
             </div>
             <div class="card-main" id="liquidityValue">...</div>
             <div class="subtext">
-                تحليل مبسط لتوازن السيولة إعتمادًا على اتجاه BTCUSDT، لمعرفة الطرف المهيمن على الحركة حاليًا.
+                قراءة مبسطة لتوازن السيولة اعتمادًا على اتجاه BTCUSDT، مع تحويل الحركة اليومية لصورة أوضح عن من يسيطر على السوق حاليًا.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -562,8 +586,7 @@
                 <span class="small">/ 100</span>
             </div>
             <div class="subtext">
-                كلما اقترب المؤشر من 100 كان السوق أكثر عدوانية ويحتاج إدارة مخاطر صارمة،
-                وكلما اقترب من الصفر كان السوق أكثر هدوءًا.
+                كلما اقترب المؤشر من 100 كان السوق أكثر عدوانية وتحتاج إدارة مخاطر صارمة، وكلما اقترب من الصفر كان السوق أكثر هدوءًا.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -585,7 +608,7 @@
             </div>
             <div class="card-main" id="alertReason">لا يوجد تحذير حاليًا</div>
             <div class="subtext">
-                آخر استجابة لمسار <code>/auto_alert</code> من البوت، مع وميض تلقائى عند ظهور سبب تحذير جديد.
+                آخر استجابة لمسار <code>/auto_alert</code> من البوت، مع تمييز تلقائى إذا كان النظام يرى وضع غير طبيعى فى السوق.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -611,7 +634,7 @@
             </div>
             <div class="card-main" id="lastErrorTitle">لا يوجد أخطاء مسجلة</div>
             <div class="subtext">
-                يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت، مع Snapshot مباشر من اللوج.
+                يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت، مع عرض Snapshot مباشر من اللوج.
             </div>
             <pre id="logsSnapshot">جارى تحميل اللوج...</pre>
         </div>
@@ -631,7 +654,7 @@
             </div>
         </div>
 
-        <!-- تدفق الأوامر اللحظى -->
+        <!-- تدفق الأوامر اللحظى (تقدير) -->
         <div class="card">
             <div class="card-header">
                 <div class="card-title">تدفق الأوامر اللحظى — المشترين مقابل البائعين</div>
@@ -639,7 +662,7 @@
             </div>
             <div class="card-main" id="orderFlowValue">---</div>
             <div class="subtext" id="orderFlowText">
-                تقدير تقريبى لتوازن الضغط بين المشترين والبائعين من خلال التغيير اليومى + التقلب + نبض السيولة.
+                تقدير تقريبى لتوازن الضغط بين المشترين والبائعين بناءً على اتجاه السعر والتقلب ونبض السيولة الحالى.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -675,7 +698,7 @@
             </div>
         </div>
 
-        <!-- فلتر الضوضاء -->
+        <!-- فلتر الضوضاء فى الحركة -->
         <div class="card">
             <div class="card-header">
                 <div class="card-title">فلتر الضوضاء فى الحركة</div>
@@ -683,7 +706,7 @@
             </div>
             <div class="card-main" id="noiseValue">---</div>
             <div class="subtext" id="noiseText">
-                يقيس كمية الحركة “العبثية” مقابل الحركة الهادفة؛ يساعد فى معرفة متى يفضل التوقف عن المطاردة وانتظار مناطق أوضح.
+                يقيس كمية الحركة “العبثية” مقابل الحركة الهادفة؛ يساعد فى معرفة ما إذا كان الأفضل عدم المطاردة وانتظار مناطق أوضح.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -701,7 +724,7 @@
             </div>
             <div class="card-main" id="scalpSuitability">---</div>
             <div class="subtext" id="scalpText">
-                تقييم سريع لملاءمة الظروف الحالية لاستراتيجيات السكالبينج السريعة (تقلب × حركة × ضوضاء).
+                تقييم سريع لمدى ملاءمة الظروف الحالية لاستراتيجيات السكالبينج السريعة (حركة × تقلب × ضوضاء).
             </div>
         </div>
 
@@ -713,7 +736,7 @@
             </div>
             <div class="card-main" id="dominanceValue">---</div>
             <div class="subtext" id="dominanceText">
-                تقدير تقريبى لما إذا كان السوق حاليًا يقوده البيتكوين، أم سوق مختلط، أم بيئة تميل للعملات البديلة.
+                تقدير تقريبى لما إذا كان السوق حاليًا أقرب إلى وضع يقوده البيتكوين، أم سوق مختلط، أم بيئة تفضّل العملات البديلة (استنتاج من قوة الحركة ونبض السيولة).
             </div>
         </div>
 
@@ -725,12 +748,34 @@
             </div>
             <div class="card-main" id="trendTempValue">---</div>
             <div class="subtext" id="trendTempText">
-                مؤشر إحساس عام بحرارة الاتجاه: من سوق هادئ وبطىء إلى سوق محتدم ذو زخم قوى.
+                مؤشر إحساس عام بحرارة الاتجاه: من سوق هادئ وبطىء إلى سوق محتدم ذو زخم قوى فى أى اتجاه.
             </div>
         </div>
 
-        <!-- تعليق الذكاء الاصطناعى -->
-        <div class="card" style="grid-column: span 3;">
+        <!-- HVT ZONE + PANIC DETECTOR (بطاقة Ultra Pro) -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">منطقة الأهداف عالية القيمة + مؤشر الهلع</div>
+                <div class="card-tag">HVT Zone + Panic Detector</div>
+            </div>
+            <div class="card-main" id="hvtZoneValue">---</div>
+            <div class="subtext" id="hvtZoneText">
+                قياس سريع لوضع السعر الحالى: هل السوق داخل نطاق طبيعى أم فى منطقة قابلة لانفجار سعرى، مع رصد أى تحركات هلع غير طبيعية.
+            </div>
+            <div class="kpi-row">
+                <div class="kpi-pill">
+                    <span class="kpi-label">حالة منطقة HVT:</span>
+                    <span class="kpi-val" id="hvtStatus">---</span>
+                </div>
+                <div class="kpi-pill">
+                    <span class="kpi-label">حالة الهلع اللحظى:</span>
+                    <span class="kpi-val" id="panicStatus">---</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- تعليق الذكاء الاصطناعى على اليوم -->
+        <div class="card ai-comment">
             <div class="card-header">
                 <div class="card-title">تعليق IN CRYPTO Ai على وضع السوق اليوم</div>
                 <div class="card-tag">AI Market Commentary</div>
@@ -832,8 +877,8 @@
                 if (strengthLabel.includes("هبوط") || strengthLabel.includes("سلبى")) down += 7;
             }
             if (volScore > 65) {
-                up *= 1.05;
-                down *= 1.05;
+                up = up * 1.05;
+                down = down * 1.05;
             }
             const sum = up + down;
             up = Math.round((up / sum) * 100);
@@ -868,7 +913,7 @@
 
             let label;
             if (score < 35) label = "😴 غير مناسب للسكالبينج — السوق هادئ أو ضوضائى أكثر من اللازم.";
-            else if (score < 70) label = "⚖️ مناسب جزئيًا مع انتقاء الفرص، ويفضل الالتزام بمناطق واضحة.";
+            else if (score < 70) label = "⚖️ مناسب جزئيًا للسكالبينج مع انتقاء الفرص، ويفضل الالتزام بمناطق واضحة.";
             else label = "⚡ بيئة نشطة جدًا — مناسبة للسكالبينج مع انضباط قوى فى إدارة المخاطر.";
 
             return { score: Math.round(score), label };
@@ -906,7 +951,37 @@
             return { temp: Math.round(temp), label };
         }
 
-        function buildAIComment(change, volScore, riskMsg, liquidityPulse, strengthLabel, modeInfo) {
+        function estimateHVTandPanic(change, rangePct, volScore) {
+            // HVT Zone
+            let hvtLabel, hvtStatus;
+            const absChange = Math.abs(change);
+
+            const energy = absChange * 2 + rangePct * 1.5 + volScore * 0.5; // 0.. ~
+            if (energy < 40) {
+                hvtLabel = "منطقة حركة طبيعية";
+                hvtStatus = "DORMANT";
+            } else if (energy < 70) {
+                hvtLabel = "منطقة تستحق المراقبة";
+                hvtStatus = "WATCH";
+            } else {
+                hvtLabel = "منطقة أهداف عالية القيمة — قابل لانفجار سعرى";
+                hvtStatus = "ACTIVE";
+            }
+
+            // Panic
+            let panicLabel;
+            if (absChange > 4 && volScore > 65 && rangePct > 7) {
+                panicLabel = "⚠️ Panic Spike محتمل — حركة عنيفة وغير طبيعية.";
+            } else if (absChange > 2.5 && volScore > 55) {
+                panicLabel = "⚠️ توتر مرتفع فى السوق — الحذر مطلوب.";
+            } else {
+                panicLabel = "✔ لا توجد إشارات هلع غير طبيعية حتى الآن.";
+            }
+
+            return { hvtLabel, hvtStatus, panicLabel };
+        }
+
+        function buildAIComment(change, volScore, riskMsg, riskLevel, liquidityPulse, strengthLabel, modeInfo) {
             const dirText =
                 change > 0.7 ? "السوق يميل حاليًا لصالح المشترين مع صعود ملحوظ فى البيتكوين." :
                 change < -0.7 ? "السوق يميل حاليًا لصالح البائعين مع ضغط بيعى واضح على البيتكوين." :
@@ -917,7 +992,7 @@
                 volScore < 55 ? "التقلب فى المنطقة المتوسطة، الحركة ليست عنيفة لكن ليست هادئة تمامًا." :
                 "التقلب مرتفع حاليًا؛ أى قرار دخول بدون خطة صارمة لإدارة المخاطر قد يكون مكلفًا.";
 
-            const riskText = `قراءة محرك المخاطر: ${riskMsg || "لم يتم تحديد رسالة مفصلة."}`;
+            const riskText = `قراءة Engine المخاطر: ${riskMsg || "لم يتم تحديد رسالة مفصلة."}`;
 
             const liqText =
                 liquidityPulse && liquidityPulse.indexOf("متوازنة") !== -1
@@ -932,7 +1007,7 @@
                 riskText + " " +
                 liqText + " " +
                 modeText +
-                " هذه القراءة تعليمية وليست توصية مباشرة بالشراء أو البيع."
+                " دائمًا تذكر أن هذه القراءة تعليمية وليست توصية مباشرة بالشراء أو البيع."
             );
         }
 
@@ -952,25 +1027,38 @@
                 const liquidityPulse = data.liquidity_pulse;
                 const strengthLabel = data.strength_label;
 
-                // Header badges
+                // ===== HEADER BADGES =====
                 document.getElementById("badgeChats").textContent = data.known_chats ?? 0;
                 document.getElementById("badgeRealtime").textContent = data.last_realtime_tick || "لا يوجد";
 
-                // Top ticker
+                // ===== TOP BTC BAR =====
                 const barPrice = document.getElementById("barPrice");
                 const barChange = document.getElementById("barChange");
                 const barRange = document.getElementById("barRange");
+                const modeChip = document.getElementById("marketModeChip");
 
-                const changeClass = change >= 0 ? "up" : "down";
+                const changeColorClass = change >= 0 ? "btc-green" : "btc-red";
 
-                barPrice.textContent = price.toLocaleString();
-                barChange.innerHTML = `<span class="${changeClass}">${change >= 0 ? "+" : ""}${change.toFixed(2)}%</span>`;
+                barPrice.innerHTML = price.toLocaleString();
+                barChange.innerHTML = `<span class="${changeColorClass}">${change >= 0 ? "+" : ""}${change.toFixed(2)}%</span>`;
                 barRange.textContent = rangePct.toFixed(2) + "%";
 
                 const modeInfo = classifyMarketMode(change, volScore, rangePct);
+                modeChip.textContent = modeInfo.mode + " MODE";
                 document.getElementById("badgeMode").textContent = modeInfo.mode;
 
-                // Market Strength
+                if (modeInfo.mode === "PANIC") {
+                    modeChip.style.background = "radial-gradient(circle at top, #ef4444, #7f1d1d)";
+                } else if (modeInfo.mode === "VOLATILE") {
+                    modeChip.style.background = "radial-gradient(circle at top, #f97316, #7c2d12)";
+                } else if (modeInfo.mode === "ACTIVE") {
+                    modeChip.style.background = "radial-gradient(circle at top, #22c55e, #064e3b)";
+                } else {
+                    modeChip.style.background =
+                        "radial-gradient(circle at top, rgba(251,191,36,0.35), #020617)";
+                }
+
+                // ===== MARKET STRENGTH CARD =====
                 document.getElementById("strengthValue").textContent = strengthLabel;
                 document.getElementById("kpiChange").textContent =
                     (change >= 0 ? "+" : "") + change.toFixed(2) + "%";
@@ -978,22 +1066,28 @@
 
                 const heatScore = computeHeatScore(change, volScore, rangePct);
                 document.getElementById("kpiHeat").textContent = heatScore.toFixed(0) + " / 100";
+
                 const heatDot = document.getElementById("heatDot");
                 heatDot.style.left = Math.min(96, Math.max(4, heatScore)) + "%";
 
-                // Risk card
+                // ===== RISK CARD =====
                 const riskCard = document.getElementById("riskCard");
-                document.getElementById("riskValue").innerHTML = riskEmoji + " " + riskLevel;
-                document.getElementById("riskNote").textContent = riskMsg;
-                document.getElementById("kpiVol").textContent = volScore.toFixed(1) + " / 100";
-                document.getElementById("kpiMode").textContent = modeInfo.label;
+                const riskVal = document.getElementById("riskValue");
+                const riskNote = document.getElementById("riskNote");
+                const kpiMode = document.getElementById("kpiMode");
+                const kpiVol = document.getElementById("kpiVol");
 
-                riskCard.classList.remove("green", "yellow", "red");
+                riskVal.innerHTML = riskEmoji + " " + riskLevel;
+                riskNote.textContent = riskMsg;
+                kpiVol.textContent = volScore.toFixed(1) + " / 100";
+                kpiMode.textContent = modeInfo.label;
+
+                riskCard.classList.remove("green", "gold", "red");
                 if (riskLevel.includes("منخفض")) riskCard.classList.add("green");
-                else if (riskLevel.includes("متوسط")) riskCard.classList.add("yellow");
+                else if (riskLevel.includes("متوسط")) riskCard.classList.add("gold");
                 else riskCard.classList.add("red");
 
-                // Liquidity
+                // ===== LIQUIDITY CARD =====
                 document.getElementById("liquidityValue").textContent = liquidityPulse;
                 const liqLabel =
                     change > 0 ? "ميل لصالح المشترين" :
@@ -1003,34 +1097,37 @@
                 document.getElementById("signalPulse").textContent =
                     buildSignalPulse(change, volScore);
 
-                // Volatility
-                document.getElementById("volatilityValue").textContent = volScore.toFixed(1);
-                document.getElementById("rangeDetail").textContent = rangePct.toFixed(2) + "%";
+                // ===== VOLATILITY CARD =====
+                document.getElementById("volatilityValue").textContent =
+                    volScore.toFixed(1);
+                document.getElementById("rangeDetail").textContent =
+                    rangePct.toFixed(2) + "%";
                 document.getElementById("volatilityLabel").textContent =
                     classifyVolatility(volScore);
 
-                // Last error (title only)
+                // ===== LAST ERROR CARD (العنوان بس — اللوج بيتحدث من loadLogs) =====
                 const lastErr = data.last_error || {};
                 const errTitle = document.getElementById("lastErrorTitle");
                 const errCard = document.getElementById("errorCard");
 
                 if (lastErr && lastErr.message) {
                     errTitle.textContent = "آخر خطأ — " + (lastErr.time || "");
-                    errCard.classList.add("yellow");
+                    errCard.classList.add("gold");
                 } else {
                     errTitle.textContent = "لا يوجد أخطاء مسجلة";
-                    errCard.classList.remove("yellow");
+                    errCard.classList.remove("gold");
                 }
 
-                // Auto alert
+                // ===== AUTO ALERT STATUS =====
                 const aa = data.last_auto_alert || {};
                 const alertCard = document.getElementById("alertFlashCard");
                 document.getElementById("alertReason").textContent =
                     aa.reason || "لا يوجد تحذير حاليًا";
-                document.getElementById("alertTime").textContent = aa.time || "---";
+                document.getElementById("alertTime").textContent =
+                    aa.time || "---";
                 document.getElementById("alertSent").textContent =
                     aa.sent === true ? "نعم ✅" :
-                    aa.sent === false ? "لا ❌" : "---";
+                        aa.sent === false ? "لا ❌" : "---";
 
                 if (aa.reason && aa.reason !== "no_alert" && aa.reason !== "duplicate") {
                     alertCard.classList.add("flash");
@@ -1038,46 +1135,55 @@
                     alertCard.classList.remove("flash");
                 }
 
-                // Order flow
+                // ===== ORDER FLOW ESTIMATION =====
                 const of = estimateOrderFlow(change, volScore, liqLabel);
                 document.getElementById("orderFlowValue").textContent = of.label;
                 document.getElementById("buyersShare").textContent = of.buyers.toFixed(0) + "٪";
                 document.getElementById("sellersShare").textContent = of.sellers.toFixed(0) + "٪";
 
-                // Short term bias
+                // ===== SHORT TERM BIAS =====
                 const st = estimateShortTermBias(change, volScore, strengthLabel);
                 document.getElementById("shortTermBias").textContent = st.biasText;
                 document.getElementById("upProb").textContent = st.up + "٪";
                 document.getElementById("downProb").textContent = st.down + "٪";
 
-                // Noise
+                // ===== NOISE FILTER =====
                 const nf = estimateNoise(change, volScore, rangePct);
                 document.getElementById("noiseValue").textContent = nf.noise + " / 100";
                 document.getElementById("noiseScore").textContent = nf.noise + " / 100";
                 document.getElementById("noiseText").textContent = nf.label;
 
-                // Scalper mode
+                // ===== SCALPER MODE =====
                 const sc = estimateScalperSuitability(volScore, nf.noise, rangePct);
                 document.getElementById("scalpSuitability").textContent =
                     sc.score + " / 100";
                 document.getElementById("scalpText").textContent = sc.label;
 
-                // Dominance
+                // ===== DOMINANCE PULSE =====
                 const dom = estimateDominance(change, liqLabel);
                 document.getElementById("dominanceValue").textContent = dom.label;
                 document.getElementById("dominanceText").textContent = dom.text;
 
-                // Trend temperature
+                // ===== TREND TEMPERATURE =====
                 const tt = estimateTrendTemp(change, volScore);
                 document.getElementById("trendTempValue").textContent =
                     tt.temp + " / 100";
                 document.getElementById("trendTempText").textContent = tt.label;
 
-                // AI comment
+                // ===== HVT + PANIC =====
+                const hp = estimateHVTandPanic(change, rangePct, volScore);
+                document.getElementById("hvtZoneValue").textContent = hp.hvtLabel;
+                document.getElementById("hvtStatus").textContent = hp.hvtStatus;
+                document.getElementById("panicStatus").textContent = hp.panicLabel;
+                document.getElementById("hvtZoneText").textContent =
+                    hp.hvtLabel + " " + hp.panicLabel;
+
+                // ===== AI COMMENT =====
                 const comment = buildAIComment(
                     change,
                     volScore,
                     riskMsg,
+                    riskLevel,
                     liquidityPulse,
                     strengthLabel,
                     modeInfo
@@ -1157,7 +1263,7 @@
             }
         }
 
-        // أول تشغيل
+        // أول تحميل
         loadMain();
         loadLogs();
         reloadAlerts();
@@ -1169,4 +1275,3 @@
     </script>
 </body>
 </html>
-```0
