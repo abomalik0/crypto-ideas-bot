@@ -21,9 +21,7 @@
             --text-muted: #9ca3af;
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             margin: 0;
@@ -88,13 +86,8 @@
             font-size: 12px;
         }
 
-        .btc-green {
-            color: var(--accent-green);
-        }
-
-        .btc-red {
-            color: var(--accent-red);
-        }
+        .btc-green { color: var(--accent-green); }
+        .btc-red   { color: var(--accent-red); }
 
         .btc-chip {
             padding: 3px 10px;
@@ -134,6 +127,8 @@
             gap: 14px;
         }
 
+        .span-2 { grid-column: span 2; }
+
         @media (max-width: 1024px) {
             .grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -146,13 +141,8 @@
                 padding: 14px 10px 20px;
             }
 
-            .btc-bar {
-                padding: 10px 10px;
-            }
-
-            .header {
-                padding: 12px 10px 4px;
-            }
+            .btc-bar { padding: 10px 10px; }
+            .header  { padding: 12px 10px 4px; }
         }
 
         /* ===== CARD BASE ===== */
@@ -173,14 +163,12 @@
             background: radial-gradient(circle at top left,
                         rgba(56, 189, 248, 0.17),
                         transparent 55%);
-            opacity: 0.0;
+            opacity: 0;
             transition: opacity 0.2s;
             pointer-events: none;
         }
 
-        .card:hover::before {
-            opacity: 1;
-        }
+        .card:hover::before { opacity: 1; }
 
         .card-header {
             display: flex;
@@ -204,15 +192,12 @@
         }
 
         .card-main {
-            font-size: 20px;
+            font-size: 24px;
             font-weight: 800;
             margin-top: 6px;
         }
 
-        .muted {
-            color: var(--text-muted);
-        }
-
+        .muted  { color: var(--text-muted); }
         .subtext {
             font-size: 12px;
             margin-top: 4px;
@@ -235,29 +220,13 @@
             border: 1px solid rgba(148, 163, 184, 0.35);
         }
 
-        .kpi-label {
-            color: var(--text-muted);
-        }
+        .kpi-label { color: var(--text-muted); }
+        .kpi-val   { font-weight: 600; }
 
-        .kpi-val {
-            font-weight: 600;
-        }
-
-        .green {
-            color: var(--accent-green);
-        }
-
-        .red {
-            color: var(--accent-red);
-        }
-
-        .yellow {
-            color: var(--accent-yellow);
-        }
-
-        .blue {
-            color: var(--accent-blue);
-        }
+        .green  { color: var(--accent-green); }
+        .red    { color: var(--accent-red); }
+        .yellow { color: var(--accent-yellow); }
+        .blue   { color: var(--accent-blue); }
 
         /* ===== HEATBAR ===== */
         .heatbar {
@@ -357,9 +326,7 @@
             border-color: transparent;
         }
 
-        button.secondary {
-            border-style: dashed;
-        }
+        button.secondary { border-style: dashed; }
 
         /* ===== ALERTS LIST ===== */
         .alerts-list {
@@ -370,9 +337,7 @@
             line-height: 1.5;
         }
 
-        .alert-item {
-            margin-bottom: 5px;
-        }
+        .alert-item { margin-bottom: 5px; }
 
         /* ===== FOOTER ===== */
         .footer {
@@ -381,6 +346,7 @@
             text-align: center;
             color: var(--text-muted);
         }
+
     </style>
 </head>
 
@@ -430,7 +396,7 @@
             </div>
             <div class="card-main" id="strengthValue">...</div>
             <div class="subtext">
-                قراءة مدمجة لاتجاه البيتكوين والزخم اللحظى معتمد فقط على بيانات Binance / KuCoin.
+                قراءة مدمجة لاتجاه البيتكوين والزخم اللحظى اعتمادًا على بيانات Binance / KuCoin فقط.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -465,9 +431,7 @@
                 <div class="card-tag" id="riskTag">Risk Engine</div>
             </div>
             <div class="card-main" id="riskValue">...</div>
-            <div class="subtext" id="riskNote">
-                ...
-            </div>
+            <div class="subtext" id="riskNote">...</div>
             <div class="kpi-row">
                 <div class="kpi-pill">
                     <span class="kpi-label">درجة التقلب:</span>
@@ -553,16 +517,16 @@
         </div>
 
         <!-- آخر خطأ + Snapshot من اللوج -->
-        <div class="card" id="errorCard">
+        <div class="card span-2" id="errorCard">
             <div class="card-header">
-                <div class="card-title">مراقبة الأخطاء</div>
+                <div class="card-title">مراقبة الأخطاء واللوج</div>
                 <div class="card-tag">Last error + Logs</div>
             </div>
             <div class="card-main" id="lastErrorTitle">لا يوجد أخطاء مسجلة</div>
             <div class="subtext">
-                يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت.
+                يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت، مع عرض لقطة من آخر اللوج.
             </div>
-            <pre id="logsSnapshot">لا يوجد لوجات حتى الآن.</pre>
+            <pre id="logsSnapshot">جارِ تحميل اللوج...</pre>
         </div>
 
         <!-- سجل التحذيرات -->
@@ -580,108 +544,96 @@
             </div>
         </div>
 
-        <!-- ====================== الإضافات الجديدة (7 كروت) ====================== -->
-
-        <!-- 1) Mini Order Flow -->
-        <div class="card" id="orderFlowCard">
+        <!-- Order Flow -->
+        <div class="card">
             <div class="card-header">
-                <div class="card-title">تدفق الأوامر المبسط (Order Flow)</div>
-                <div class="card-tag">Buy vs Sell Pressure</div>
+                <div class="card-title">تدفق الأوامر اللحظى</div>
+                <div class="card-tag">Order Flow / Buy vs Sell</div>
             </div>
-            <div class="card-main">
-                المشترين: <span id="ofBuy">-</span> ٪ — البائعين: <span id="ofSell">-</span> ٪
-            </div>
-            <div class="subtext">
-                تقدير تقريبى لتوازن القوى بين المشترين والبائعين بناءً على الحركة اللحظية والتقلب والسيولة.
+            <div class="card-main" id="orderFlowValue">--</div>
+            <div class="subtext" id="orderFlowText">
+                تقدير تقريبى لتوزيع القوة بين المشترين والبائعين بناءً على الحركة الحالية والتقلب.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
-                    <span class="kpi-label">اتجاه السيولة:</span>
-                    <span class="kpi-val" id="ofDir">...</span>
+                    <span class="kpi-label">المشترين:</span>
+                    <span class="kpi-val" id="buyersPct">--</span>
                 </div>
                 <div class="kpi-pill">
-                    <span class="kpi-label">حالة التوازن:</span>
-                    <span class="kpi-val" id="ofImb">...</span>
+                    <span class="kpi-label">البائعين:</span>
+                    <span class="kpi-val" id="sellersPct">--</span>
                 </div>
             </div>
         </div>
 
-        <!-- 2) AI Movement Prediction -->
-        <div class="card" id="predictCard">
-            <div class="card-header">
-                <div class="card-title">توقع حركة قصيرة المدى</div>
-                <div class="card-tag">AI Movement Estimation (5–15m)</div>
-            </div>
-            <div class="card-main">
-                صعود: <span id="mvUp">-</span> ٪ — هبوط: <span id="mvDown">-</span> ٪
-            </div>
-            <div class="subtext" id="mvNote">
-                تقدير احتمالى لحركة البيتكوين القادمة اعتمادًا على الزخم اللحظى والتقلب.
-            </div>
-            <div class="kpi-row">
-                <div class="kpi-pill">
-                    <span class="kpi-label">تماسك / Side:</span>
-                    <span class="kpi-val" id="mvSide">...</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- 3) Market Noise Filter -->
-        <div class="card" id="noiseCard">
+        <!-- Noise Filter -->
+        <div class="card">
             <div class="card-header">
                 <div class="card-title">فلتر الضوضاء فى الحركة</div>
                 <div class="card-tag">Market Noise Filter</div>
             </div>
-            <div class="card-main" id="noiseLabel">...</div>
-            <div class="subtext" id="noiseDescription">
-                ...
+            <div class="card-main" id="noiseValue">--</div>
+            <div class="subtext" id="noiseText">
+                يوضح نسبة الحركة الحقيقية مقابل الضوضاء السعريّة فى اليوم الحالى.
             </div>
         </div>
 
-        <!-- 4) BTC Dominance Pulse -->
-        <div class="card" id="domCard">
+        <!-- Short-term move -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">توقع حركة قصيرة المدى</div>
+                <div class="card-tag">5–15m Move Estimation</div>
+            </div>
+            <div class="card-main" id="shortTermValue">--</div>
+            <div class="subtext" id="shortTermText">
+                سيناريو تقريبى للحركة المتوقعة خلال دقائق قادمة اعتمادًا على قوة الزخم الحالى.
+            </div>
+        </div>
+
+        <!-- Scalper Suitability -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">وضع السكالبينج</div>
+                <div class="card-tag">Scalper Mode</div>
+            </div>
+            <div class="card-main" id="scalperValue">--</div>
+            <div class="subtext" id="scalperText">
+                تقييم ملاءمة السوق لصفقات السكالبينج السريعة من حيث التقلب والاتساع.
+            </div>
+        </div>
+
+        <!-- BTC Dominance / Market health -->
+        <div class="card">
             <div class="card-header">
                 <div class="card-title">نبض هيمنة البيتكوين</div>
                 <div class="card-tag">BTC Dominance Pulse</div>
             </div>
-            <div class="card-main" id="domLevel">...</div>
-            <div class="subtext" id="domComment">
-                ...
+            <div class="card-main" id="dominanceValue">--</div>
+            <div class="subtext" id="dominanceText">
+                قراءة مبسّطة لتأثير البيتكوين على باقى السوق استنادًا لقوة الحركة الحالية.
             </div>
         </div>
 
-        <!-- 5) Scalper Mode -->
-        <div class="card" id="scalpCard">
+        <!-- Trend Temperature -->
+        <div class="card">
             <div class="card-header">
-                <div class="card-title">وضع السكالبينج (Scalper Mode)</div>
-                <div class="card-tag">Scalper Suitability</div>
-            </div>
-            <div class="card-main" id="scalpLabel">...</div>
-            <div class="subtext" id="scalpComment">
-                ...
-            </div>
-        </div>
-
-        <!-- 6) Trend Temperature -->
-        <div class="card" id="tempCard">
-            <div class="card-header">
-                <div class="card-title">درجة حرارة الترند</div>
+                <div class="card-title">درجة حرارة الاتجاه</div>
                 <div class="card-tag">Trend Temperature</div>
             </div>
-            <div class="card-main" id="tempValue">...</div>
-            <div class="subtext" id="tempComment">
-                ...
+            <div class="card-main" id="trendTempValue">--</div>
+            <div class="subtext" id="trendTempText">
+                كلما زادت الحرارة اقتربنا من مناطق تحتاج حذرًا أعلى فى إدارة رأس المال.
             </div>
         </div>
 
-        <!-- 7) AI Market Commentary -->
-        <div class="card" id="commentCard">
+        <!-- AI Commentary -->
+        <div class="card span-2">
             <div class="card-header">
                 <div class="card-title">تعليق IN CRYPTO Ai اللحظى</div>
                 <div class="card-tag">AI Market Commentary</div>
             </div>
-            <div class="card-main" style="font-size: 14px; line-height:1.7;" id="aiComment">
-                ...
+            <div class="subtext" id="aiCommentary">
+                جارِ توليد ملخص السوق...
             </div>
         </div>
 
@@ -696,7 +648,7 @@
     <script>
         function getPassParam() {
             const params = new URLSearchParams(window.location.search);
-            return params.get("pass") || "";
+            return params.get("pass") || params.get("password") || "";
         }
 
         function apiUrl(path) {
@@ -748,196 +700,112 @@
             return "🔁 تذبذب طبيعى مع سيولة متوازنة تقريبًا.";
         }
 
-        // ----- NEW HELPERS -----
-
-        function computeOrderFlow(change, volScore, rangePct, liqText) {
-            let buy = 50 + change * 3;
-            let sell = 50 - change * 3;
-
-            if (liqText && /دخول|الدخول/.test(liqText)) {
-                buy += 7;
-                sell -= 7;
+        function estimateOrderFlow(change, volScore) {
+            // يرجّع {buyers, sellers, label}
+            let buyers = 50, sellers = 50;
+            if (change > 0.2) {
+                buyers += Math.min(20, Math.abs(change) * 3 + volScore * 0.15);
+                sellers = 100 - buyers;
+            } else if (change < -0.2) {
+                sellers += Math.min(20, Math.abs(change) * 3 + volScore * 0.15);
+                buyers = 100 - sellers;
             }
-            if (liqText && /خروج/.test(liqText)) {
-                buy -= 7;
-                sell += 7;
-            }
+            buyers = Math.round(buyers);
+            sellers = 100 - buyers;
 
-            buy = Math.max(0, Math.min(100, buy));
-            sell = Math.max(0, Math.min(100, sell));
+            let label = "Balanced";
+            if (buyers >= 60) label = "Buy Pressure";
+            else if (sellers >= 60) label = "Sell Pressure";
 
-            let dir;
-            if (buy > sell + 8) dir = "سيولة تميل للدخول (Buy-Dominant)";
-            else if (sell > buy + 8) dir = "سيولة تميل للخروج (Sell-Dominant)";
-            else dir = "سيولة متوازنة تقريبًا";
-
-            let imb;
-            const diff = Math.abs(buy - sell);
-            if (diff < 8) imb = "Balanced";
-            else if (diff < 18) imb = "Moderate Imbalance";
-            else imb = "Extreme Imbalance";
-
-            return { buy, sell, dir, imb };
+            return { buyers, sellers, label };
         }
 
-        function predictShortTerm(change, volScore) {
-            // أرقام تقريبية للحركة على مدى 5–15 دقيقة
-            let up = 33, down = 33;
-
-            if (change > 0.8) {
-                up += 15;
-                down -= 10;
-            } else if (change < -0.8) {
-                down += 15;
-                up -= 10;
-            }
-
-            if (volScore > 60) {
-                // احتمالات أعلى للانفجار فى الاتجاهين
-                up += 5;
-                down += 5;
-            } else if (volScore < 25) {
-                up -= 5;
-                down -= 5;
-            }
-
-            up = Math.max(5, Math.min(80, up));
-            down = Math.max(5, Math.min(80, down));
-            let side = 100 - (up + down);
-            if (side < 5) {
-                side = 5;
-                const scale = (100 - side) / (up + down);
-                up = Math.round(up * scale);
-                down = 100 - side - up;
-            }
-
-            let note;
-            if (Math.abs(change) < 0.5 && volScore < 25) {
-                note = "الحركة اللحظية ضعيفة، احتمال التماسك أعلى من الانفجار السريع.";
-            } else if (change > 1.5 && volScore > 45) {
-                note = "زخم صعودى جيد مع تقلب نشط، قد نرى امتداد للحركة لو استمر تدفق السيولة.";
-            } else if (change < -1.5 && volScore > 45) {
-                note = "ضغط بيعى ملحوظ، أى ارتداد قصير قد يكون فرصة لإعادة الاختبار.";
-            } else {
-                note = "السوق فى وضع تذبذب طبيعى بدون اتجاه قوى، التوقعات قصيرة المدى غير حاسمة.";
-            }
-
-            return { up, down, side, note };
+        function estimateNoise(rangePct, volScore) {
+            const raw = Math.max(0, Math.min(100, 100 - (rangePct * 4 + volScore * 0.8)));
+            if (raw > 70) return { value: raw, label: "حركة منظمة نسبياً، الضوضاء منخفضة." };
+            if (raw > 40) return { value: raw, label: "مزيج بين حركة حقيقية وضوضاء طبيعية." };
+            return { value: raw, label: "ضوضاء سعرية مرتفعة، يفضّل تصفية الإشارات." };
         }
 
-        function classifyNoise(change, volScore, rangePct) {
-            let label, desc;
-            if (Math.abs(change) < 0.4 && volScore < 20 && rangePct < 3) {
-                label = "Noise / ضوضاء سعرية";
-                desc = "معظم الحركة الحالية تبدو كضوضاء قصيرة المدى بدون اتجاه واضح أو نية تجميع/توزيع.";
-            } else if (Math.abs(change) < 1 && volScore < 35) {
-                label = "حركة جانبية هادئة";
-                desc = "السوق يتحرك فى نطاق محدود، القراءات تميل إلى التماسك أكثر من تكوين اتجاه جديد حاليًا.";
-            } else if (volScore > 65 && rangePct > 7 && Math.abs(change) < 1) {
-                label = "حركة مضغوطة / Manipulated Range";
-                desc = "تقلب عالى بدون تغيير كبير فى الإغلاق → احتمال حركة حادة مفاجئة عند الكسر.";
-            } else if (Math.abs(change) > 2 && volScore > 50) {
-                label = "حركة اتجاهية حقيقية";
-                desc = "التقلب المرتفع مع تغيير واضح فى السعر يشير إلى اتجاه فعلى وليس مجرد ضوضاء.";
-            } else {
-                label = "تذبذب طبيعى";
-                desc = "الحركة الحالية تجمع بين تذبذب معتدل وبعض الاتجاه، بدون إشارات ضوضاء مفرطة.";
-            }
-            return { label, desc };
+        function estimateShortTermMove(change, volScore) {
+            let bias = "تذبذب جانبى محتمل.";
+            if (change > 1 && volScore > 40) bias = "ميل خفيف لاستكمال صعود قصير المدى.";
+            if (change < -1 && volScore > 40) bias = "ميل خفيف لاستكمال هبوط قصير المدى.";
+            if (volScore > 70) bias = "حركة سريعة محتملة فى أى اتجاه، إدارة مخاطر ضرورية.";
+
+            const upProb   = Math.max(5, Math.min(80, 50 + change * 4));
+            const downProb = Math.max(5, 100 - upProb);
+
+            return {
+                value: `${upProb.toFixed(0)}٪ ↑ / ${downProb.toFixed(0)}٪ ↓`,
+                text: bias
+            };
         }
 
-        function btcDominancePulse(change, volScore, rangePct, strengthText, liqText) {
-            let level, comment;
-
-            if (Math.abs(change) < 1 && volScore < 30) {
-                level = "هيمنة ضعيفة / Mixed Market";
-                comment = "تأثير البيتكوين على باقى السوق محدود حاليًا، الحركة العامة أقرب للتماسك.";
-            } else if (Math.abs(change) > 2 && /صعود|قوى|هبوط/.test(strengthText || "")) {
-                level = "هيمنة قوية للبيتكوين";
-                comment = "حركة البيتكوين الحالية على الأرجح تقود السوق بالكامل؛ باقى العملات تتبع نفس المزاج.";
-            } else if (volScore > 55 && rangePct > 6) {
-                level = "تقلب BTC عالى لكن الهيمنة غير محسومة";
-                comment = "تقلب حاد فى البيتكوين، لكن شكل السيولة لا يعكس قيادة مستقرة للسوق.";
-            } else {
-                level = "هيمنة متوسطة";
-                comment = "البيتكوين ما زال المؤشر الرئيسى، لكن يمكن أن تختلف بعض العملات فى السلوك قصير المدى.";
+        function estimateScalperMode(rangePct, volScore) {
+            if (volScore < 20 || rangePct < 1) {
+                return {
+                    title: "غير مناسب للسكالبينج 😴",
+                    text: "الحركة الحالية بطيئة وضيقة، فرص السكالبينج محدودة وقد تزيد مصاريف الرسوم."
+                };
             }
-
-            if (liqText && /خروج/.test(liqText)) {
-                comment += " توجد أيضًا إشارات على خروج جزء من السيولة من السوق أو انتقالها لأصول أخرى.";
+            if (volScore > 65 && rangePct > 5) {
+                return {
+                    title: "سكالبينج عدوانى ⚠️",
+                    text: "السوق عصبى وسريع، يمكن لصفقات السكالبينج أن تنجح لكن مع مخاطرة عالية جدًا."
+                };
             }
-
-            return { level, comment };
+            return {
+                title: "مناسب جزئيًا للسكالبينج 🎯",
+                text: "مدى اليوم واتساع الحركة يسمحان بصفقات سريعة بشرط انضباط قوى فى وقف الخسارة."
+            };
         }
 
-        function scalperMode(volScore, rangePct) {
-            let label, comment;
-
-            if (volScore < 18 && rangePct < 3) {
-                label = "غير مناسب للسكالبينج 😴";
-                comment = "الحركة بطيئة جدًا، الفروقات الصغيرة لا تغطى المخاطر أو العمولات فى أغلب الأحيان.";
-            } else if (volScore >= 18 && volScore <= 55 && rangePct <= 7) {
-                label = "مناسب للسكالبينج بحذر ✅";
-                comment = "تقلب متوسط ونطاق جيد يسمح بصفقات سريعة، مع ضرورة الالتزام بوقف خسارة قصير.";
-            } else if (volScore > 55 && rangePct > 7) {
-                label = "سكالبينج عالى المخاطرة ⚠️";
-                comment = "الحركة سريعة وحادة، الفرص كبيرة لكن احتمال الانعكاس المفاجئ أعلى بكثير.";
-            } else {
-                label = "ظروف مختلطة للسكالبينج";
-                comment = "السوق لا يعطى نمط واضح للسكالبينج، يفضل تخفيض حجم العقود والتركيز على مناطق قوية فقط.";
+        function estimateDominance(change, rangePct) {
+            if (Math.abs(change) < 0.5 && rangePct < 3) {
+                return {
+                    title: "Mixed Market / هيمنة ضعيفة",
+                    text: "لا توجد سيطرة واضحة للبيتكوين على باقى السوق، الحركة عامة هادئة أو متذبذبة."
+                };
             }
-
-            return { label, comment };
+            if (Math.abs(change) > 2.5 && rangePct > 6) {
+                return {
+                    title: "BTC Led Move",
+                    text: "البيتكوين يقود الحركة الحالية بقوة، غالبًا يتأثر باقى السوق بنفس الاتجاه."
+                };
+            }
+            return {
+                title: "Market Rotation",
+                text: "الحركة ليست عنيفة لكن يوجد احتمال دوران رؤوس الأموال بين البيتكوين والألتكوين."
+            };
         }
 
-        function trendTemperature(change, volScore) {
-            let temp, comment;
-            const absCh = Math.abs(change);
-
-            if (absCh < 0.5 && volScore < 20) {
-                temp = "❄️ ترند بارد";
-                comment = "لا يوجد زخم اتجاهى يذكر، الحركة أقرب إلى نطاق عرضى قصير المدى.";
-            } else if (absCh < 1.5 && volScore < 45) {
-                temp = "🌤 ترند دافئ";
-                comment = "بداية تكون اتجاه بسيط، يمكن أن يتطور مع دخول سيولة جديدة.";
-            } else if (absCh >= 1.5 && volScore < 65) {
-                temp = "🔥 ترند ساخن";
-                comment = "زخم جيد فى اتجاه واحد، المتابعة مع الترند أفضل من عكسه.";
-            } else {
-                temp = "⚡ ترند مولّع";
-                comment = "حركة عنيفة وسريعة، الترند حاضر لكن مخاطر الانعكاس الحاد مرتفعة أيضًا.";
+        function estimateTrendTemp(change, volScore) {
+            const heat = Math.min(100, Math.abs(change) * 4 + volScore * 0.8);
+            if (heat < 25) {
+                return { title: "بارد ❄️", text: "اتجاه هادئ، لا توجد إشارات قوية لكن يمكن بناء مراكز تدريجيًا." };
             }
-
-            return { temp, comment };
+            if (heat < 60) {
+                return { title: "دافئ 🌤", text: "السوق يتحرك بوتيرة صحية، يمكن استغلال الاتجاه مع مراعاة إدارة رأس المال." };
+            }
+            return { title: "ساخن 🔥", text: "السوق يدخل مرحلة ساخنة، يفضّل التركيز على حماية الأرباح وتقليل الرافعة." };
         }
 
-        function buildCommentary(change, volScore, rangePct, riskLevelText, liqText, strengthText) {
-            let sentence1, sentence2, sentence3;
+        function buildAICommentary(price, change, rangePct, volScore, riskLevel, riskMsg, liquidityPulse) {
+            const dir = change > 0.5 ? "ميل صاعد" : (change < -0.5 ? "ميل هابط" : "تذبذب شبه جانبى");
+            const riskSentence = `من ناحية المخاطر، القراءة الحالية تُصنّف بأنها "${riskLevel}"، مع ملاحظة: ${riskMsg}`;
+            const volSentence  = `مدى الحركة اليومى عند حوالى ${rangePct.toFixed(1)}٪ مع درجة تقلب ${volScore.toFixed(1)} / 100.`;
+            const liqSentence  = `نبض السيولة يشير إلى أن ${liquidityPulse || "السيولة متوازنة تقريبًا بين المشترين والبائعين."}`;
 
-            if (change > 1.5) {
-                sentence1 = `السوق يشهد ميلًا صعوديًا ملحوظًا مع تغير يومى يقارب ${(change).toFixed(2)}٪.`;
-            } else if (change < -1.5) {
-                sentence1 = `هناك ضغط بيعى واضح على البيتكوين مع هبوط يومى يقارب ${(change).toFixed(2)}٪.`;
-            } else {
-                sentence1 = `حركة البيتكوين اليوم أقرب للتذبذب الهادئ مع تغير يومى حوالى ${(change).toFixed(2)}٪.`;
-            }
-
-            if (volScore > 60) {
-                sentence2 = "درجة التقلب مرتفعة، ما يعنى أن القرارات السريعة بدون خطة قد تكون مكلفة.";
-            } else if (volScore < 20) {
-                sentence2 = "التقلب منخفض نسبيًا، والسوق يتحرك بهدوء بدون انفجارات سعرية حادة حتى الآن.";
-            } else {
-                sentence2 = "التقلب فى المنطقة المتوسطة، مما يسمح بفرص لكن مع ضرورة إدارة المخاطر.";
-            }
-
-            let liqShort = liqText || "";
-            if (liqShort.length > 90) {
-                liqShort = liqShort.slice(0, 87) + "...";
-            }
-
-            sentence3 = `مستوى المخاطر العام حاليًا: ${riskLevelText}، مع قراءة سيولة تشير إلى: ${liqShort}`;
-
-            return sentence1 + " " + sentence2 + " " + sentence3;
+            return `
+                حركة البيتكوين الآن حول مستوى تقريبى قدره <b>${price.toLocaleString()}</b>$ مع تغير يومى يقارب
+                <b>${change.toFixed(2)}٪</b> (${dir}).<br/><br/>
+                ${volSentence}<br/>
+                ${liqSentence}<br/><br/>
+                ${riskSentence}<br/><br/>
+                الخلاصة: يُفضّل دمج هذه القراءة مع خطة تداول واضحة
+                والتركيز على مناطق الدعم والمقاومة الرئيسية بدل مطاردة الحركة اللحظية.
+            `;
         }
 
         async function loadMain() {
@@ -946,21 +814,22 @@
                 const data = await res.json();
                 if (!data.ok) return;
 
-                const price = data.price;
-                const change = data.change_pct;
-                const rangePct = data.range_pct;
-                const volScore = data.volatility_score;
-                const riskLevel = data.risk_level;
-                const riskEmoji = data.risk_emoji;
-                const riskMsg = data.risk_message;
-                const strength = data.strength_label;
-                const liquidity = data.liquidity_pulse;
+                const price      = data.price;
+                const change     = data.change_pct;
+                const rangePct   = data.range_pct;
+                const volScore   = data.volatility_score;
+                const riskLevel  = data.risk_level;
+                const riskEmoji  = data.risk_emoji;
+                const riskMsg    = data.risk_message;
+                const liqPulse   = data.liquidity_pulse;
+                const lastErr    = data.last_error || {};
+                const autoAlert  = data.last_auto_alert || {};
 
-                // ===== TOP BTC BAR =====
-                const barPrice = document.getElementById("barPrice");
+                /* ===== TOP BTC BAR ===== */
+                const barPrice  = document.getElementById("barPrice");
                 const barChange = document.getElementById("barChange");
-                const barRange = document.getElementById("barRange");
-                const modeChip = document.getElementById("marketModeChip");
+                const barRange  = document.getElementById("barRange");
+                const modeChip  = document.getElementById("marketModeChip");
 
                 const changeColorClass = change >= 0 ? "btc-green" : "btc-red";
 
@@ -981,8 +850,8 @@
                     modeChip.style.background = "radial-gradient(circle at top, #0f172a, #020617)";
                 }
 
-                // ===== MARKET STRENGTH CARD =====
-                document.getElementById("strengthValue").textContent = strength;
+                /* ===== MARKET STRENGTH CARD ===== */
+                document.getElementById("strengthValue").textContent = data.strength_label;
                 document.getElementById("kpiChange").textContent =
                     (change >= 0 ? "+" : "") + change.toFixed(2) + "%";
                 document.getElementById("kpiRange").textContent = rangePct.toFixed(2) + "%";
@@ -992,42 +861,32 @@
 
                 const heatDot = document.getElementById("heatDot");
                 heatDot.style.left = Math.min(96, Math.max(4, heatScore)) + "%";
-                if (heatScore < 25) {
-                    heatDot.style.background = "#22c55e";
-                } else if (heatScore < 50) {
-                    heatDot.style.background = "#facc15";
-                } else if (heatScore < 75) {
-                    heatDot.style.background = "#f97316";
-                } else {
-                    heatDot.style.background = "#ef4444";
-                }
+                if (heatScore < 25)      heatDot.style.background = "#22c55e";
+                else if (heatScore < 50) heatDot.style.background = "#facc15";
+                else if (heatScore < 75) heatDot.style.background = "#f97316";
+                else                     heatDot.style.background = "#ef4444";
 
-                // ===== RISK CARD =====
+                /* ===== RISK CARD ===== */
                 const riskCard = document.getElementById("riskCard");
-                const riskVal = document.getElementById("riskValue");
-                const riskNote = document.getElementById("riskNote");
-                const kpiMode = document.getElementById("kpiMode");
-                const kpiVol = document.getElementById("kpiVol");
-
-                riskVal.innerHTML = riskEmoji + " " + riskLevel;
-                riskNote.textContent = riskMsg;
-                kpiVol.textContent = volScore.toFixed(1) + " / 100";
-                kpiMode.textContent = modeInfo.label;
+                document.getElementById("riskValue").innerHTML = riskEmoji + " " + riskLevel;
+                document.getElementById("riskNote").textContent = riskMsg;
+                document.getElementById("kpiVol").textContent  = volScore.toFixed(1) + " / 100";
+                document.getElementById("kpiMode").textContent = modeInfo.label;
 
                 riskCard.classList.remove("green", "yellow", "red");
-                if (riskLevel.includes("منخفض")) riskCard.classList.add("green");
+                if (riskLevel.includes("منخفض"))      riskCard.classList.add("green");
                 else if (riskLevel.includes("متوسط")) riskCard.classList.add("yellow");
-                else riskCard.classList.add("red");
+                else                                  riskCard.classList.add("red");
 
-                // ===== LIQUIDITY CARD =====
-                document.getElementById("liquidityValue").textContent = liquidity;
+                /* ===== LIQUIDITY CARD ===== */
+                document.getElementById("liquidityValue").textContent = liqPulse;
                 document.getElementById("liqLabel").textContent =
                     change > 0 ? "ميل لصالح المشترين" :
                     (change < 0 ? "ميل لصالح البائعين" : "متوازنة تقريبًا");
                 document.getElementById("signalPulse").textContent =
                     buildSignalPulse(change, volScore);
 
-                // ===== VOLATILITY CARD =====
+                /* ===== VOLATILITY CARD ===== */
                 document.getElementById("volatilityValue").textContent =
                     volScore.toFixed(1) + " / 100";
                 document.getElementById("rangeDetail").textContent =
@@ -1035,10 +894,9 @@
                 document.getElementById("volatilityLabel").textContent =
                     classifyVolatility(volScore);
 
-                // ===== LAST ERROR + LOG SNAPSHOT =====
-                const lastErr = data.last_error || {};
+                /* ===== ERROR + LOGS ===== */
                 const errTitle = document.getElementById("lastErrorTitle");
-                const errCard = document.getElementById("errorCard");
+                const errCard  = document.getElementById("errorCard");
 
                 if (lastErr && lastErr.message) {
                     errTitle.textContent = "آخر خطأ — " + (lastErr.time || "");
@@ -1048,67 +906,60 @@
                     errCard.classList.remove("yellow");
                 }
 
-                // ===== AUTO ALERT STATUS =====
-                const aa = data.last_auto_alert || {};
+                /* ===== AUTO ALERT STATUS ===== */
                 const alertCard = document.getElementById("alertFlashCard");
                 document.getElementById("alertReason").textContent =
-                    aa.reason || "لا يوجد تحذير حاليًا";
+                    autoAlert.reason || "لا يوجد تحذير حاليًا";
                 document.getElementById("alertTime").textContent =
-                    aa.time || "---";
+                    autoAlert.time || "---";
                 document.getElementById("alertSent").textContent =
-                    aa.sent === true ? "نعم ✅" :
-                        aa.sent === false ? "لا ❌" : "---";
+                    autoAlert.sent === true ? "نعم ✅" :
+                    autoAlert.sent === false ? "لا ❌" : "---";
 
-                if (aa.reason && aa.reason !== "no_alert" && aa.reason !== "duplicate") {
+                if (autoAlert.reason && autoAlert.reason !== "no_alert" && autoAlert.reason !== "duplicate") {
                     alertCard.classList.add("flash");
                 } else {
                     alertCard.classList.remove("flash");
                 }
 
-                // ===== NEW CARDS: 1) Order Flow =====
-                const of = computeOrderFlow(change, volScore, rangePct, liquidity);
-                document.getElementById("ofBuy").textContent = of.buy.toFixed(0);
-                document.getElementById("ofSell").textContent = of.sell.toFixed(0);
-                document.getElementById("ofDir").textContent = of.dir;
-                document.getElementById("ofImb").textContent = of.imb;
+                /* ===== ENHANCED METRICS ===== */
+                // Order Flow
+                const of = estimateOrderFlow(change, volScore);
+                document.getElementById("orderFlowValue").textContent =
+                    of.label === "Balanced" ? "توازن تقريبى بين المشترين والبائعين" :
+                    of.label === "Buy Pressure" ? "ضغط شرائى أعلى" : "ضغط بيعى أعلى";
+                document.getElementById("buyersPct").textContent  = of.buyers  + "٪";
+                document.getElementById("sellersPct").textContent = of.sellers + "٪";
 
-                // ===== 2) Movement Prediction =====
-                const mv = predictShortTerm(change, volScore);
-                document.getElementById("mvUp").textContent = mv.up.toFixed(0);
-                document.getElementById("mvDown").textContent = mv.down.toFixed(0);
-                document.getElementById("mvSide").textContent = mv.side.toFixed(0) + " ٪";
-                document.getElementById("mvNote").textContent = mv.note;
+                // Noise Filter
+                const nf = estimateNoise(rangePct, volScore);
+                document.getElementById("noiseValue").textContent =
+                    nf.value.toFixed(0) + " / 100";
+                document.getElementById("noiseText").textContent = nf.label;
 
-                // ===== 3) Noise Filter =====
-                const nf = classifyNoise(change, volScore, rangePct);
-                document.getElementById("noiseLabel").textContent = nf.label;
-                document.getElementById("noiseDescription").textContent = nf.desc;
+                // Short term
+                const st = estimateShortTermMove(change, volScore);
+                document.getElementById("shortTermValue").textContent = st.value;
+                document.getElementById("shortTermText").textContent  = st.text;
 
-                // ===== 4) BTC Dominance Pulse =====
-                const dom = btcDominancePulse(change, volScore, rangePct, strength, liquidity);
-                document.getElementById("domLevel").textContent = dom.level;
-                document.getElementById("domComment").textContent = dom.comment;
+                // Scalper Mode
+                const sm = estimateScalperMode(rangePct, volScore);
+                document.getElementById("scalperValue").textContent = sm.title;
+                document.getElementById("scalperText").textContent  = sm.text;
 
-                // ===== 5) Scalper Mode =====
-                const sc = scalperMode(volScore, rangePct);
-                document.getElementById("scalpLabel").textContent = sc.label;
-                document.getElementById("scalpComment").textContent = sc.comment;
+                // Dominance
+                const dom = estimateDominance(change, rangePct);
+                document.getElementById("dominanceValue").textContent = dom.title;
+                document.getElementById("dominanceText").textContent  = dom.text;
 
-                // ===== 6) Trend Temperature =====
-                const tt = trendTemperature(change, volScore);
-                document.getElementById("tempValue").textContent = tt.temp;
-                document.getElementById("tempComment").textContent = tt.comment;
+                // Trend Temperature
+                const tt = estimateTrendTemp(change, volScore);
+                document.getElementById("trendTempValue").textContent = tt.title;
+                document.getElementById("trendTempText").textContent  = tt.text;
 
-                // ===== 7) AI Commentary =====
-                const commentary = buildCommentary(
-                    change,
-                    volScore,
-                    rangePct,
-                    riskLevel,
-                    liquidity,
-                    strength
-                );
-                document.getElementById("aiComment").textContent = commentary;
+                // AI Commentary
+                document.getElementById("aiCommentary").innerHTML =
+                    buildAICommentary(price, change, rangePct, volScore, riskLevel, riskMsg, liqPulse);
 
             } catch (e) {
                 console.log("Dashboard Error:", e);
@@ -1189,8 +1040,8 @@
         reloadAlerts();
 
         // تحديثات دورية
-        setInterval(loadMain, 10000);    // بيانات السوق + كل الكروت
-        setInterval(loadLogs, 30000);    // Snapshot اللوج
+        setInterval(loadMain,   10000);  // بيانات السوق
+        setInterval(loadLogs,   30000);  // Snapshot اللوج
         setInterval(reloadAlerts, 60000); // سجل التحذيرات
     </script>
 </body>
