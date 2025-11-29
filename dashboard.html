@@ -9,28 +9,32 @@
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 
         :root {
-            --bg-main: #050814;
-            --bg-card: rgba(15, 23, 42, 0.82);
-            --bg-card-soft: rgba(15, 23, 42, 0.65);
-            --border-soft: rgba(148, 163, 184, 0.25);
-            --accent-green: #00ff9d;
+            --bg-main: #02040a;
+            --bg-main-grad: radial-gradient(circle at top, #111827 0, #02040a 55%);
+            --bg-card: rgba(8, 11, 20, 0.96);
+            --bg-card-soft: rgba(8, 11, 20, 0.86);
+            --border-soft: rgba(148, 163, 184, 0.28);
+            --accent-gold: #fbbf24;
+            --accent-gold-soft: rgba(251, 191, 36, 0.18);
+            --accent-red: #fb7185;
+            --accent-green: #22c55e;
             --accent-blue: #38bdf8;
-            --accent-red: #ff5c5c;
-            --accent-yellow: #facc15;
-            --text-main: #e5e7eb;
+            --text-main: #f9fafb;
             --text-muted: #9ca3af;
         }
 
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
 
         body {
             margin: 0;
             padding: 0;
             font-family: "Cairo", system-ui, sans-serif;
             background:
-                radial-gradient(circle at top, rgba(34, 197, 235, 0.12), transparent 55%),
-                radial-gradient(circle at bottom, rgba(16, 185, 129, 0.10), transparent 55%),
-                var(--bg-main);
+                radial-gradient(circle at top left, rgba(248, 250, 252, 0.05), transparent 55%),
+                radial-gradient(circle at top right, rgba(251, 191, 36, 0.09), transparent 55%),
+                var(--bg-main-grad);
             color: var(--text-main);
             min-height: 100vh;
         }
@@ -39,32 +43,37 @@
         .btc-bar {
             width: 100%;
             padding: 10px 18px;
-            background: linear-gradient(90deg, #020617, #020617);
-            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            background: linear-gradient(90deg, #020617, #050816);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
             justify-content: space-between;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         .btc-bar-left {
             display: flex;
-            align-items: center;
+            flex-wrap: wrap;
             gap: 8px;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            color: #e5e7eb;
+            align-items: center;
         }
 
-        .btc-pill {
-            padding: 2px 8px;
+        .btc-pill-main {
+            padding: 3px 10px;
             border-radius: 999px;
-            background: linear-gradient(90deg, #22c55e, #06b6d4);
+            background: radial-gradient(circle at top, #fbbf24, #f59e0b);
+            color: #111827;
+            font-weight: 800;
             font-size: 11px;
-            color: #0b1120;
-            font-weight: 700;
+            letter-spacing: 0.12em;
+        }
+
+        .btc-title-mini {
+            font-weight: 600;
+            color: #e5e7eb;
+            font-size: 12px;
         }
 
         .btc-bar-right {
@@ -78,206 +87,264 @@
             display: flex;
             align-items: baseline;
             gap: 4px;
-            font-size: 13px;
         }
 
         .btc-label {
             color: var(--text-muted);
-            font-size: 12px;
+            font-size: 11px;
+        }
+
+        .btc-val {
+            font-weight: 600;
+            font-size: 13px;
         }
 
         .btc-green { color: var(--accent-green); }
         .btc-red   { color: var(--accent-red); }
 
-        .btc-chip {
-            padding: 3px 10px;
+        .btc-mode-chip {
+            padding: 4px 11px;
             border-radius: 999px;
-            border: 1px solid rgba(148, 163, 184, 0.45);
+            border: 1px solid rgba(251, 191, 36, 0.7);
             font-size: 11px;
+            letter-spacing: 0.16em;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: #cbd5f5;
-            background: radial-gradient(circle at top, rgba(56, 189, 248, 0.2), transparent 55%);
+            color: #fef3c7;
+            background:
+                radial-gradient(circle at top, rgba(251, 191, 36, 0.35), transparent 60%),
+                rgba(5, 6, 15, 0.97);
         }
 
         /* ===== HEADER ===== */
         .header {
             padding: 14px 18px 4px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .header-main {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
 
         .header-title {
             font-size: 20px;
             font-weight: 800;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.2em;
             text-transform: uppercase;
-            color: #f9fafb;
+            color: #fef3c7;
         }
 
         .header-sub {
             font-size: 12px;
             color: var(--text-muted);
-            margin-top: 4px;
+        }
+
+        .header-badge-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .header-badge {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            background: rgba(15, 23, 42, 0.9);
+            color: var(--text-muted);
+        }
+
+        .header-badge strong {
+            color: #fef3c7;
         }
 
         /* ===== GRID LAYOUT ===== */
         .grid {
             padding: 16px 18px 22px;
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 14px;
         }
 
-        .span-2 { grid-column: span 2; }
-
-        @media (max-width: 1024px) {
+        @media (max-width: 1180px) {
             .grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
+            .header {
+                padding: 12px 10px 4px;
+            }
+            .btc-bar {
+                padding: 10px 10px;
+            }
             .grid {
                 grid-template-columns: minmax(0, 1fr);
                 padding: 14px 10px 20px;
             }
-
-            .btc-bar { padding: 10px 10px; }
-            .header  { padding: 12px 10px 4px; }
         }
 
         /* ===== CARD BASE ===== */
         .card {
             background: var(--bg-card);
-            border-radius: 16px;
+            border-radius: 18px;
             border: 1px solid var(--border-soft);
-            padding: 14px 14px 15px;
+            padding: 14px 14px 13px;
             position: relative;
             overflow: hidden;
-            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.75);
+            box-shadow:
+                0 20px 40px rgba(0, 0, 0, 0.9),
+                0 0 0 1px rgba(15, 23, 42, 0.9);
         }
 
         .card::before {
             content: "";
             position: absolute;
             inset: 0;
-            background: radial-gradient(circle at top left,
-                        rgba(56, 189, 248, 0.17),
-                        transparent 55%);
+            background:
+                radial-gradient(circle at top left, rgba(251, 191, 36, 0.12), transparent 55%);
             opacity: 0;
             transition: opacity 0.2s;
             pointer-events: none;
         }
 
-        .card:hover::before { opacity: 1; }
+        .card:hover::before {
+            opacity: 1;
+        }
 
         .card-header {
             display: flex;
             align-items: baseline;
             justify-content: space-between;
             margin-bottom: 8px;
+            gap: 6px;
         }
 
         .card-title {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
-            color: #e0f2fe;
+            color: #fef3c7;
         }
 
         .card-tag {
-            font-size: 11px;
-            padding: 3px 8px;
+            font-size: 10px;
+            padding: 3px 7px;
             border-radius: 999px;
-            border: 1px solid rgba(148, 163, 184, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.4);
             color: var(--text-muted);
+            background: rgba(15, 23, 42, 0.92);
         }
 
         .card-main {
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 800;
-            margin-top: 6px;
+            margin-top: 5px;
         }
 
-        .muted  { color: var(--text-muted); }
-        .subtext {
+        .card-main span.small {
             font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        .subtext {
+            font-size: 11px;
             margin-top: 4px;
             color: var(--text-muted);
-            line-height: 1.5;
+            line-height: 1.6;
         }
 
         .kpi-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 10px;
-            font-size: 11px;
+            gap: 8px;
+            margin-top: 9px;
         }
 
         .kpi-pill {
             padding: 4px 9px;
             border-radius: 999px;
-            background: rgba(15, 23, 42, 0.95);
-            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: var(--bg-card-soft);
+            border: 1px solid rgba(148, 163, 184, 0.38);
+            font-size: 10px;
+            display: inline-flex;
+            gap: 4px;
+            align-items: baseline;
         }
 
-        .kpi-label { color: var(--text-muted); }
-        .kpi-val   { font-weight: 600; }
+        .kpi-label {
+            color: var(--text-muted);
+        }
+
+        .kpi-val {
+            font-weight: 600;
+        }
 
         .green  { color: var(--accent-green); }
         .red    { color: var(--accent-red); }
-        .yellow { color: var(--accent-yellow); }
+        .gold   { color: var(--accent-gold); }
         .blue   { color: var(--accent-blue); }
 
         /* ===== HEATBAR ===== */
         .heatbar {
             margin-top: 10px;
             width: 100%;
-            height: 6px;
+            height: 7px;
             border-radius: 999px;
+            overflow: hidden;
+            position: relative;
             background: linear-gradient(90deg,
                         #22c55e,
-                        #facc15,
+                        #eab308,
                         #f97316,
                         #ef4444);
-            position: relative;
-            overflow: hidden;
         }
 
         .heatbar-track {
             position: absolute;
             inset: 0;
-            opacity: 0.25;
-            background: #020617;
+            background: linear-gradient(90deg,
+                        rgba(34,197,94,0.05),
+                        rgba(250,204,21,0.1),
+                        rgba(248,250,252,0.05));
+            mix-blend-mode: soft-light;
         }
 
         .heatbar-dot {
             position: absolute;
             top: 50%;
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             border-radius: 999px;
             transform: translate(-50%, -50%);
-            border: 2px solid #f9fafb;
-            box-shadow: 0 0 14px rgba(248, 250, 252, 0.7);
+            border: 2px solid #111827;
+            box-shadow: 0 0 18px rgba(248, 250, 252, 0.9);
+            background: #fef3c7;
         }
 
         .heatbar-labels {
             display: flex;
             justify-content: space-between;
-            font-size: 10px;
+            font-size: 9px;
             color: var(--text-muted);
             margin-top: 4px;
         }
 
-        /* ===== LOG SNAPSHOT ===== */
+        /* ===== LOG AREA ===== */
         pre {
             margin: 8px 0 0;
             padding: 8px;
             border-radius: 10px;
             background: #020617;
-            border: 1px solid rgba(148, 163, 184, 0.3);
+            border: 1px solid rgba(148, 163, 184, 0.35);
             font-size: 10px;
-            max-height: 140px;
+            max-height: 148px;
             overflow: auto;
             direction: ltr;
             text-align: left;
@@ -286,16 +353,16 @@
 
         /* ===== ALERT FLASH ===== */
         .flash {
-            animation: flashAnim 0.95s infinite alternate;
+            animation: flashAnim 0.9s infinite alternate;
         }
 
         @keyframes flashAnim {
             from {
-                box-shadow: 0 0 18px rgba(248, 250, 252, 0.35);
-                border-color: rgba(248, 250, 252, 0.75);
+                box-shadow: 0 0 18px rgba(251, 191, 36, 0.4);
+                border-color: rgba(251, 191, 36, 0.9);
             }
             to {
-                box-shadow: 0 0 28px rgba(239, 68, 68, 0.85);
+                box-shadow: 0 0 26px rgba(248, 113, 113, 0.9);
                 border-color: rgba(248, 113, 113, 0.95);
             }
         }
@@ -304,15 +371,15 @@
         .btn-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 10px;
+            gap: 6px;
+            margin-top: 9px;
         }
 
         button {
             border-radius: 999px;
             border: 0;
-            padding: 6px 13px;
-            font-size: 11px;
+            padding: 5px 11px;
+            font-size: 10px;
             cursor: pointer;
             background: #020617;
             color: #e5e7eb;
@@ -320,33 +387,42 @@
         }
 
         button.primary {
-            background: linear-gradient(135deg, #f59e0b, #facc15);
+            background: radial-gradient(circle at top,
+                        #facc15,
+                        #f59e0b);
             color: #111827;
             font-weight: 700;
             border-color: transparent;
         }
 
-        button.secondary { border-style: dashed; }
+        button.secondary {
+            border-style: dashed;
+        }
 
         /* ===== ALERTS LIST ===== */
         .alerts-list {
-            margin-top: 6px;
-            font-size: 11px;
+            margin-top: 4px;
+            font-size: 10px;
             max-height: 140px;
             overflow: auto;
             line-height: 1.5;
         }
 
-        .alert-item { margin-bottom: 5px; }
+        .alert-item {
+            margin-bottom: 4px;
+        }
 
         /* ===== FOOTER ===== */
         .footer {
             padding: 4px 0 10px;
-            font-size: 11px;
+            font-size: 10px;
             text-align: center;
             color: var(--text-muted);
         }
 
+        .footer span {
+            color: #fbbf24;
+        }
     </style>
 </head>
 
@@ -355,23 +431,23 @@
     <!-- ========== TOP BTC BAR ========== -->
     <div id="btcBar" class="btc-bar">
         <div class="btc-bar-left">
-            <span class="btc-pill">IN CRYPTO Ai</span>
-            <span>لوحة مراقبة البيتكوين — WAR ROOM</span>
+            <span class="btc-pill-main">IN CRYPTO Ai</span>
+            <span class="btc-title-mini">غرفة عمليات البيتكوين — WAR ROOM</span>
         </div>
         <div class="btc-bar-right">
             <div class="btc-metric">
-                <span class="btc-label">السعر</span>
-                <span id="barPrice">-</span>
+                <span class="btc-label">السعر:</span>
+                <span id="barPrice" class="btc-val">-</span>
             </div>
             <div class="btc-metric">
-                <span class="btc-label">تغير 24 س</span>
-                <span id="barChange">-</span>
+                <span class="btc-label">تغير 24 س:</span>
+                <span id="barChange" class="btc-val">-</span>
             </div>
             <div class="btc-metric">
-                <span class="btc-label">مدى اليوم</span>
-                <span id="barRange">-</span>
+                <span class="btc-label">مدى اليوم:</span>
+                <span id="barRange" class="btc-val">-</span>
             </div>
-            <div class="btc-chip" id="marketModeChip">
+            <div id="marketModeChip" class="btc-mode-chip">
                 NORMAL MODE
             </div>
         </div>
@@ -379,9 +455,22 @@
 
     <!-- ========== HEADER ========== -->
     <div class="header">
-        <div class="header-title">IN CRYPTO — WAR ROOM</div>
-        <div class="header-sub">
-            مراقبة حية لقوة السوق، المخاطر، السيولة، والتقلبات مع نظام تحذير ذكى يعمل على حركة البيتكوين.
+        <div class="header-main">
+            <div class="header-title">IN CRYPTO — WAR ROOM</div>
+            <div class="header-sub">
+                مراقبة حية لقوة السوق، المخاطر، السيولة، التقلبات، وسلوك الأوامر مع نظام تحذير ذكّى مبنى بالكامل على حركة البيتكوين فقط.
+            </div>
+        </div>
+        <div class="header-badge-row">
+            <div class="header-badge">
+                وضع التشغيل: <strong id="badgeMode">NORMAL</strong>
+            </div>
+            <div class="header-badge">
+                آخر تحديث Real-Time: <strong id="badgeRealtime">---</strong>
+            </div>
+            <div class="header-badge">
+                سجل الشاتات: <strong id="badgeChats">0</strong>
+            </div>
         </div>
     </div>
 
@@ -391,12 +480,12 @@
         <!-- قوة السوق + Heat Score -->
         <div class="card" id="marketStrengthCard">
             <div class="card-header">
-                <div class="card-title">قوة السوق (Market Strength)</div>
-                <div class="card-tag" id="strengthTag">BTCUSDT Snapshot</div>
+                <div class="card-title">قوة السوق العامة (Market Strength)</div>
+                <div class="card-tag">BTCUSDT Snapshot</div>
             </div>
             <div class="card-main" id="strengthValue">...</div>
             <div class="subtext">
-                قراءة مدمجة لاتجاه البيتكوين والزخم اللحظى اعتمادًا على بيانات Binance / KuCoin فقط.
+                قراءة مدمجة لاتجاه البيتكوين ومدى الحركة اليومية بناءً على بيانات Binance / KuCoin فقط، بدون أى مزود خارجى.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -404,7 +493,7 @@
                     <span class="kpi-val" id="kpiChange">...</span>
                 </div>
                 <div class="kpi-pill">
-                    <span class="kpi-label">مدى الحركة:</span>
+                    <span class="kpi-label">مدى %:</span>
                     <span class="kpi-val" id="kpiRange">...</span>
                 </div>
                 <div class="kpi-pill">
@@ -414,13 +503,13 @@
             </div>
             <div class="heatbar">
                 <div class="heatbar-track"></div>
-                <div id="heatDot" class="heatbar-dot" style="left: 10%; background:#22c55e;"></div>
+                <div id="heatDot" class="heatbar-dot" style="left: 10%;"></div>
             </div>
             <div class="heatbar-labels">
                 <span>هادئ</span>
                 <span>نشط</span>
                 <span>ساخن</span>
-                <span>خطر</span>
+                <span>منطقة خطر</span>
             </div>
         </div>
 
@@ -428,31 +517,33 @@
         <div class="card" id="riskCard">
             <div class="card-header">
                 <div class="card-title">مستوى المخاطر (IN CRYPTO Ai)</div>
-                <div class="card-tag" id="riskTag">Risk Engine</div>
+                <div class="card-tag">Risk Engine</div>
             </div>
             <div class="card-main" id="riskValue">...</div>
-            <div class="subtext" id="riskNote">...</div>
+            <div class="subtext" id="riskNote">
+                ...
+            </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
                     <span class="kpi-label">درجة التقلب:</span>
                     <span class="kpi-val" id="kpiVol">...</span>
                 </div>
                 <div class="kpi-pill">
-                    <span class="kpi-label">وضع النظام:</span>
+                    <span class="kpi-label">وضع السوق:</span>
                     <span class="kpi-val" id="kpiMode">...</span>
                 </div>
             </div>
         </div>
 
-        <!-- السيولة / الاتجاه -->
+        <!-- نبض السيولة والاتجاه -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title">نبض السيولة والاتجاه</div>
+                <div class="card-title">نبض السيولة بين المشترين والبائعين</div>
                 <div class="card-tag">Liquidity Pulse</div>
             </div>
             <div class="card-main" id="liquidityValue">...</div>
             <div class="subtext">
-                تحليل مبسط لدخول وخروج السيولة استنادًا لحركة BTCUSDT فقط، بدون أى مزود بيانات إضافى.
+                قراءة مبسطة لتوازن السيولة اعتمادًا على اتجاه BTCUSDT، مع تحويل الحركة اليومية لصورة أوضح عن من يسيطر على السوق حاليًا.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -469,14 +560,15 @@
         <!-- التقلب اليومى -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title">التقلب اليومى للبيتكوين</div>
+                <div class="card-title">مؤشر التقلب اليومى للبيتكوين</div>
                 <div class="card-tag">Volatility Monitor</div>
             </div>
             <div class="card-main">
                 <span id="volatilityValue">...</span>
+                <span class="small">/ 100</span>
             </div>
             <div class="subtext">
-                كلما اقترب المؤشر من 100 كان السوق أكثر عدوانية وتحتاج إدارة مخاطر مشددة.
+                كلما اقترب المؤشر من 100 كان السوق أكثر عدوانية وتحتاج إدارة مخاطر صارمة، وكلما اقترب من الصفر كان السوق أكثر هدوءًا.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -484,7 +576,7 @@
                     <span class="kpi-val" id="rangeDetail">...</span>
                 </div>
                 <div class="kpi-pill">
-                    <span class="kpi-label">حالة التقلب:</span>
+                    <span class="kpi-label">وصف التقلب:</span>
                     <span class="kpi-val" id="volatilityLabel">...</span>
                 </div>
             </div>
@@ -498,7 +590,7 @@
             </div>
             <div class="card-main" id="alertReason">لا يوجد تحذير حاليًا</div>
             <div class="subtext">
-                آخر استجابة لمسار <code>/auto_alert</code> من البوت.
+                آخر استجابة لمسار <code>/auto_alert</code> من البوت، مع تمييز تلقائى إذا كان النظام يرى وضع غير طبيعى فى السوق.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
@@ -510,23 +602,23 @@
                     <span class="kpi-val" id="alertSent">---</span>
                 </div>
             </div>
-            <div class="btn-row" style="margin-top:10px;">
+            <div class="btn-row">
                 <button class="primary" onclick="callAdmin('force_alert')">إرسال تحذير فورى ⚡</button>
                 <button class="secondary" onclick="callAdmin('test_alert')">تنبيه تجريبى 🧪</button>
             </div>
         </div>
 
-        <!-- آخر خطأ + Snapshot من اللوج -->
-        <div class="card span-2" id="errorCard">
+        <!-- مراقبة الأخطاء واللوج -->
+        <div class="card" id="errorCard">
             <div class="card-header">
                 <div class="card-title">مراقبة الأخطاء واللوج</div>
                 <div class="card-tag">Last error + Logs</div>
             </div>
             <div class="card-main" id="lastErrorTitle">لا يوجد أخطاء مسجلة</div>
             <div class="subtext">
-                يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت، مع عرض لقطة من آخر اللوج.
+                يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت، مع عرض Snapshot مباشر من اللوج.
             </div>
-            <pre id="logsSnapshot">جارِ تحميل اللوج...</pre>
+            <pre id="logsSnapshot">جارى تحميل اللوج...</pre>
         </div>
 
         <!-- سجل التحذيرات -->
@@ -544,96 +636,112 @@
             </div>
         </div>
 
-        <!-- Order Flow -->
+        <!-- تدفق الأوامر اللحظى (تقدير) -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title">تدفق الأوامر اللحظى</div>
-                <div class="card-tag">Order Flow / Buy vs Sell</div>
+                <div class="card-title">تدفق الأوامر اللحظى — المشترين مقابل البائعين</div>
+                <div class="card-tag">Order Flow Snapshot</div>
             </div>
-            <div class="card-main" id="orderFlowValue">--</div>
+            <div class="card-main" id="orderFlowValue">---</div>
             <div class="subtext" id="orderFlowText">
-                تقدير تقريبى لتوزيع القوة بين المشترين والبائعين بناءً على الحركة الحالية والتقلب.
+                تقدير تقريبى لتوازن الضغط بين المشترين والبائعين بناءً على اتجاه السعر والتقلب ونبض السيولة الحالى.
             </div>
             <div class="kpi-row">
                 <div class="kpi-pill">
-                    <span class="kpi-label">المشترين:</span>
-                    <span class="kpi-val" id="buyersPct">--</span>
+                    <span class="kpi-label">هيمنة المشترين:</span>
+                    <span class="kpi-val" id="buyersShare">---</span>
                 </div>
                 <div class="kpi-pill">
-                    <span class="kpi-label">البائعين:</span>
-                    <span class="kpi-val" id="sellersPct">--</span>
+                    <span class="kpi-label">هيمنة البائعين:</span>
+                    <span class="kpi-val" id="sellersShare">---</span>
                 </div>
             </div>
         </div>
 
-        <!-- Noise Filter -->
+        <!-- توقع قصير المدى -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">توقع قصير المدى (≈ 15–30 دقيقة)</div>
+                <div class="card-tag">Short-Term Bias</div>
+            </div>
+            <div class="card-main" id="shortTermBias">---</div>
+            <div class="subtext" id="shortTermText">
+                انحياز حركى قصير المدى مبنى على دمج التغيير اليومى مع درجة التقلب وقوة السوق.
+            </div>
+            <div class="kpi-row">
+                <div class="kpi-pill">
+                    <span class="kpi-label">سيناريو الصعود:</span>
+                    <span class="kpi-val" id="upProb">---</span>
+                </div>
+                <div class="kpi-pill">
+                    <span class="kpi-label">سيناريو الهبوط:</span>
+                    <span class="kpi-val" id="downProb">---</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- فلتر الضوضاء فى الحركة -->
         <div class="card">
             <div class="card-header">
                 <div class="card-title">فلتر الضوضاء فى الحركة</div>
                 <div class="card-tag">Market Noise Filter</div>
             </div>
-            <div class="card-main" id="noiseValue">--</div>
+            <div class="card-main" id="noiseValue">---</div>
             <div class="subtext" id="noiseText">
-                يوضح نسبة الحركة الحقيقية مقابل الضوضاء السعريّة فى اليوم الحالى.
+                يقيس كمية الحركة “العبثية” مقابل الحركة الهادفة؛ يساعد فى معرفة ما إذا كان الأفضل عدم المطاردة وانتظار مناطق أوضح.
+            </div>
+            <div class="kpi-row">
+                <div class="kpi-pill">
+                    <span class="kpi-label">درجة الضوضاء التقديرية:</span>
+                    <span class="kpi-val" id="noiseScore">---</span>
+                </div>
             </div>
         </div>
 
-        <!-- Short-term move -->
+        <!-- وضع السكالبينج -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title">توقع حركة قصيرة المدى</div>
-                <div class="card-tag">5–15m Move Estimation</div>
+                <div class="card-title">وضع السكالبينج (Scalper Mode)</div>
+                <div class="card-tag">Scalper Suitability</div>
             </div>
-            <div class="card-main" id="shortTermValue">--</div>
-            <div class="subtext" id="shortTermText">
-                سيناريو تقريبى للحركة المتوقعة خلال دقائق قادمة اعتمادًا على قوة الزخم الحالى.
+            <div class="card-main" id="scalpSuitability">---</div>
+            <div class="subtext" id="scalpText">
+                تقييم سريع لمدى ملاءمة الظروف الحالية لاستراتيجيات السكالبينج السريعة (حركة × تقلب × ضوضاء).
             </div>
         </div>
 
-        <!-- Scalper Suitability -->
+        <!-- نبض هيمنة البيتكوين -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title">وضع السكالبينج</div>
-                <div class="card-tag">Scalper Mode</div>
+                <div class="card-title">نبض هيمنة البيتكوين على السوق</div>
+                <div class="card-tag">BTC Dominance Pulse (تقدير)</div>
             </div>
-            <div class="card-main" id="scalperValue">--</div>
-            <div class="subtext" id="scalperText">
-                تقييم ملاءمة السوق لصفقات السكالبينج السريعة من حيث التقلب والاتساع.
-            </div>
-        </div>
-
-        <!-- BTC Dominance / Market health -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">نبض هيمنة البيتكوين</div>
-                <div class="card-tag">BTC Dominance Pulse</div>
-            </div>
-            <div class="card-main" id="dominanceValue">--</div>
+            <div class="card-main" id="dominanceValue">---</div>
             <div class="subtext" id="dominanceText">
-                قراءة مبسّطة لتأثير البيتكوين على باقى السوق استنادًا لقوة الحركة الحالية.
+                تقدير تقريبى لما إذا كان السوق حالياً أقرب إلى وضع يقوده البيتكوين، أم سوق مختلط، أم بيئة تفضّل العملات البديلة (استنتاج من قوة الحركة ونبض السيولة).
             </div>
         </div>
 
-        <!-- Trend Temperature -->
+        <!-- درجة حرارة الاتجاه -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title">درجة حرارة الاتجاه</div>
-                <div class="card-tag">Trend Temperature</div>
+                <div class="card-title">درجة حرارة الاتجاه (Trend Temperature)</div>
+                <div class="card-tag">Momentum Gauge</div>
             </div>
-            <div class="card-main" id="trendTempValue">--</div>
+            <div class="card-main" id="trendTempValue">---</div>
             <div class="subtext" id="trendTempText">
-                كلما زادت الحرارة اقتربنا من مناطق تحتاج حذرًا أعلى فى إدارة رأس المال.
+                مؤشر إحساس عام بحرارة الاتجاه: من سوق هادئ وبطىء إلى سوق محتدم ذو زخم قوى فى أى اتجاه.
             </div>
         </div>
 
-        <!-- AI Commentary -->
-        <div class="card span-2">
+        <!-- تعليق الذكاء الاصطناعى على اليوم -->
+        <div class="card" style="grid-column: span 3;">
             <div class="card-header">
-                <div class="card-title">تعليق IN CRYPTO Ai اللحظى</div>
+                <div class="card-title">تعليق IN CRYPTO Ai على وضع السوق اليوم</div>
                 <div class="card-tag">AI Market Commentary</div>
             </div>
-            <div class="subtext" id="aiCommentary">
-                جارِ توليد ملخص السوق...
+            <div class="subtext" id="aiComment">
+                جارِ تجهيز التعليق...
             </div>
         </div>
 
@@ -641,7 +749,7 @@
 
     <!-- ========== FOOTER ========== -->
     <div class="footer">
-        IN CRYPTO Ai — Live Market, Risk & Alert Monitor
+        IN CRYPTO Ai — <span>Live Market, Risk & Alert Monitor</span> مبنى بالكامل على بيانات البيتكوين الفعلية.
     </div>
 
     <!-- ========== JAVASCRIPT ========== -->
@@ -686,13 +794,13 @@
 
         function buildSignalPulse(change, volScore) {
             if (Math.abs(change) < 0.5 && volScore > 55) {
-                return "⚠️ ضغط عالى بدون حركة → احتمال انفجار سعرى قريب.";
+                return "⚠️ ضغط عالى بدون حركة واضحة → احتمال انفجار سعرى قريب.";
             }
             if (change > 2.5 && volScore > 50) {
-                return "⬆️ حركة صعود قوية مع زخم واضح.";
+                return "⬆️ حركة صعود قوية مع زخم واضح لصالح المشترين.";
             }
             if (change < -2.5 && volScore > 50) {
-                return "⬇️ حركة هبوط قوية مع ضغط بيعى.";
+                return "⬇️ حركة هبوط قوية مع ضغط بيعى واضح.";
             }
             if (volScore < 20) {
                 return "😴 سوق هادئ نسبيًا بدون حركة كبيرة.";
@@ -700,112 +808,139 @@
             return "🔁 تذبذب طبيعى مع سيولة متوازنة تقريبًا.";
         }
 
-        function estimateOrderFlow(change, volScore) {
-            // يرجّع {buyers, sellers, label}
-            let buyers = 50, sellers = 50;
-            if (change > 0.2) {
-                buyers += Math.min(20, Math.abs(change) * 3 + volScore * 0.15);
-                sellers = 100 - buyers;
-            } else if (change < -0.2) {
-                sellers += Math.min(20, Math.abs(change) * 3 + volScore * 0.15);
-                buyers = 100 - sellers;
-            }
-            buyers = Math.round(buyers);
-            sellers = 100 - buyers;
+        function estimateOrderFlow(change, volScore, liquidityLabel) {
+            // نعمل تقدير بسيط لـ Buyers/Sellers %
+            let base = 50;
+            base += change * 2;           // التغيير اليومى
+            base += (liquidityLabel.includes("المشترين") ? 5 : 0);
+            base -= (liquidityLabel.includes("البائعين") ? 5 : 0);
+            base = Math.max(0, Math.min(100, base));
 
-            let label = "Balanced";
-            if (buyers >= 60) label = "Buy Pressure";
-            else if (sellers >= 60) label = "Sell Pressure";
+            const buyers = base;
+            const sellers = 100 - base;
+
+            let label;
+            if (buyers > 60) label = "هيمنة واضحة للمشترين";
+            else if (sellers > 60) label = "هيمنة واضحة للبائعين";
+            else label = "توازن نسبى بين المشترين والبائعين";
 
             return { buyers, sellers, label };
         }
 
-        function estimateNoise(rangePct, volScore) {
-            const raw = Math.max(0, Math.min(100, 100 - (rangePct * 4 + volScore * 0.8)));
-            if (raw > 70) return { value: raw, label: "حركة منظمة نسبياً، الضوضاء منخفضة." };
-            if (raw > 40) return { value: raw, label: "مزيج بين حركة حقيقية وضوضاء طبيعية." };
-            return { value: raw, label: "ضوضاء سعرية مرتفعة، يفضّل تصفية الإشارات." };
+        function estimateShortTermBias(change, volScore, strengthLabel) {
+            const absChange = Math.abs(change);
+            let up = 50, down = 50;
+            if (change > 0) {
+                up += absChange * 3;
+                if (strengthLabel.includes("صعود") || strengthLabel.includes("إيجابى")) up += 7;
+            } else if (change < 0) {
+                down += absChange * 3;
+                if (strengthLabel.includes("هبوط") || strengthLabel.includes("سلبى")) down += 7;
+            }
+            if (volScore > 65) {
+                up = up * 1.05;
+                down = down * 1.05;
+            }
+            const sum = up + down;
+            up = Math.round((up / sum) * 100);
+            down = 100 - up;
+
+            let biasText;
+            if (up - down > 15) biasText = "ميل قصير المدى لصالح الصعود";
+            else if (down - up > 15) biasText = "ميل قصير المدى لصالح الهبوط";
+            else biasText = "تذبذب قصير المدى بدون انحياز واضح";
+
+            return { up, down, biasText };
         }
 
-        function estimateShortTermMove(change, volScore) {
-            let bias = "تذبذب جانبى محتمل.";
-            if (change > 1 && volScore > 40) bias = "ميل خفيف لاستكمال صعود قصير المدى.";
-            if (change < -1 && volScore > 40) bias = "ميل خفيف لاستكمال هبوط قصير المدى.";
-            if (volScore > 70) bias = "حركة سريعة محتملة فى أى اتجاه، إدارة مخاطر ضرورية.";
+        function estimateNoise(change, volScore, rangePct) {
+            // Noise عالى = تقلب نسبى كبير مقابل حركة صافية ضعيفة
+            const absChange = Math.abs(change);
+            let noise = volScore * 0.6 + rangePct * 0.5 - absChange * 1.2;
+            if (noise < 0) noise = 0;
+            if (noise > 100) noise = 100;
 
-            const upProb   = Math.max(5, Math.min(80, 50 + change * 4));
-            const downProb = Math.max(5, 100 - upProb);
+            let label;
+            if (noise < 25) label = "الضوضاء منخفضة؛ الحركة واضحة نسبيًا.";
+            else if (noise < 55) label = "ضوضاء متوسطة؛ يفضل انتظار تأكيد قبل الدخول.";
+            else label = "ضوضاء عالية جدًا؛ الأفضل تجنب المطاردة والالتزام بالمناطق القوية فقط.";
 
-            return {
-                value: `${upProb.toFixed(0)}٪ ↑ / ${downProb.toFixed(0)}٪ ↓`,
-                text: bias
-            };
+            return { noise: Math.round(noise), label };
         }
 
-        function estimateScalperMode(rangePct, volScore) {
-            if (volScore < 20 || rangePct < 1) {
-                return {
-                    title: "غير مناسب للسكالبينج 😴",
-                    text: "الحركة الحالية بطيئة وضيقة، فرص السكالبينج محدودة وقد تزيد مصاريف الرسوم."
-                };
-            }
-            if (volScore > 65 && rangePct > 5) {
-                return {
-                    title: "سكالبينج عدوانى ⚠️",
-                    text: "السوق عصبى وسريع، يمكن لصفقات السكالبينج أن تنجح لكن مع مخاطرة عالية جدًا."
-                };
-            }
-            return {
-                title: "مناسب جزئيًا للسكالبينج 🎯",
-                text: "مدى اليوم واتساع الحركة يسمحان بصفقات سريعة بشرط انضباط قوى فى وقف الخسارة."
-            };
+        function estimateScalperSuitability(volScore, noiseScore, rangePct) {
+            let score = volScore * 0.7 + rangePct * 2 - noiseScore * 0.5;
+            if (score < 0) score = 0;
+            if (score > 100) score = 100;
+
+            let label;
+            if (score < 35) label = "😴 غير مناسب للسكالبينج — السوق هادئ أو ضوضائى أكثر من اللازم.";
+            else if (score < 70) label = "⚖️ مناسب جزئيًا للسكالبينج مع انتقاء الفرص، ويفضل الالتزام بمناطق واضحة.";
+            else label = "⚡ بيئة نشطة جدًا — مناسبة للسكالبينج مع انضباط قوى فى إدارة المخاطر.";
+
+            return { score: Math.round(score), label };
         }
 
-        function estimateDominance(change, rangePct) {
-            if (Math.abs(change) < 0.5 && rangePct < 3) {
-                return {
-                    title: "Mixed Market / هيمنة ضعيفة",
-                    text: "لا توجد سيطرة واضحة للبيتكوين على باقى السوق، الحركة عامة هادئة أو متذبذبة."
-                };
+        function estimateDominance(change, liquidityLabel) {
+            let label, text;
+            if (Math.abs(change) < 0.8) {
+                label = "Mixed Market / سوق مختلط";
+                text = "الحركة الحالية لا تُظهر هيمنة حادة للبيتكوين؛ السوق يميل لأن يكون مختلطًا بين البيتكوين والعملات البديلة.";
+            } else if (change > 0 && liquidityLabel.includes("المشترين")) {
+                label = "BTC-Led / هيمنة للبيتكوين";
+                text = "صعود البيتكوين مع ميل السيولة لصالح المشترين يشير إلى أن البيتكوين يقود المشهد الحالى على حساب أغلب العملات.";
+            } else if (change < 0 && liquidityLabel.includes("البائعين")) {
+                label = "BTC Risk-Off / خروج من المخاطر";
+                text = "ضغط بيعى على البيتكوين مع ميل السيولة لصالح البائعين؛ عادةً ما يكون هذا نمط خروج عام من المخاطر.";
+            } else {
+                label = "Alt-Friendly / بيئة تميل للعملات البديلة";
+                text = "حركة البيتكوين أقل حدة نسبيًا، ما يفتح المجال لفرص متفرقة فى بعض العملات البديلة (مع بقاء إدارة المخاطر أساسية).";
             }
-            if (Math.abs(change) > 2.5 && rangePct > 6) {
-                return {
-                    title: "BTC Led Move",
-                    text: "البيتكوين يقود الحركة الحالية بقوة، غالبًا يتأثر باقى السوق بنفس الاتجاه."
-                };
-            }
-            return {
-                title: "Market Rotation",
-                text: "الحركة ليست عنيفة لكن يوجد احتمال دوران رؤوس الأموال بين البيتكوين والألتكوين."
-            };
+            return { label, text };
         }
 
         function estimateTrendTemp(change, volScore) {
-            const heat = Math.min(100, Math.abs(change) * 4 + volScore * 0.8);
-            if (heat < 25) {
-                return { title: "بارد ❄️", text: "اتجاه هادئ، لا توجد إشارات قوية لكن يمكن بناء مراكز تدريجيًا." };
-            }
-            if (heat < 60) {
-                return { title: "دافئ 🌤", text: "السوق يتحرك بوتيرة صحية، يمكن استغلال الاتجاه مع مراعاة إدارة رأس المال." };
-            }
-            return { title: "ساخن 🔥", text: "السوق يدخل مرحلة ساخنة، يفضّل التركيز على حماية الأرباح وتقليل الرافعة." };
+            const absChange = Math.abs(change);
+            let temp = absChange * 6 + volScore * 0.8;
+            if (temp > 100) temp = 100;
+
+            let label;
+            if (temp < 25) label = "❄️ اتجاه بارد — السوق يتحرك ببطء بدون زخم واضح.";
+            else if (temp < 55) label = "🌤 اتجاه معتدل — حركة معقولة مع زخم قابل للمتابعة.";
+            else if (temp < 80) label = "🔥 اتجاه ساخن — حركة قوية تستحق المتابعة مع إدارة مخاطر مشددة.";
+            else label = "☄️ اتجاه مشتعِل — زخم عالى جدًا واحتمال حركات عنيفة فى أى لحظة.";
+
+            return { temp: Math.round(temp), label };
         }
 
-        function buildAICommentary(price, change, rangePct, volScore, riskLevel, riskMsg, liquidityPulse) {
-            const dir = change > 0.5 ? "ميل صاعد" : (change < -0.5 ? "ميل هابط" : "تذبذب شبه جانبى");
-            const riskSentence = `من ناحية المخاطر، القراءة الحالية تُصنّف بأنها "${riskLevel}"، مع ملاحظة: ${riskMsg}`;
-            const volSentence  = `مدى الحركة اليومى عند حوالى ${rangePct.toFixed(1)}٪ مع درجة تقلب ${volScore.toFixed(1)} / 100.`;
-            const liqSentence  = `نبض السيولة يشير إلى أن ${liquidityPulse || "السيولة متوازنة تقريبًا بين المشترين والبائعين."}`;
+        function buildAIComment(change, volScore, riskMsg, riskLevel, liquidityPulse, strengthLabel, modeInfo) {
+            const dirText =
+                change > 0.7 ? "السوق يميل حاليًا لصالح المشترين مع صعود ملحوظ فى البيتكوين." :
+                change < -0.7 ? "السوق يميل حاليًا لصالح البائعين مع ضغط بيعى واضح على البيتكوين." :
+                "السوق يتحرك بتذبذب محدود نسبيًا بدون اتجاه حاسم حتى الآن.";
 
-            return `
-                حركة البيتكوين الآن حول مستوى تقريبى قدره <b>${price.toLocaleString()}</b>$ مع تغير يومى يقارب
-                <b>${change.toFixed(2)}٪</b> (${dir}).<br/><br/>
-                ${volSentence}<br/>
-                ${liqSentence}<br/><br/>
-                ${riskSentence}<br/><br/>
-                الخلاصة: يُفضّل دمج هذه القراءة مع خطة تداول واضحة
-                والتركيز على مناطق الدعم والمقاومة الرئيسية بدل مطاردة الحركة اللحظية.
-            `;
+            const volText =
+                volScore < 25 ? "درجة التقلب ما زالت هادئة نسبيًا، ما يعطى مساحة أفضل للتخطيط قبل الدخول." :
+                volScore < 55 ? "التقلب فى المنطقة المتوسطة، الحركة ليست عنيفة لكن ليست هادئة تمامًا." :
+                "التقلب مرتفع حاليًا؛ أى قرار دخول بدون خطة صارمة لإدارة المخاطر قد يكون مكلفًا.";
+
+            const riskText = `قراءة Engine المخاطر: ${riskMsg || "لم يتم تحديد رسالة مفصلة."}`;
+
+            const liqText =
+                liquidityPulse && liquidityPulse.indexOf("متوازنة") !== -1
+                    ? "نبض السيولة يشير إلى توازن تقريبى بين المشترين والبائعين."
+                    : `نبض السيولة الحالى: ${liquidityPulse || "غير متوفر"}.`;
+
+            const modeText = `تصنيف نمط السوق الحالى: <b>${modeInfo.mode}</b> — ${modeInfo.label}.`;
+
+            return (
+                dirText + " " +
+                volText + " " +
+                riskText + " " +
+                liqText + " " +
+                modeText +
+                " دائمًا تذكر أن هذه القراءة تعليمية وليست توصية مباشرة بالشراء أو البيع."
+            );
         }
 
         async function loadMain() {
@@ -814,22 +949,26 @@
                 const data = await res.json();
                 if (!data.ok) return;
 
-                const price      = data.price;
-                const change     = data.change_pct;
-                const rangePct   = data.range_pct;
-                const volScore   = data.volatility_score;
-                const riskLevel  = data.risk_level;
-                const riskEmoji  = data.risk_emoji;
-                const riskMsg    = data.risk_message;
-                const liqPulse   = data.liquidity_pulse;
-                const lastErr    = data.last_error || {};
-                const autoAlert  = data.last_auto_alert || {};
+                const price = data.price;
+                const change = data.change_pct;
+                const rangePct = data.range_pct;
+                const volScore = data.volatility_score;
+                const riskLevel = data.risk_level;
+                const riskEmoji = data.risk_emoji;
+                const riskMsg = data.risk_message;
+                const liquidityPulse = data.liquidity_pulse;
+                const strengthLabel = data.strength_label;
 
-                /* ===== TOP BTC BAR ===== */
-                const barPrice  = document.getElementById("barPrice");
+                // ===== HEADER BADGES =====
+                document.getElementById("badgeChats").textContent = data.known_chats ?? 0;
+                document.getElementById("badgeRealtime").textContent = data.last_realtime_tick || "لا يوجد";
+                // badgeMode يملأ بعد ما نحسب modeInfo تحت
+
+                // ===== TOP BTC BAR =====
+                const barPrice = document.getElementById("barPrice");
                 const barChange = document.getElementById("barChange");
-                const barRange  = document.getElementById("barRange");
-                const modeChip  = document.getElementById("marketModeChip");
+                const barRange = document.getElementById("barRange");
+                const modeChip = document.getElementById("marketModeChip");
 
                 const changeColorClass = change >= 0 ? "btc-green" : "btc-red";
 
@@ -839,19 +978,21 @@
 
                 const modeInfo = classifyMarketMode(change, volScore, rangePct);
                 modeChip.textContent = modeInfo.mode + " MODE";
+                document.getElementById("badgeMode").textContent = modeInfo.mode;
 
                 if (modeInfo.mode === "PANIC") {
-                    modeChip.style.background = "linear-gradient(135deg, #ef4444, #f97316)";
+                    modeChip.style.background = "radial-gradient(circle at top, #ef4444, #7f1d1d)";
                 } else if (modeInfo.mode === "VOLATILE") {
-                    modeChip.style.background = "linear-gradient(135deg, #f97316, #facc15)";
+                    modeChip.style.background = "radial-gradient(circle at top, #f97316, #7c2d12)";
                 } else if (modeInfo.mode === "ACTIVE") {
-                    modeChip.style.background = "linear-gradient(135deg, #22c55e, #38bdf8)";
+                    modeChip.style.background = "radial-gradient(circle at top, #22c55e, #064e3b)";
                 } else {
-                    modeChip.style.background = "radial-gradient(circle at top, #0f172a, #020617)";
+                    modeChip.style.background =
+                        "radial-gradient(circle at top, rgba(251,191,36,0.35), #020617)";
                 }
 
-                /* ===== MARKET STRENGTH CARD ===== */
-                document.getElementById("strengthValue").textContent = data.strength_label;
+                // ===== MARKET STRENGTH CARD =====
+                document.getElementById("strengthValue").textContent = strengthLabel;
                 document.getElementById("kpiChange").textContent =
                     (change >= 0 ? "+" : "") + change.toFixed(2) + "%";
                 document.getElementById("kpiRange").textContent = rangePct.toFixed(2) + "%";
@@ -861,105 +1002,118 @@
 
                 const heatDot = document.getElementById("heatDot");
                 heatDot.style.left = Math.min(96, Math.max(4, heatScore)) + "%";
-                if (heatScore < 25)      heatDot.style.background = "#22c55e";
-                else if (heatScore < 50) heatDot.style.background = "#facc15";
-                else if (heatScore < 75) heatDot.style.background = "#f97316";
-                else                     heatDot.style.background = "#ef4444";
 
-                /* ===== RISK CARD ===== */
+                // ===== RISK CARD =====
                 const riskCard = document.getElementById("riskCard");
-                document.getElementById("riskValue").innerHTML = riskEmoji + " " + riskLevel;
-                document.getElementById("riskNote").textContent = riskMsg;
-                document.getElementById("kpiVol").textContent  = volScore.toFixed(1) + " / 100";
-                document.getElementById("kpiMode").textContent = modeInfo.label;
+                const riskVal = document.getElementById("riskValue");
+                const riskNote = document.getElementById("riskNote");
+                const kpiMode = document.getElementById("kpiMode");
+                const kpiVol = document.getElementById("kpiVol");
 
-                riskCard.classList.remove("green", "yellow", "red");
-                if (riskLevel.includes("منخفض"))      riskCard.classList.add("green");
-                else if (riskLevel.includes("متوسط")) riskCard.classList.add("yellow");
-                else                                  riskCard.classList.add("red");
+                riskVal.innerHTML = riskEmoji + " " + riskLevel;
+                riskNote.textContent = riskMsg;
+                kpiVol.textContent = volScore.toFixed(1) + " / 100";
+                kpiMode.textContent = modeInfo.label;
 
-                /* ===== LIQUIDITY CARD ===== */
-                document.getElementById("liquidityValue").textContent = liqPulse;
-                document.getElementById("liqLabel").textContent =
+                riskCard.classList.remove("green", "gold", "red");
+                if (riskLevel.includes("منخفض")) riskCard.classList.add("green");
+                else if (riskLevel.includes("متوسط")) riskCard.classList.add("gold");
+                else riskCard.classList.add("red");
+
+                // ===== LIQUIDITY CARD =====
+                document.getElementById("liquidityValue").textContent = liquidityPulse;
+                const liqLabel =
                     change > 0 ? "ميل لصالح المشترين" :
-                    (change < 0 ? "ميل لصالح البائعين" : "متوازنة تقريبًا");
+                    change < 0 ? "ميل لصالح البائعين" :
+                    "متوازنة تقريبًا";
+                document.getElementById("liqLabel").textContent = liqLabel;
                 document.getElementById("signalPulse").textContent =
                     buildSignalPulse(change, volScore);
 
-                /* ===== VOLATILITY CARD ===== */
+                // ===== VOLATILITY CARD =====
                 document.getElementById("volatilityValue").textContent =
-                    volScore.toFixed(1) + " / 100";
+                    volScore.toFixed(1);
                 document.getElementById("rangeDetail").textContent =
                     rangePct.toFixed(2) + "%";
                 document.getElementById("volatilityLabel").textContent =
                     classifyVolatility(volScore);
 
-                /* ===== ERROR + LOGS ===== */
+                // ===== LAST ERROR CARD (العنوان بس — اللوج بيتحدث من loadLogs) =====
+                const lastErr = data.last_error || {};
                 const errTitle = document.getElementById("lastErrorTitle");
-                const errCard  = document.getElementById("errorCard");
+                const errCard = document.getElementById("errorCard");
 
                 if (lastErr && lastErr.message) {
                     errTitle.textContent = "آخر خطأ — " + (lastErr.time || "");
-                    errCard.classList.add("yellow");
+                    errCard.classList.add("gold");
                 } else {
                     errTitle.textContent = "لا يوجد أخطاء مسجلة";
-                    errCard.classList.remove("yellow");
+                    errCard.classList.remove("gold");
                 }
 
-                /* ===== AUTO ALERT STATUS ===== */
+                // ===== AUTO ALERT STATUS =====
+                const aa = data.last_auto_alert || {};
                 const alertCard = document.getElementById("alertFlashCard");
                 document.getElementById("alertReason").textContent =
-                    autoAlert.reason || "لا يوجد تحذير حاليًا";
+                    aa.reason || "لا يوجد تحذير حاليًا";
                 document.getElementById("alertTime").textContent =
-                    autoAlert.time || "---";
+                    aa.time || "---";
                 document.getElementById("alertSent").textContent =
-                    autoAlert.sent === true ? "نعم ✅" :
-                    autoAlert.sent === false ? "لا ❌" : "---";
+                    aa.sent === true ? "نعم ✅" :
+                        aa.sent === false ? "لا ❌" : "---";
 
-                if (autoAlert.reason && autoAlert.reason !== "no_alert" && autoAlert.reason !== "duplicate") {
+                if (aa.reason && aa.reason !== "no_alert" && aa.reason !== "duplicate") {
                     alertCard.classList.add("flash");
                 } else {
                     alertCard.classList.remove("flash");
                 }
 
-                /* ===== ENHANCED METRICS ===== */
-                // Order Flow
-                const of = estimateOrderFlow(change, volScore);
-                document.getElementById("orderFlowValue").textContent =
-                    of.label === "Balanced" ? "توازن تقريبى بين المشترين والبائعين" :
-                    of.label === "Buy Pressure" ? "ضغط شرائى أعلى" : "ضغط بيعى أعلى";
-                document.getElementById("buyersPct").textContent  = of.buyers  + "٪";
-                document.getElementById("sellersPct").textContent = of.sellers + "٪";
+                // ===== ORDER FLOW ESTIMATION =====
+                const of = estimateOrderFlow(change, volScore, liqLabel);
+                document.getElementById("orderFlowValue").textContent = of.label;
+                document.getElementById("buyersShare").textContent = of.buyers.toFixed(0) + "٪";
+                document.getElementById("sellersShare").textContent = of.sellers.toFixed(0) + "٪";
 
-                // Noise Filter
-                const nf = estimateNoise(rangePct, volScore);
-                document.getElementById("noiseValue").textContent =
-                    nf.value.toFixed(0) + " / 100";
+                // ===== SHORT TERM BIAS =====
+                const st = estimateShortTermBias(change, volScore, strengthLabel);
+                document.getElementById("shortTermBias").textContent = st.biasText;
+                document.getElementById("upProb").textContent = st.up + "٪";
+                document.getElementById("downProb").textContent = st.down + "٪";
+
+                // ===== NOISE FILTER =====
+                const nf = estimateNoise(change, volScore, rangePct);
+                document.getElementById("noiseValue").textContent = nf.noise + " / 100";
+                document.getElementById("noiseScore").textContent = nf.noise + " / 100";
                 document.getElementById("noiseText").textContent = nf.label;
 
-                // Short term
-                const st = estimateShortTermMove(change, volScore);
-                document.getElementById("shortTermValue").textContent = st.value;
-                document.getElementById("shortTermText").textContent  = st.text;
+                // ===== SCALPER MODE =====
+                const sc = estimateScalperSuitability(volScore, nf.noise, rangePct);
+                document.getElementById("scalpSuitability").textContent =
+                    sc.score + " / 100";
+                document.getElementById("scalpText").textContent = sc.label;
 
-                // Scalper Mode
-                const sm = estimateScalperMode(rangePct, volScore);
-                document.getElementById("scalperValue").textContent = sm.title;
-                document.getElementById("scalperText").textContent  = sm.text;
+                // ===== DOMINANCE PULSE =====
+                const dom = estimateDominance(change, liqLabel);
+                document.getElementById("dominanceValue").textContent = dom.label;
+                document.getElementById("dominanceText").textContent = dom.text;
 
-                // Dominance
-                const dom = estimateDominance(change, rangePct);
-                document.getElementById("dominanceValue").textContent = dom.title;
-                document.getElementById("dominanceText").textContent  = dom.text;
-
-                // Trend Temperature
+                // ===== TREND TEMPERATURE =====
                 const tt = estimateTrendTemp(change, volScore);
-                document.getElementById("trendTempValue").textContent = tt.title;
-                document.getElementById("trendTempText").textContent  = tt.text;
+                document.getElementById("trendTempValue").textContent =
+                    tt.temp + " / 100";
+                document.getElementById("trendTempText").textContent = tt.label;
 
-                // AI Commentary
-                document.getElementById("aiCommentary").innerHTML =
-                    buildAICommentary(price, change, rangePct, volScore, riskLevel, riskMsg, liqPulse);
+                // ===== AI COMMENT =====
+                const comment = buildAIComment(
+                    change,
+                    volScore,
+                    riskMsg,
+                    riskLevel,
+                    liquidityPulse,
+                    strengthLabel,
+                    modeInfo
+                );
+                document.getElementById("aiComment").innerHTML = comment;
 
             } catch (e) {
                 console.log("Dashboard Error:", e);
@@ -997,7 +1151,7 @@
 
                 const items = list.slice().reverse().map(a => {
                     const changeStr = a.change_pct != null
-                        ? ` (Δ ${a.change_pct.toFixed(2)}%)`
+                        ? ` (Δ ${a.change_pct.toFixed(2)}٪)`
                         : "";
                     return `
                         <div class="alert-item">
@@ -1040,9 +1194,9 @@
         reloadAlerts();
 
         // تحديثات دورية
-        setInterval(loadMain,   10000);  // بيانات السوق
-        setInterval(loadLogs,   30000);  // Snapshot اللوج
-        setInterval(reloadAlerts, 60000); // سجل التحذيرات
+        setInterval(loadMain, 10000);      // بيانات السوق
+        setInterval(loadLogs, 30000);      // Snapshot اللوج
+        setInterval(reloadAlerts, 60000);  // سجل التحذيرات
     </script>
 </body>
 </html>
