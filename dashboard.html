@@ -155,6 +155,11 @@
             }
         }
 
+        /* cards spanning 2 columns */
+        .wide-2 {
+            grid-column: span 2;
+        }
+
         /* ===== CARD BASE ===== */
         .card {
             background: var(--bg-card);
@@ -381,6 +386,79 @@
             text-align: center;
             color: var(--text-muted);
         }
+
+        /* ===== BTC CHART CONTAINER ===== */
+        .chart-container {
+            width: 100%;
+            height: 280px;
+            margin-top: 10px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #020617;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+        }
+
+        @media (max-width: 640px) {
+            .chart-container {
+                height: 230px;
+            }
+        }
+
+        /* ===== MOMENTUM GAUGE ===== */
+        .gauge-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 230px;
+            margin: 6px auto 0;
+        }
+
+        .gauge-svg {
+            width: 100%;
+            height: auto;
+            transform: rotate(135deg);
+        }
+
+        .gauge-bg {
+            fill: none;
+            stroke: rgba(15, 23, 42, 0.9);
+            stroke-width: 10;
+        }
+
+        .gauge-progress {
+            fill: none;
+            stroke-width: 10;
+            stroke-linecap: round;
+            stroke: url(#gaugeGradient);
+            stroke-dasharray: 314;
+            stroke-dashoffset: 314;
+            transition: stroke-dashoffset 0.5s ease-out;
+        }
+
+        .gauge-center {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transform: translateY(4px);
+        }
+
+        .gauge-score {
+            font-size: 22px;
+            font-weight: 800;
+        }
+
+        .gauge-label {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .gauge-band {
+            font-size: 11px;
+            margin-top: 6px;
+            color: var(--text-muted);
+        }
     </style>
 </head>
 
@@ -580,6 +658,60 @@
             </div>
         </div>
 
+        <!-- ===== NEW: BTC LIVE CHART (LINE + CANDLES) ===== -->
+        <div class="card wide-2" id="btcChartCard">
+            <div class="card-header">
+                <div class="card-title">شارت البيتكوين اللحظى (Line + Candles)</div>
+                <div class="card-tag">Binance 5m — Realtime</div>
+            </div>
+            <div class="subtext">
+                آخر ~10 ساعات من حركة BTCUSDT على فريم 5 دقائق مع شموع كاملة وخط سعر لحظى.
+            </div>
+            <div id="btcChart" class="chart-container"></div>
+        </div>
+
+        <!-- ===== NEW: MOMENTUM GAUGE ===== -->
+        <div class="card" id="momentumCard">
+            <div class="card-header">
+                <div class="card-title">مؤشر الزخم (Momentum Gauge)</div>
+                <div class="card-tag">Fusion Score</div>
+            </div>
+
+            <div class="gauge-wrapper">
+                <svg class="gauge-svg" viewBox="0 0 120 120">
+                    <defs>
+                        <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#22c55e"/>
+                            <stop offset="50%" stop-color="#facc15"/>
+                            <stop offset="100%" stop-color="#ef4444"/>
+                        </linearGradient>
+                    </defs>
+                    <circle class="gauge-bg" cx="60" cy="60" r="50"></circle>
+                    <circle id="gaugeProgress" class="gauge-progress" cx="60" cy="60" r="50"></circle>
+                </svg>
+                <div class="gauge-center">
+                    <div id="gaugeScore" class="gauge-score">--</div>
+                    <div id="gaugeLabel" class="gauge-label">Momentum</div>
+                    <div id="gaugeBand" class="gauge-band">جاري الحساب...</div>
+                </div>
+            </div>
+
+            <div class="subtext" id="gaugeNote">
+                دمج بين التغير اليومى، مدى الحركة، والتقلب ليعطيك قراءة سريعة لقوة الدفع الحالية للسوق.
+            </div>
+
+            <div class="kpi-row">
+                <div class="kpi-pill">
+                    <span class="kpi-label">قراءة الزخم:</span>
+                    <span class="kpi-val" id="kpiMomentumLabel">--</span>
+                </div>
+                <div class="kpi-pill">
+                    <span class="kpi-label">منطقة الخطر:</span>
+                    <span class="kpi-val">80+ / 100</span>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- ========== FOOTER ========== -->
@@ -587,11 +719,14 @@
         IN CRYPTO Ai — Live Market, Risk & Alert Monitor
     </div>
 
+    <!-- TradingView Lightweight Charts (للشارت) -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
     <!-- ========== JAVASCRIPT ========== -->
     <script>
         function getPassParam() {
             const params = new URLSearchParams(window.location.search);
-            return params.get("pass") || "";
+            return params.get("pass") || params.get("password") || "";
         }
 
         function apiUrl(path) {
@@ -645,6 +780,58 @@
             return "🔁 تذبذب طبيعى مع سيولة متوازنة تقريبًا.";
         }
 
+        // ===== MOMENTUM GAUGE =====
+        function updateMomentumGauge(score) {
+            const circle = document.getElementById("gaugeProgress");
+            const scoreEl = document.getElementById("gaugeScore");
+            const labelEl = document.getElementById("gaugeLabel");
+            const bandEl = document.getElementById("gaugeBand");
+            const labelKpi = document.getElementById("kpiMomentumLabel");
+            const noteEl = document.getElementById("gaugeNote");
+            const card = document.getElementById("momentumCard");
+
+            if (!circle) return;
+
+            const clamped = Math.max(0, Math.min(100, score));
+            const circumference = 2 * Math.PI * 50; // r=50
+            const offset = circumference - (clamped / 100) * circumference;
+            circle.style.strokeDashoffset = offset;
+
+            scoreEl.textContent = clamped.toFixed(0) + " / 100";
+
+            let band, note, label;
+            if (clamped < 25) {
+                band = "زخم ضعيف — سوق هادئ";
+                note = "السوق يتحرك بهدوء نسبى، لا توجد دفعة قوية فى أى اتجاه.";
+                label = "هادئ";
+                card.classList.remove("yellow", "red");
+                card.classList.add("green");
+            } else if (clamped < 55) {
+                band = "زخم متوازن — Range / تذبذب صحى";
+                note = "التذبذب طبيعى، يمكن العمل مع إدارة مخاطر عادية.";
+                label = "متوازن";
+                card.classList.remove("green", "red");
+                card.classList.add("yellow");
+            } else if (clamped < 80) {
+                band = "زخم قوى — حركة نشطة تحتاج انتباه";
+                note = "السوق نشط بقوة، يفضل التركيز على مناطق الدعم / المقاومة الرئيسية.";
+                label = "نشط";
+                card.classList.remove("green");
+                card.classList.add("yellow");
+            } else {
+                band = "⚠️ زخم عنيف — منطقة انذار عالى";
+                note = "السوق فى منطقة حساسة، يفضل تخفيف حجم المخاطرة والابتعاد عن المطاردة.";
+                label = "خطر";
+                card.classList.remove("green", "yellow");
+                card.classList.add("red");
+            }
+
+            bandEl.textContent = band;
+            noteEl.textContent = note;
+            labelEl.textContent = "Momentum — " + label;
+            labelKpi.textContent = label;
+        }
+
         async function loadMain() {
             try {
                 const res = await fetch(apiUrl("/dashboard_api"));
@@ -660,7 +847,6 @@
                 const riskMsg = data.risk_message;
 
                 // ===== TOP BTC BAR =====
-                const bar = document.getElementById("btcBar");
                 const barPrice = document.getElementById("barPrice");
                 const barChange = document.getElementById("barChange");
                 const barRange = document.getElementById("barRange");
@@ -705,6 +891,17 @@
                 } else {
                     heatDot.style.background = "#ef4444";
                 }
+
+                // ===== ربط HeatScore مع Momentum Gauge =====
+                // MomentumScore = دمج أقوى شوية من HeatScore
+                const momentumScore = Math.min(
+                    100,
+                    Math.max(
+                        0,
+                        Math.abs(change) * 2.0 + volScore * 0.6 + rangePct * 0.5
+                    )
+                );
+                updateMomentumGauge(momentumScore);
 
                 // ===== RISK CARD =====
                 const riskCard = document.getElementById("riskCard");
@@ -751,8 +948,6 @@
                     errTitle.textContent = "لا يوجد أخطاء مسجلة";
                     errCard.classList.remove("yellow");
                 }
-
-                // NOTE: اللوج الكامل يتحمّل من /admin/logs فى loadLogs()
 
                 // ===== AUTO ALERT STATUS =====
                 const aa = data.last_auto_alert || {};
@@ -844,15 +1039,96 @@
             }
         }
 
+        // ===== BTC LIVE CHART (BINANCE + LIGHTWEIGHT-CHARTS) =====
+        let btcChart = null;
+        let candleSeries = null;
+        let lineSeries = null;
+
+        function initBTCChart() {
+            const container = document.getElementById("btcChart");
+            if (!container || btcChart) return;
+
+            btcChart = LightweightCharts.createChart(container, {
+                layout: {
+                    background: { color: "#020617" },
+                    textColor: "#e5e7eb",
+                },
+                grid: {
+                    vertLines: { color: "rgba(148,163,184,0.2)" },
+                    horzLines: { color: "rgba(148,163,184,0.2)" },
+                },
+                rightPriceScale: {
+                    borderColor: "rgba(148,163,184,0.4)",
+                },
+                timeScale: {
+                    borderColor: "rgba(148,163,184,0.4)",
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                localization: {
+                    priceFormatter: price => price.toFixed(2),
+                },
+            });
+
+            candleSeries = btcChart.addCandlestickSeries({
+                upColor: "#22c55e",
+                downColor: "#ef4444",
+                borderVisible: false,
+                wickUpColor: "#22c55e",
+                wickDownColor: "#ef4444",
+            });
+
+            lineSeries = btcChart.addLineSeries({
+                color: "#38bdf8",
+                lineWidth: 2,
+            });
+
+            loadBTCChart();
+            setInterval(loadBTCChart, 30000); // كل 30 ثانية
+        }
+
+        async function loadBTCChart() {
+            try {
+                if (!candleSeries || !lineSeries) return;
+                const res = await fetch(
+                    "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=120"
+                );
+                const raw = await res.json();
+                if (!Array.isArray(raw)) return;
+
+                const candles = raw.map(k => ({
+                    time: k[0] / 1000,
+                    open: parseFloat(k[1]),
+                    high: parseFloat(k[2]),
+                    low: parseFloat(k[3]),
+                    close: parseFloat(k[4]),
+                }));
+
+                const lineData = candles.map(c => ({
+                    time: c.time,
+                    value: c.close,
+                }));
+
+                candleSeries.setData(candles);
+                lineSeries.setData(lineData);
+
+                btcChart.timeScale().fitContent();
+            } catch (e) {
+                console.log("BTC chart error:", e);
+            }
+        }
+
         // أول تحميل
         loadMain();
         loadLogs();
         reloadAlerts();
+        initBTCChart();
 
         // تحديثات دورية
-        setInterval(loadMain, 10000);   // بيانات السوق
-        setInterval(loadLogs, 30000);   // Snapshot اللوج
-        setInterval(reloadAlerts, 60000); // سجل التحذيرات
+        setInterval(loadMain, 10000);      // بيانات السوق
+        setInterval(loadLogs, 30000);      // Snapshot اللوج
+        setInterval(reloadAlerts, 60000);  // سجل التحذيرات
     </script>
 </body>
 </html>
