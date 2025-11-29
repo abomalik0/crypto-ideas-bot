@@ -5,6 +5,7 @@ import requests
 from datetime import datetime
 from collections import deque
 from flask import Flask, request, jsonify, Response
+import threading  # ✅ لإدارة الـ scheduler الداخلى
 
 # ==============================
 #        الإعدادات العامة
@@ -40,6 +41,9 @@ LAST_ERROR_INFO = {
     "time": None,
     "message": None,
 }
+
+# 🔁 آخر مرة تبعت فيها التقرير الأسبوعى أوتوماتيك
+LAST_WEEKLY_SENT_DATE: str | None = None  # بصيغة "YYYY-MM-DD"
 
 # ==============================
 #  إعداد اللوج + Log Buffer للـ Dashboard
@@ -1474,6 +1478,8 @@ def dashboard_api():
         risk_message=risk["message"],
         last_auto_alert=LAST_AUTO_ALERT_INFO,
         last_error=LAST_ERROR_INFO,
+        last_weekly_sent=LAST_WEEKLY_SENT_DATE,
+        known_chats=len(KNOWN_CHAT_IDS),
     )
 
 
@@ -1547,29 +1553,43 @@ def admin_test_alert():
 
 
 # ==============================
-#   مسار التقرير الأسبوعى
+#   دالة ترسل التقرير الأسبوعى لكل الشاتات
 # ==============================
 
 
-@app.route("/weekly_ai_report", methods=["GET"])
-def weekly_ai_report():
+def send_weekly_report_to_all_chats() -> list[int]:
     """
-    ده المسار اللى هتخليه يتنده من Koyeb Scheduler كل جمعة 11:00 UTC
-    عشان يبعته لكل الشاتات اللى استخدمت البوت قبل كده (KNOWN_CHAT_IDS).
+    تستخدم فى:
+    - /weekly_ai_report
+    - الـ Scheduler الداخلى
     """
     report = format_weekly_ai_report()
-    sent_to = []
+    sent_to: list[int] = []
 
     for cid in list(KNOWN_CHAT_IDS):
         try:
             send_message(cid, report)
             sent_to.append(cid)
         except Exception as e:
-            logger.exception(
-                "Error sending weekly report to %s: %s", cid, e
-            )
+            logger.exception("Error sending weekly report to %s: %s", cid, e)
 
     logger.info("weekly_ai_report sent to chats: %s", sent_to)
+    return sent_to
+
+
+# ==============================
+#   مسار التقرير الأسبوعى (Manual Trigger)
+# ==============================
+
+
+@app.route("/weekly_ai_report", methods=["GET"])
+def weekly_ai_report():
+    """
+    مسار يدوى:
+    - تقدر تفتحه من المتصفح: https://YOUR_APP/weekly_ai_report
+    - يبعت التقرير الأسبوعى لكل الشاتات اللى استخدمت البوت.
+    """
+    sent_to = send_weekly_report_to_all_chats()
     return jsonify(ok=True, sent_to=sent_to)
 
 
@@ -1588,6 +1608,39 @@ def admin_weekly_ai_test():
         ok=True,
         message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط.",
     )
+
+
+# ==============================
+#   Scheduler داخلى للتقرير الأسبوعى
+# ==============================
+
+
+def weekly_scheduler_loop():
+    """
+    حل بدون Cron:
+    - يشتغل فى Thread منفصل.
+    - كل 60 ثانية:
+        * يشوف اليوم / الساعة (UTC).
+        * لو جمعة 11:00 UTC ولسه مبعتش النهاردة → يبعت التقرير.
+    """
+    global LAST_WEEKLY_SENT_DATE
+    logger.info("Weekly scheduler loop started.")
+
+    while True:
+        try:
+            now = datetime.utcnow()
+            today_str = now.strftime("%Y-%m-%d")
+
+            # الجمعة = 4 فى weekday() (0=الاثنين … 6=الأحد)
+            if now.weekday() == 4 and now.hour == 11:
+                if LAST_WEEKLY_SENT_DATE != today_str:
+                    logger.info("Weekly scheduler: sending weekly_ai_report automatically.")
+                    send_weekly_report_to_all_chats()
+                    LAST_WEEKLY_SENT_DATE = today_str
+            time.sleep(60)
+        except Exception as e:
+            logger.exception("Error in weekly scheduler loop: %s", e)
+            time.sleep(60)
 
 
 # ==============================
@@ -1620,6 +1673,14 @@ if __name__ == "__main__":
         setup_webhook()
     except Exception as e:
         logger.exception("Webhook setup failed on startup: %s", e)
+
+    # ✅ تشغيل الـ Scheduler فى Thread منفصل
+    try:
+        t = threading.Thread(target=weekly_scheduler_loop, daemon=True)
+        t.start()
+        logger.info("Weekly scheduler thread started.")
+    except Exception as e:
+        logger.exception("Failed to start weekly scheduler thread: %s", e)
 
     logger.info("Starting Flask server...")
     app.run(host="0.0.0.0", port=8080)
