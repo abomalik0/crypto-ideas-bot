@@ -824,6 +824,24 @@
                 </div>
             </div>
 
+            <!-- مؤشر استقرار السوق -->
+            <div class="card span-1" id="stabilityCard">
+                <div class="card-header">
+                    <div class="card-title">مؤشر استقرار السوق</div>
+                    <div class="card-tag">Market Stability Index</div>
+                </div>
+                <div class="card-main" id="stabilityValue">---</div>
+                <div class="subtext" id="stabilityText">
+                    قراءة عامة توضح مدى استقرار أو هشاشة السوق حاليًا بناءً على التقلب، مدى الحركة، مستوى المخاطر، والضوضاء فى الحركة.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">وصف الاستقرار:</span>
+                        <span class="kpi-val" id="stabilityLevel">---</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- نبض هيمنة البيتكوين -->
             <div class="card span-1">
                 <div class="card-header">
@@ -1075,11 +1093,10 @@
         }
 
         function computeSentimentIndex(change, volScore, rangePct) {
-            // 0 خوف شديد — 100 جشع عالى
             let base = 50;
             base += change * 4;
             base += (rangePct - 3) * 1.2;
-            base -= (volScore - 50) * 0.4; // تقلب عالى يزيد خوف أكثر من الجشع
+            base -= (volScore - 50) * 0.4;
             if (base < 0) base = 0;
             if (base > 100) base = 100;
 
@@ -1118,6 +1135,36 @@
             return { status, text };
         }
 
+        function computeMarketStabilityIndex(change, volScore, rangePct, noiseScore, riskLevel) {
+            // 0 = هش جدًا ، 100 = مستقر جدًا
+            let base = 80;
+            base -= Math.abs(change) * 3;
+            base -= volScore * 0.4;
+            base -= rangePct * 1.0;
+            base -= noiseScore * 0.3;
+
+            if (riskLevel && riskLevel.includes("مرتفع")) base -= 15;
+            else if (riskLevel && riskLevel.includes("متوسط")) base -= 5;
+            else if (riskLevel && riskLevel.includes("منخفض")) base += 5;
+
+            if (base < 0) base = 0;
+            if (base > 100) base = 100;
+
+            let level, text;
+            if (base > 70) {
+                level = "سوق مستقر نسبيًا";
+                text = "مستوى مقبول من الاستقرار؛ يمكن العمل لكن مع الالتزام بخطة واضحة وعدم الإفراط فى الرافعة المالية.";
+            } else if (base > 40) {
+                level = "استقرار متوسط / حساس";
+                text = "السوق ليس هشًا بالكامل لكن أى أخبار أو حركة كبيرة قد تغير الصورة بسرعة؛ يفضل تخفيف الحجم وعدم التهور.";
+            } else {
+                level = "سوق هش يحتاج حذر";
+                text = "الاستقرار ضعيف حاليًا؛ أى مفاجأة قد تسبب حركة عنيفة، يفضل التعامل بأقل مخاطرة ممكنة أو الانتظار.";
+            }
+
+            return { index: Math.round(base), level, text };
+        }
+
         function buildAIComment(change, volScore, riskMsg, riskLevel, liquidityPulse, strengthLabel, modeInfo) {
             const dirText =
                 change > 0.7 ? "السوق يميل حاليًا لصالح المشترين مع صعود ملحوظ فى البيتكوين." :
@@ -1152,7 +1199,6 @@
             const grid = document.getElementById("heatmapGrid");
             if (!grid) return;
 
-            // نشتق حركات تقديرية من البيتكوين (مش بيانات حقيقية)
             const base = change;
             const cells = [
                 { symbol: "MAJORS", name: "Top Caps", mult: 1.1 },
@@ -1333,6 +1379,13 @@
                 document.getElementById("scalpSuitability").textContent =
                     sc.score + " / 100";
                 document.getElementById("scalpText").textContent = sc.label;
+
+                // ===== STABILITY INDEX =====
+                const ms = computeMarketStabilityIndex(change, volScore, rangePct, nf.noise, riskLevel);
+                document.getElementById("stabilityValue").textContent =
+                    ms.index + " / 100";
+                document.getElementById("stabilityLevel").textContent = ms.level;
+                document.getElementById("stabilityText").textContent = ms.text;
 
                 // ===== DOMINANCE PULSE =====
                 const dom = estimateDominance(change, liqLabel);
