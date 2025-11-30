@@ -25,9 +25,7 @@
             --text-muted: #9ca3af;
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             margin: 0;
@@ -43,7 +41,7 @@
 
         .layout {
             max-width: 1320px;
-            margin: 0 auto 18px;
+            margin: 0 auto 16px;
         }
 
         /* ===== TOP BTC BAR ===== */
@@ -124,7 +122,7 @@
 
         /* ===== HEADER ===== */
         .header {
-            padding: 14px 18px 4px;
+            padding: 12px 18px 2px;
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
@@ -134,7 +132,7 @@
         .header-main {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
         }
 
         .header-title {
@@ -166,13 +164,11 @@
             color: var(--text-muted);
         }
 
-        .header-badge strong {
-            color: #fef3c7;
-        }
+        .header-badge strong { color: #fef3c7; }
 
         /* ===== GRID LAYOUT ===== */
         .grid {
-            padding: 12px 18px 22px;
+            padding: 10px 18px 18px;
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px;
@@ -191,19 +187,13 @@
         }
 
         @media (max-width: 768px) {
-            .header {
-                padding: 12px 10px 4px;
-            }
-            .btc-bar {
-                padding: 10px 10px;
-            }
+            .header { padding: 10px 10px 2px; }
+            .btc-bar { padding: 10px 10px; }
             .grid {
                 grid-template-columns: minmax(0, 1fr);
-                padding: 10px 10px 18px;
+                padding: 8px 10px 16px;
             }
-            .span-2, .span-3 {
-                grid-column: span 1;
-            }
+            .span-2, .span-3 { grid-column: span 1; }
         }
 
         /* ===== CARD BASE ===== */
@@ -213,7 +203,7 @@
                     rgba(15, 23, 42, 0.94));
             border-radius: 18px;
             border: 1px solid var(--border-soft);
-            padding: 14px 14px 13px;
+            padding: 12px 13px 11px;
             position: relative;
             overflow: hidden;
             box-shadow:
@@ -240,22 +230,20 @@
         }
 
         .card:hover {
-            transform: translateY(-3px);
+            transform: translateY(-2px);
             box-shadow:
                 0 26px 50px rgba(0, 0, 0, 0.95),
                 0 0 0 1px rgba(248, 250, 252, 0.05);
             border-color: rgba(251, 191, 36, 0.55);
         }
 
-        .card:hover::before {
-            opacity: 1;
-        }
+        .card:hover::before { opacity: 1; }
 
         .card-header {
             display: flex;
             align-items: baseline;
             justify-content: space-between;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             gap: 6px;
         }
 
@@ -277,7 +265,7 @@
         .card-main {
             font-size: 22px;
             font-weight: 800;
-            margin-top: 5px;
+            margin-top: 3px;
         }
 
         .card-main span.small {
@@ -288,7 +276,7 @@
 
         .subtext {
             font-size: 11px;
-            margin-top: 4px;
+            margin-top: 3px;
             color: var(--text-muted);
             line-height: 1.6;
         }
@@ -296,12 +284,12 @@
         .kpi-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 9px;
+            gap: 7px;
+            margin-top: 7px;
         }
 
         .kpi-pill {
-            padding: 4px 9px;
+            padding: 4px 8px;
             border-radius: 999px;
             background: var(--bg-card-soft);
             border: 1px solid rgba(148, 163, 184, 0.38);
@@ -311,13 +299,8 @@
             align-items: baseline;
         }
 
-        .kpi-label {
-            color: var(--text-muted);
-        }
-
-        .kpi-val {
-            font-weight: 600;
-        }
+        .kpi-label { color: var(--text-muted); }
+        .kpi-val { font-weight: 600; }
 
         .green  { color: var(--accent-green); }
         .red    { color: var(--accent-red); }
@@ -327,7 +310,7 @@
 
         /* ===== HEATBAR ===== */
         .heatbar {
-            margin-top: 10px;
+            margin-top: 8px;
             width: 100%;
             height: 7px;
             border-radius: 999px;
@@ -367,13 +350,13 @@
             justify-content: space-between;
             font-size: 9px;
             color: var(--text-muted);
-            margin-top: 4px;
+            margin-top: 3px;
         }
 
         /* ===== LOG AREA ===== */
         pre {
-            margin: 8px 0 0;
-            padding: 8px;
+            margin: 6px 0 0;
+            padding: 7px;
             border-radius: 10px;
             background: radial-gradient(circle at top left, #020617, #020617);
             border: 1px solid rgba(148, 163, 184, 0.35);
@@ -406,7 +389,7 @@
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
-            margin-top: 9px;
+            margin-top: 8px;
         }
 
         button {
@@ -429,9 +412,7 @@
             border-color: transparent;
         }
 
-        button.secondary {
-            border-style: dashed;
-        }
+        button.secondary { border-style: dashed; }
 
         /* ===== ALERTS LIST ===== */
         .alerts-list {
@@ -442,21 +423,19 @@
             line-height: 1.5;
         }
 
-        .alert-item {
-            margin-bottom: 4px;
-        }
+        .alert-item { margin-bottom: 4px; }
 
         /* ===== HEATMAP ===== */
         .heatmap-grid {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 6px;
-            margin-top: 8px;
+            margin-top: 6px;
         }
 
         .heatmap-cell {
             border-radius: 12px;
-            padding: 6px 6px 5px;
+            padding: 5px 6px 4px;
             font-size: 10px;
             background: radial-gradient(circle at top, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.92));
             border: 1px solid rgba(148, 163, 184, 0.35);
@@ -467,9 +446,7 @@
             font-size: 11px;
         }
 
-        .heatmap-change {
-            font-size: 10px;
-        }
+        .heatmap-change { font-size: 10px; }
 
         @media (max-width: 768px) {
             .heatmap-grid {
@@ -488,11 +465,11 @@
             display: inline-flex;
             align-items: center;
             gap: 4px;
-            margin-top: 4px;
+            margin-top: 3px;
         }
 
         .sentiment-meter {
-            margin-top: 10px;
+            margin-top: 8px;
             width: 100%;
             height: 6px;
             border-radius: 999px;
@@ -513,17 +490,45 @@
             box-shadow: 0 0 12px rgba(248, 250, 252, 0.9);
         }
 
+        /* ===== REAL-TIME ENGINE METERS ===== */
+        .meter-wrapper {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .meter-label {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .meter-bar {
+            width: 100%;
+            height: 6px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.96);
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            overflow: hidden;
+        }
+
+        .meter-fill {
+            height: 100%;
+            width: 20%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #22c55e, #facc15, #f97316);
+            transition: width 0.25s ease-out;
+        }
+
         /* ===== FOOTER ===== */
         .footer {
-            padding: 4px 18px 10px;
+            padding: 4px 18px 8px;
             font-size: 10px;
             text-align: center;
             color: var(--text-muted);
         }
 
-        .footer span {
-            color: #fbbf24;
-        }
+        .footer span { color: #fbbf24; }
     </style>
 </head>
 
@@ -622,9 +627,7 @@
                     <div class="card-tag">Risk Engine</div>
                 </div>
                 <div class="card-main" id="riskValue">...</div>
-                <div class="subtext" id="riskNote">
-                    ...
-                </div>
+                <div class="subtext" id="riskNote">...</div>
                 <div class="kpi-row">
                     <div class="kpi-pill">
                         <span class="kpi-label">درجة التقلب:</span>
@@ -710,7 +713,7 @@
                 </div>
             </div>
 
-            <!-- مؤشر مشاعر / Sentiment + Fear & Greed -->
+            <!-- Sentiment / Fear & Greed -->
             <div class="card span-1">
                 <div class="card-header">
                     <div class="card-title">Sentiment Index — Fear & Greed</div>
@@ -745,12 +748,10 @@
                 <div class="subtext">
                     خريطة مصغرة لحركة بعض “السلال” الافتراضية للعملات (Majors / DeFi / Meme / AI) كمؤشر بصرى سريع لانتقال الزخم خارج البيتكوين.
                 </div>
-                <div class="heatmap-grid" id="heatmapGrid">
-                    <!-- يتم ملؤها من JavaScript -->
-                </div>
+                <div class="heatmap-grid" id="heatmapGrid"></div>
             </div>
 
-            <!-- تدفق الأوامر اللحظى (تقدير) -->
+            <!-- تدفق الأوامر اللحظى -->
             <div class="card span-1">
                 <div class="card-header">
                     <div class="card-title">تدفق الأوامر اللحظى — المشترين مقابل البائعين</div>
@@ -768,6 +769,42 @@
                     <div class="kpi-pill">
                         <span class="kpi-label">هيمنة البائعين:</span>
                         <span class="kpi-val" id="sellersShare">---</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- محرك السوق اللحظى — Real-Time Engine -->
+            <div class="card span-1" id="rtEngineCard">
+                <div class="card-header">
+                    <div class="card-title">محرك السوق اللحظى — Real-Time Engine</div>
+                    <div class="card-tag">Momentum · Pressure · Shock</div>
+                </div>
+                <div class="card-main" id="rtMomentumValue">---</div>
+                <div class="subtext" id="rtMomentumText">
+                    قراءة لحظية لزخم الاتجاه وضغط السوق واحتمال حدوث صدمة سعرية قصيرة المدى.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">زخم الاتجاه:</span>
+                        <span class="kpi-val" id="rtMomentumLabel">---</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">ضغط السوق:</span>
+                        <span class="kpi-val" id="rtPressureLabel">---</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">حالة الصدمة:</span>
+                        <span class="kpi-val" id="rtShockLabel">---</span>
+                    </div>
+                </div>
+                <div class="meter-wrapper">
+                    <div class="meter-label">Momentum Gauge</div>
+                    <div class="meter-bar">
+                        <div id="rtMomentumBar" class="meter-fill"></div>
+                    </div>
+                    <div class="meter-label">Shock Detector</div>
+                    <div class="meter-bar">
+                        <div id="rtShockBar" class="meter-fill"></div>
                     </div>
                 </div>
             </div>
@@ -824,24 +861,6 @@
                 </div>
             </div>
 
-            <!-- مؤشر استقرار السوق -->
-            <div class="card span-1" id="stabilityCard">
-                <div class="card-header">
-                    <div class="card-title">مؤشر استقرار السوق</div>
-                    <div class="card-tag">Market Stability Index</div>
-                </div>
-                <div class="card-main" id="stabilityValue">---</div>
-                <div class="subtext" id="stabilityText">
-                    قراءة عامة توضح مدى استقرار أو هشاشة السوق حاليًا بناءً على التقلب، مدى الحركة، مستوى المخاطر، والضوضاء فى الحركة.
-                </div>
-                <div class="kpi-row">
-                    <div class="kpi-pill">
-                        <span class="kpi-label">وصف الاستقرار:</span>
-                        <span class="kpi-val" id="stabilityLevel">---</span>
-                    </div>
-                </div>
-            </div>
-
             <!-- نبض هيمنة البيتكوين -->
             <div class="card span-1">
                 <div class="card-header">
@@ -849,8 +868,7 @@
                     <div class="card-tag">BTC Dominance Pulse (تقدير)</div>
                 </div>
                 <div class="card-main" id="dominanceValue">---</div>
-                <div class="subtext" id="dominanceText">
-                </div>
+                <div class="subtext" id="dominanceText"></div>
             </div>
 
             <!-- درجة حرارة الاتجاه -->
@@ -860,21 +878,7 @@
                     <div class="card-tag">Momentum Gauge</div>
                 </div>
                 <div class="card-main" id="trendTempValue">---</div>
-                <div class="subtext" id="trendTempText">
-                </div>
-            </div>
-
-            <!-- مراقبة الأخطاء واللوج -->
-            <div class="card span-2" id="errorCard">
-                <div class="card-header">
-                    <div class="card-title">مراقبة الأخطاء واللوج</div>
-                    <div class="card-tag">Last error + Logs</div>
-                </div>
-                <div class="card-main" id="lastErrorTitle">لا يوجد أخطاء مسجلة</div>
-                <div class="subtext">
-                    يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت، مع عرض Snapshot مباشر من اللوج.
-                </div>
-                <pre id="logsSnapshot">جارى تحميل اللوج...</pre>
+                <div class="subtext" id="trendTempText"></div>
             </div>
 
             <!-- صحة النظام -->
@@ -899,8 +903,21 @@
                 </div>
             </div>
 
-            <!-- سجل التحذيرات -->
-            <div class="card span-1">
+            <!-- مراقبة الأخطاء واللوج -->
+            <div class="card span-2" id="errorCard">
+                <div class="card-header">
+                    <div class="card-title">مراقبة الأخطاء واللوج</div>
+                    <div class="card-tag">Last error + Logs</div>
+                </div>
+                <div class="card-main" id="lastErrorTitle">لا يوجد أخطاء مسجلة</div>
+                <div class="subtext">
+                    يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت، مع عرض Snapshot مباشر من اللوج.
+                </div>
+                <pre id="logsSnapshot">جارى تحميل اللوج...</pre>
+            </div>
+
+            <!-- سجل التحذيرات (عرض كامل لتفريغ الفراغ تحت) -->
+            <div class="card span-3">
                 <div class="card-header">
                     <div class="card-title">سجل التحذيرات</div>
                     <div class="card-tag">Alerts History</div>
@@ -1135,34 +1152,38 @@
             return { status, text };
         }
 
-        function computeMarketStabilityIndex(change, volScore, rangePct, noiseScore, riskLevel) {
-            // 0 = هش جدًا ، 100 = مستقر جدًا
-            let base = 80;
-            base -= Math.abs(change) * 3;
-            base -= volScore * 0.4;
-            base -= rangePct * 1.0;
-            base -= noiseScore * 0.3;
-
-            if (riskLevel && riskLevel.includes("مرتفع")) base -= 15;
-            else if (riskLevel && riskLevel.includes("متوسط")) base -= 5;
-            else if (riskLevel && riskLevel.includes("منخفض")) base += 5;
-
-            if (base < 0) base = 0;
-            if (base > 100) base = 100;
-
-            let level, text;
-            if (base > 70) {
-                level = "سوق مستقر نسبيًا";
-                text = "مستوى مقبول من الاستقرار؛ يمكن العمل لكن مع الالتزام بخطة واضحة وعدم الإفراط فى الرافعة المالية.";
-            } else if (base > 40) {
-                level = "استقرار متوسط / حساس";
-                text = "السوق ليس هشًا بالكامل لكن أى أخبار أو حركة كبيرة قد تغير الصورة بسرعة؛ يفضل تخفيف الحجم وعدم التهور.";
-            } else {
-                level = "سوق هش يحتاج حذر";
-                text = "الاستقرار ضعيف حاليًا؛ أى مفاجأة قد تسبب حركة عنيفة، يفضل التعامل بأقل مخاطرة ممكنة أو الانتظار.";
+        // === Real-Time Engine helpers ===
+        function computeRealtimeMomentum(change, volScore, strengthLabel) {
+            const absChange = Math.abs(change);
+            let score = absChange * 5 + volScore * 0.6;
+            if (strengthLabel && (strengthLabel.includes("قوة") || strengthLabel.includes("قوى"))) {
+                score += 8;
             }
+            if (score > 100) score = 100;
+            if (score < 0) score = 0;
 
-            return { index: Math.round(base), level, text };
+            let label;
+            if (score < 25) label = "زخم ضعيف";
+            else if (score < 55) label = "زخم متوسط";
+            else if (score < 80) label = "زخم قوى";
+            else label = "زخم عنيف";
+
+            return { score: Math.round(score), label };
+        }
+
+        function computeShockScore(change, volScore, rangePct) {
+            const absChange = Math.abs(change);
+            let shock = volScore * 0.7 + rangePct * 0.8 + absChange * 1.5;
+            if (shock > 100) shock = 100;
+            if (shock < 0) shock = 0;
+
+            let label;
+            if (shock < 30) label = "هادئ";
+            else if (shock < 60) label = "متحرك";
+            else if (shock < 80) label = "توتر مرتفع";
+            else label = "صدمة محتملة";
+
+            return { shock: Math.round(shock), label };
         }
 
         function buildAIComment(change, volScore, riskMsg, riskLevel, liquidityPulse, strengthLabel, modeInfo) {
@@ -1248,11 +1269,11 @@
                 const liquidityPulse = data.liquidity_pulse;
                 const strengthLabel = data.strength_label;
 
-                // ===== HEADER BADGES =====
+                // HEADER BADGES
                 document.getElementById("badgeChats").textContent = data.known_chats ?? 0;
                 document.getElementById("badgeRealtime").textContent = data.last_realtime_tick || "لا يوجد";
 
-                // ===== TOP BTC BAR =====
+                // TOP BTC BAR
                 const barPrice = document.getElementById("barPrice");
                 const barChange = document.getElementById("barChange");
                 const barRange = document.getElementById("barRange");
@@ -1279,7 +1300,7 @@
                         "radial-gradient(circle at top, rgba(251,191,36,0.35), #020617)";
                 }
 
-                // ===== MARKET STRENGTH CARD =====
+                // MARKET STRENGTH
                 document.getElementById("strengthValue").textContent = strengthLabel;
                 document.getElementById("kpiChange").textContent =
                     (change >= 0 ? "+" : "") + change.toFixed(2) + "%";
@@ -1291,7 +1312,7 @@
                 const heatDot = document.getElementById("heatDot");
                 heatDot.style.left = Math.min(96, Math.max(4, heatScore)) + "%";
 
-                // ===== RISK CARD =====
+                // RISK CARD
                 const riskCard = document.getElementById("riskCard");
                 const riskVal = document.getElementById("riskValue");
                 const riskNote = document.getElementById("riskNote");
@@ -1308,7 +1329,7 @@
                 else if (riskLevel.includes("متوسط")) riskCard.classList.add("gold");
                 else riskCard.classList.add("red");
 
-                // ===== LIQUIDITY CARD =====
+                // LIQUIDITY
                 document.getElementById("liquidityValue").textContent = liquidityPulse;
                 const liqLabel =
                     change > 0 ? "ميل لصالح المشترين" :
@@ -1318,7 +1339,7 @@
                 document.getElementById("signalPulse").textContent =
                     buildSignalPulse(change, volScore);
 
-                // ===== VOLATILITY CARD =====
+                // VOLATILITY
                 document.getElementById("volatilityValue").textContent =
                     volScore.toFixed(1);
                 document.getElementById("rangeDetail").textContent =
@@ -1326,7 +1347,7 @@
                 document.getElementById("volatilityLabel").textContent =
                     classifyVolatility(volScore);
 
-                // ===== LAST ERROR CARD (العنوان بس — اللوج بيتحدث من loadLogs) =====
+                // LAST ERROR
                 const lastErr = data.last_error || {};
                 const errTitle = document.getElementById("lastErrorTitle");
                 const errCard = document.getElementById("errorCard");
@@ -1339,7 +1360,7 @@
                     errCard.classList.remove("gold");
                 }
 
-                // ===== AUTO ALERT STATUS =====
+                // AUTO ALERT
                 const aa = data.last_auto_alert || {};
                 const alertCard = document.getElementById("alertFlashCard");
                 document.getElementById("alertReason").textContent =
@@ -1356,49 +1377,42 @@
                     alertCard.classList.remove("flash");
                 }
 
-                // ===== ORDER FLOW ESTIMATION =====
+                // ORDER FLOW
                 const of = estimateOrderFlow(change, volScore, liqLabel);
                 document.getElementById("orderFlowValue").textContent = of.label;
                 document.getElementById("buyersShare").textContent = of.buyers.toFixed(0) + "٪";
                 document.getElementById("sellersShare").textContent = of.sellers.toFixed(0) + "٪";
 
-                // ===== SHORT TERM BIAS =====
+                // SHORT TERM BIAS
                 const st = estimateShortTermBias(change, volScore, strengthLabel);
                 document.getElementById("shortTermBias").textContent = st.biasText;
                 document.getElementById("upProb").textContent = st.up + "٪";
                 document.getElementById("downProb").textContent = st.down + "٪";
 
-                // ===== NOISE FILTER =====
+                // NOISE
                 const nf = estimateNoise(change, volScore, rangePct);
                 document.getElementById("noiseValue").textContent = nf.noise + " / 100";
                 document.getElementById("noiseScore").textContent = nf.noise + " / 100";
                 document.getElementById("noiseText").textContent = nf.label;
 
-                // ===== SCALPER MODE =====
+                // SCALPER MODE
                 const sc = estimateScalperSuitability(volScore, nf.noise, rangePct);
                 document.getElementById("scalpSuitability").textContent =
                     sc.score + " / 100";
                 document.getElementById("scalpText").textContent = sc.label;
 
-                // ===== STABILITY INDEX =====
-                const ms = computeMarketStabilityIndex(change, volScore, rangePct, nf.noise, riskLevel);
-                document.getElementById("stabilityValue").textContent =
-                    ms.index + " / 100";
-                document.getElementById("stabilityLevel").textContent = ms.level;
-                document.getElementById("stabilityText").textContent = ms.text;
-
-                // ===== DOMINANCE PULSE =====
+                // DOMINANCE
                 const dom = estimateDominance(change, liqLabel);
                 document.getElementById("dominanceValue").textContent = dom.label;
                 document.getElementById("dominanceText").textContent = dom.text;
 
-                // ===== TREND TEMPERATURE =====
+                // TREND TEMP
                 const tt = estimateTrendTemp(change, volScore);
                 document.getElementById("trendTempValue").textContent =
                     tt.temp + " / 100";
                 document.getElementById("trendTempText").textContent = tt.label;
 
-                // ===== SENTIMENT INDEX =====
+                // SENTIMENT
                 const sent = computeSentimentIndex(change, volScore, rangePct);
                 document.getElementById("sentimentIndex").textContent =
                     sent.index + " / 100";
@@ -1408,10 +1422,10 @@
                 const badge = document.getElementById("sentimentBadge");
                 badge.title = sent.zone;
 
-                // ===== HEATMAP =====
+                // HEATMAP
                 renderHeatmap(change, volScore, rangePct);
 
-                // ===== SYSTEM HEALTH =====
+                // SYSTEM HEALTH
                 const sh = computeSystemHealth(lastErr, aa, riskLevel);
                 document.getElementById("systemHealthValue").textContent = sh.status;
                 document.getElementById("systemHealthText").textContent = sh.text;
@@ -1420,7 +1434,36 @@
                 document.getElementById("systemLastAlert").textContent =
                     aa && aa.time ? aa.time : "لا يوجد";
 
-                // ===== AI COMMENT =====
+                // REAL-TIME ENGINE
+                const rt = computeRealtimeMomentum(change, volScore, strengthLabel);
+                const shock = computeShockScore(change, volScore, rangePct);
+
+                document.getElementById("rtMomentumValue").textContent = rt.score + " / 100";
+                document.getElementById("rtMomentumLabel").textContent = rt.label;
+
+                const pressureLabel =
+                    of.buyers > 60 ? "ضغط المشترين" :
+                    of.sellers > 60 ? "ضغط البائعين" :
+                    "ضغط متوازن نسبيًا";
+                document.getElementById("rtPressureLabel").textContent = pressureLabel;
+
+                document.getElementById("rtShockLabel").textContent = shock.label;
+
+                const rtText = (() => {
+                    if (rt.score < 25) return "زخم ضعيف، الحركة الحالية أقرب للاختبار والتذبذب الخفيف عن اتجاه واضح.";
+                    if (rt.score < 55) return "زخم متوسط، يمكن استغلال الحركات لكن مع صبر على التأكيد.";
+                    if (rt.score < 80) return "زخم قوى، الاتجاه الحالى يستحق المتابعة الدقيقة مع التزام صارم بإدارة المخاطر.";
+                    return "زخم عنيف، أى قرار بدون خطة إدارة مخاطر واضحة قد يكون مخاطرة كبيرة.";
+                })();
+                document.getElementById("rtMomentumText").textContent = rtText;
+
+                // Bars
+                const mBar = document.getElementById("rtMomentumBar");
+                const sBar = document.getElementById("rtShockBar");
+                if (mBar) mBar.style.width = Math.min(100, Math.max(5, rt.score)) + "%";
+                if (sBar) sBar.style.width = Math.min(100, Math.max(5, shock.shock)) + "%";
+
+                // AI COMMENT
                 const comment = buildAIComment(
                     change,
                     volScore,
