@@ -9,12 +9,14 @@
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 
         :root {
-            --bg-main: #020308;
-            --bg-card: rgba(10, 12, 20, 0.97);
-            --bg-card-soft: rgba(10, 12, 20, 0.9);
-            --border-soft: rgba(148, 163, 184, 0.28);
+            --bg-main: #02040a;
+            --bg-main-grad: radial-gradient(circle at top, #111827 0, #02040a 55%);
+            --bg-card: rgba(8, 11, 20, 0.9);
+            --bg-card-soft: rgba(8, 11, 20, 0.82);
+            --border-soft: rgba(148, 163, 184, 0.32);
+            --border-strong: rgba(248, 250, 252, 0.02);
             --accent-gold: #fbbf24;
-            --accent-gold-soft: rgba(251, 191, 36, 0.12);
+            --accent-gold-soft: rgba(251, 191, 36, 0.18);
             --accent-red: #fb7185;
             --accent-green: #22c55e;
             --accent-blue: #38bdf8;
@@ -31,39 +33,31 @@
             margin: 0;
             padding: 0;
             font-family: "Cairo", system-ui, sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(248, 250, 252, 0.05), transparent 55%),
+                radial-gradient(circle at top right, rgba(251, 191, 36, 0.09), transparent 55%),
+                var(--bg-main-grad);
             color: var(--text-main);
             min-height: 100vh;
-            background:
-                radial-gradient(circle at top, rgba(56, 189, 248, 0.18), transparent 55%),
-                radial-gradient(circle at bottom, rgba(251, 191, 36, 0.16), transparent 60%),
-                var(--bg-main);
-            /* Carbon fiber feel */
-            background-image:
-                radial-gradient(circle at top, rgba(56, 189, 248, 0.18), transparent 55%),
-                radial-gradient(circle at bottom, rgba(251, 191, 36, 0.16), transparent 60%),
-                repeating-linear-gradient(
-                    45deg,
-                    rgba(15, 23, 42, 0.95) 0,
-                    rgba(15, 23, 42, 0.95) 2px,
-                    rgba(3, 7, 18, 0.98) 2px,
-                    rgba(3, 7, 18, 0.98) 6px
-                );
+        }
+
+        .layout {
+            max-width: 1320px;
+            margin: 0 auto 18px;
         }
 
         /* ===== TOP BTC BAR ===== */
         .btc-bar {
             width: 100%;
             padding: 10px 18px;
-            background:
-                linear-gradient(90deg, rgba(15, 23, 42, 0.95), rgba(3, 7, 18, 0.98));
-            border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+            background: linear-gradient(90deg, #020617, #050816);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
             align-items: center;
             justify-content: space-between;
             font-size: 13px;
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7);
         }
 
         .btc-bar-left {
@@ -76,12 +70,11 @@
         .btc-pill-main {
             padding: 3px 10px;
             border-radius: 999px;
-            background:
-                radial-gradient(circle at top, #fbbf24, #f59e0b);
+            background: radial-gradient(circle at top, #fbbf24, #f59e0b);
             color: #111827;
             font-weight: 800;
             font-size: 11px;
-            letter-spacing: 0.16em;
+            letter-spacing: 0.12em;
         }
 
         .btc-title-mini {
@@ -93,7 +86,7 @@
         .btc-bar-right {
             display: flex;
             flex-wrap: wrap;
-            gap: 14px;
+            gap: 12px;
             align-items: center;
         }
 
@@ -125,13 +118,13 @@
             text-transform: uppercase;
             color: #fef3c7;
             background:
-                radial-gradient(circle at top, rgba(251, 191, 36, 0.45), transparent 60%),
-                rgba(3, 7, 18, 0.98);
+                radial-gradient(circle at top, rgba(251, 191, 36, 0.35), transparent 60%),
+                rgba(5, 6, 15, 0.97);
         }
 
         /* ===== HEADER ===== */
         .header {
-            padding: 14px 18px 6px;
+            padding: 14px 18px 4px;
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
@@ -168,10 +161,8 @@
             font-size: 10px;
             padding: 3px 8px;
             border-radius: 999px;
-            border: 1px solid rgba(148, 163, 184, 0.5);
-            background:
-                radial-gradient(circle at top, rgba(56, 189, 248, 0.18), transparent 60%),
-                rgba(15, 23, 42, 0.96);
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            background: rgba(15, 23, 42, 0.9);
             color: var(--text-muted);
         }
 
@@ -184,23 +175,17 @@
             padding: 12px 18px 22px;
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 14px;
+            gap: 12px;
         }
 
-        /* Span helpers لظبط الديسكتوب */
-        .card-span-2 {
-            grid-column: span 2;
-        }
-        .card-span-3 {
-            grid-column: span 3;
-        }
+        .span-2 { grid-column: span 2; }
+        .span-3 { grid-column: span 3; }
 
         @media (max-width: 1180px) {
             .grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
-            .card-span-2,
-            .card-span-3 {
+            .span-3 {
                 grid-column: span 2;
             }
         }
@@ -216,37 +201,50 @@
                 grid-template-columns: minmax(0, 1fr);
                 padding: 10px 10px 18px;
             }
-            .card-span-2,
-            .card-span-3 {
+            .span-2, .span-3 {
                 grid-column: span 1;
             }
         }
 
         /* ===== CARD BASE ===== */
         .card {
-            background:
-                radial-gradient(circle at top left, rgba(56, 189, 248, 0.07), transparent 55%),
-                radial-gradient(circle at bottom right, rgba(251, 191, 36, 0.06), transparent 55%),
-                var(--bg-card);
+            background: linear-gradient(135deg,
+                    rgba(15, 23, 42, 0.96),
+                    rgba(15, 23, 42, 0.94));
             border-radius: 18px;
             border: 1px solid var(--border-soft);
             padding: 14px 14px 13px;
             position: relative;
             overflow: hidden;
             box-shadow:
-                0 20px 40px rgba(0, 0, 0, 0.85),
-                0 0 0 1px rgba(15, 23, 42, 0.9);
+                0 24px 40px rgba(0, 0, 0, 0.9),
+                0 0 0 1px var(--border-strong);
+            backdrop-filter: blur(14px);
+            transition:
+                transform 0.18s ease-out,
+                box-shadow 0.18s ease-out,
+                border-color 0.18s ease-out,
+                background 0.18s ease-out;
         }
 
         .card::before {
             content: "";
             position: absolute;
-            inset: 0;
+            inset: -40%;
             background:
-                radial-gradient(circle at top left, rgba(251, 191, 36, 0.16), transparent 55%);
+                radial-gradient(circle at top left, rgba(251, 191, 36, 0.15), transparent 60%),
+                radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.12), transparent 55%);
             opacity: 0;
-            transition: opacity 0.18s ease-out;
+            transition: opacity 0.22s ease-out;
             pointer-events: none;
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow:
+                0 26px 50px rgba(0, 0, 0, 0.95),
+                0 0 0 1px rgba(248, 250, 252, 0.05);
+            border-color: rgba(251, 191, 36, 0.55);
         }
 
         .card:hover::before {
@@ -277,9 +275,9 @@
         }
 
         .card-main {
-            font-size: 21px;
+            font-size: 22px;
             font-weight: 800;
-            margin-top: 4px;
+            margin-top: 5px;
         }
 
         .card-main span.small {
@@ -306,7 +304,7 @@
             padding: 4px 9px;
             border-radius: 999px;
             background: var(--bg-card-soft);
-            border: 1px solid rgba(148, 163, 184, 0.4);
+            border: 1px solid rgba(148, 163, 184, 0.38);
             font-size: 10px;
             display: inline-flex;
             gap: 4px;
@@ -325,6 +323,7 @@
         .red    { color: var(--accent-red); }
         .gold   { color: var(--accent-gold); }
         .blue   { color: var(--accent-blue); }
+        .cyan   { color: var(--accent-cyan); }
 
         /* ===== HEATBAR ===== */
         .heatbar {
@@ -346,8 +345,8 @@
             inset: 0;
             background: linear-gradient(90deg,
                         rgba(34,197,94,0.05),
-                        rgba(250,204,21,0.14),
-                        rgba(248,250,252,0.04));
+                        rgba(250,204,21,0.1),
+                        rgba(248,250,252,0.05));
             mix-blend-mode: soft-light;
         }
 
@@ -358,7 +357,7 @@
             height: 18px;
             border-radius: 999px;
             transform: translate(-50%, -50%);
-            border: 2px solid #020617;
+            border: 2px solid #111827;
             box-shadow: 0 0 18px rgba(248, 250, 252, 0.9);
             background: #fef3c7;
         }
@@ -376,7 +375,7 @@
             margin: 8px 0 0;
             padding: 8px;
             border-radius: 10px;
-            background: #020617;
+            background: radial-gradient(circle at top left, #020617, #020617);
             border: 1px solid rgba(148, 163, 184, 0.35);
             font-size: 10px;
             max-height: 148px;
@@ -397,8 +396,8 @@
                 border-color: rgba(251, 191, 36, 0.9);
             }
             to {
-                box-shadow: 0 0 32px rgba(248, 113, 113, 0.95);
-                border-color: rgba(248, 113, 113, 1);
+                box-shadow: 0 0 26px rgba(248, 113, 113, 0.9);
+                border-color: rgba(248, 113, 113, 0.95);
             }
         }
 
@@ -447,9 +446,76 @@
             margin-bottom: 4px;
         }
 
+        /* ===== HEATMAP ===== */
+        .heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .heatmap-cell {
+            border-radius: 12px;
+            padding: 6px 6px 5px;
+            font-size: 10px;
+            background: radial-gradient(circle at top, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.92));
+            border: 1px solid rgba(148, 163, 184, 0.35);
+        }
+
+        .heatmap-symbol {
+            font-weight: 700;
+            font-size: 11px;
+        }
+
+        .heatmap-change {
+            font-size: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .heatmap-grid {
+                grid-template-columns: repeat(3, minmax(0,1fr));
+            }
+        }
+
+        /* ===== SENTIMENT CARD ===== */
+        .sentiment-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(148, 163, 184, 0.5);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 4px;
+        }
+
+        .sentiment-meter {
+            margin-top: 10px;
+            width: 100%;
+            height: 6px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: linear-gradient(90deg, #22c55e, #eab308, #f97316, #ef4444);
+            position: relative;
+        }
+
+        .sentiment-pointer {
+            position: absolute;
+            top: 50%;
+            width: 14px;
+            height: 14px;
+            border-radius: 999px;
+            border: 2px solid #020617;
+            background: #e5e7eb;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 12px rgba(248, 250, 252, 0.9);
+        }
+
         /* ===== FOOTER ===== */
         .footer {
-            padding: 4px 0 10px;
+            padding: 4px 18px 10px;
             font-size: 10px;
             text-align: center;
             color: var(--text-muted);
@@ -488,303 +554,365 @@
         </div>
     </div>
 
-    <!-- ========== HEADER ========== -->
-    <div class="header">
-        <div class="header-main">
-            <div class="header-title">IN CRYPTO — WAR ROOM</div>
-            <div class="header-sub">
-                غرفة عمليات كاملة لمراقبة قوة السوق، المخاطر، السيولة، التقلبات، وسلوك الأوامر مع نظام تحذير ذكّى مبنى بالكامل على حركة البيتكوين.
-            </div>
-        </div>
-        <div class="header-badge-row">
-            <div class="header-badge">
-                وضع السوق: <strong id="badgeMode">NORMAL</strong>
-            </div>
-            <div class="header-badge">
-                آخر تحديث Real-Time: <strong id="badgeRealtime">---</strong>
-            </div>
-            <div class="header-badge">
-                عدد الشاتات: <strong id="badgeChats">0</strong>
-            </div>
-        </div>
-    </div>
-
-    <!-- ========== GRID LAYOUT ========== -->
-    <div class="grid">
-
-        <!-- قوة السوق + Heat Score (Span 2) -->
-        <div class="card card-span-2" id="marketStrengthCard">
-            <div class="card-header">
-                <div class="card-title">قوة السوق العامة (Market Strength)</div>
-                <div class="card-tag">BTCUSDT Snapshot</div>
-            </div>
-            <div class="card-main" id="strengthValue">...</div>
-            <div class="subtext">
-                قراءة مدمجة لاتجاه البيتكوين ومدى الحركة اليومية بناءً على بيانات Binance / KuCoin فقط، بدون أى مزود خارجى.
-            </div>
-            <div class="kpi-row">
-                <div class="kpi-pill">
-                    <span class="kpi-label">Δ اليوم:</span>
-                    <span class="kpi-val" id="kpiChange">...</span>
-                </div>
-                <div class="kpi-pill">
-                    <span class="kpi-label">مدى %:</span>
-                    <span class="kpi-val" id="kpiRange">...</span>
-                </div>
-                <div class="kpi-pill">
-                    <span class="kpi-label">Heat Score:</span>
-                    <span class="kpi-val" id="kpiHeat">...</span>
+    <div class="layout">
+        <!-- ========== HEADER ========== -->
+        <div class="header">
+            <div class="header-main">
+                <div class="header-title">IN CRYPTO — WAR ROOM</div>
+                <div class="header-sub">
+                    لوحة تحكم حية لقوة السوق، السيولة، المخاطر، الضوضاء، تدفق الأوامر، ونظام تحذير ذكّى مبنى بالكامل على حركة البيتكوين فقط.
                 </div>
             </div>
-            <div class="heatbar">
-                <div class="heatbar-track"></div>
-                <div id="heatDot" class="heatbar-dot" style="left: 10%;"></div>
-            </div>
-            <div class="heatbar-labels">
-                <span>هادئ</span>
-                <span>نشط</span>
-                <span>ساخن</span>
-                <span>منطقة خطر</span>
-            </div>
-        </div>
-
-        <!-- بطاقة المخاطر -->
-        <div class="card" id="riskCard">
-            <div class="card-header">
-                <div class="card-title">مستوى المخاطر (IN CRYPTO Ai)</div>
-                <div class="card-tag">Risk Engine</div>
-            </div>
-            <div class="card-main" id="riskValue">...</div>
-            <div class="subtext" id="riskNote">
-                ...
-            </div>
-            <div class="kpi-row">
-                <div class="kpi-pill">
-                    <span class="kpi-label">درجة التقلب:</span>
-                    <span class="kpi-val" id="kpiVol">...</span>
+            <div class="header-badge-row">
+                <div class="header-badge">
+                    وضع التشغيل: <strong id="badgeMode">NORMAL</strong>
                 </div>
-                <div class="kpi-pill">
-                    <span class="kpi-label">وضع السوق:</span>
-                    <span class="kpi-val" id="kpiMode">...</span>
+                <div class="header-badge">
+                    آخر تحديث Real-Time: <strong id="badgeRealtime">---</strong>
+                </div>
+                <div class="header-badge">
+                    سجل الشاتات: <strong id="badgeChats">0</strong>
                 </div>
             </div>
         </div>
 
-        <!-- نبض السيولة والاتجاه -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">نبض السيولة بين المشترين والبائعين</div>
-                <div class="card-tag">Liquidity Pulse</div>
-            </div>
-            <div class="card-main" id="liquidityValue">...</div>
-            <div class="subtext">
-                قراءة مبسطة لتوازن السيولة اعتمادًا على اتجاه BTCUSDT، مع تحويل الحركة اليومية لصورة أوضح عن من يسيطر على السوق حاليًا.
-            </div>
-            <div class="kpi-row">
-                <div class="kpi-pill">
-                    <span class="kpi-label">وضع السيولة:</span>
-                    <span class="kpi-val" id="liqLabel">...</span>
-                </div>
-                <div class="kpi-pill">
-                    <span class="kpi-label">إشارة الحركة:</span>
-                    <span class="kpi-val" id="signalPulse">...</span>
-                </div>
-            </div>
-        </div>
+        <!-- ========== GRID LAYOUT ========== -->
+        <div class="grid">
 
-        <!-- التقلب اليومى -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">مؤشر التقلب اليومى للبيتكوين</div>
-                <div class="card-tag">Volatility Monitor</div>
-            </div>
-            <div class="card-main">
-                <span id="volatilityValue">...</span>
-                <span class="small">/ 100</span>
-            </div>
-            <div class="subtext">
-                كلما اقترب المؤشر من 100 كان السوق أكثر عدوانية وتحتاج إدارة مخاطر صارمة، وكلما اقترب من الصفر كان السوق أكثر هدوءًا.
-            </div>
-            <div class="kpi-row">
-                <div class="kpi-pill">
-                    <span class="kpi-label">نطاق اليوم:</span>
-                    <span class="kpi-val" id="rangeDetail">...</span>
+            <!-- قوة السوق + Heat Score (كبيرة) -->
+            <div class="card span-3" id="marketStrengthCard">
+                <div class="card-header">
+                    <div class="card-title">قوة السوق العامة (Market Strength)</div>
+                    <div class="card-tag">BTCUSDT Snapshot</div>
                 </div>
-                <div class="kpi-pill">
-                    <span class="kpi-label">وصف التقلب:</span>
-                    <span class="kpi-val" id="volatilityLabel">...</span>
+                <div class="card-main" id="strengthValue">...</div>
+                <div class="subtext">
+                    قراءة مدمجة لاتجاه البيتكوين ومدى الحركة اليومية بناءً على بيانات Binance / KuCoin فقط، بدون أى مزود خارجى.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">Δ اليوم:</span>
+                        <span class="kpi-val" id="kpiChange">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">مدى %:</span>
+                        <span class="kpi-val" id="kpiRange">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">Heat Score:</span>
+                        <span class="kpi-val" id="kpiHeat">...</span>
+                    </div>
+                </div>
+                <div class="heatbar">
+                    <div class="heatbar-track"></div>
+                    <div id="heatDot" class="heatbar-dot" style="left: 10%;"></div>
+                </div>
+                <div class="heatbar-labels">
+                    <span>هادئ</span>
+                    <span>نشط</span>
+                    <span>ساخن</span>
+                    <span>منطقة خطر</span>
                 </div>
             </div>
-        </div>
 
-        <!-- نظام التحذير التلقائى -->
-        <div class="card" id="alertFlashCard">
-            <div class="card-header">
-                <div class="card-title">نظام التحذير التلقائى</div>
-                <div class="card-tag">/auto_alert</div>
-            </div>
-            <div class="card-main" id="alertReason">لا يوجد تحذير حاليًا</div>
-            <div class="subtext">
-                آخر استجابة لمسار <code>/auto_alert</code> من البوت، مع تمييز تلقائى إذا كان النظام يرى وضع غير طبيعى فى السوق.
-            </div>
-            <div class="kpi-row">
-                <div class="kpi-pill">
-                    <span class="kpi-label">آخر وقت:</span>
-                    <span class="kpi-val" id="alertTime">---</span>
+            <!-- بطاقة المخاطر -->
+            <div class="card span-1" id="riskCard">
+                <div class="card-header">
+                    <div class="card-title">مستوى المخاطر (IN CRYPTO Ai)</div>
+                    <div class="card-tag">Risk Engine</div>
                 </div>
-                <div class="kpi-pill">
-                    <span class="kpi-label">تم الإرسال؟</span>
-                    <span class="kpi-val" id="alertSent">---</span>
+                <div class="card-main" id="riskValue">...</div>
+                <div class="subtext" id="riskNote">
+                    ...
                 </div>
-            </div>
-            <div class="btn-row">
-                <button class="primary" onclick="callAdmin('force_alert')">إرسال تحذير فورى ⚡</button>
-                <button class="secondary" onclick="callAdmin('test_alert')">تنبيه تجريبى 🧪</button>
-            </div>
-        </div>
-
-        <!-- مراقبة الأخطاء واللوج (Span 2) -->
-        <div class="card card-span-2" id="errorCard">
-            <div class="card-header">
-                <div class="card-title">مراقبة الأخطاء واللوج</div>
-                <div class="card-tag">Last error + Logs</div>
-            </div>
-            <div class="card-main" id="lastErrorTitle">لا يوجد أخطاء مسجلة</div>
-            <div class="subtext">
-                يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت، مع عرض Snapshot مباشر من اللوج.
-            </div>
-            <pre id="logsSnapshot">جارى تحميل اللوج...</pre>
-        </div>
-
-        <!-- سجل التحذيرات -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">سجل التحذيرات</div>
-                <div class="card-tag">Alerts History</div>
-            </div>
-            <div class="alerts-list" id="alertsList">
-                جارِ تحميل السجل...
-            </div>
-            <div class="btn-row">
-                <button onclick="reloadAlerts()">تحديث السجل 🔄</button>
-                <button onclick="clearAlerts()">مسح السجل 🧹</button>
-            </div>
-        </div>
-
-        <!-- تدفق الأوامر اللحظى (تقدير) -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">تدفق الأوامر — المشترين مقابل البائعين</div>
-                <div class="card-tag">Order Flow Snapshot</div>
-            </div>
-            <div class="card-main" id="orderFlowValue">---</div>
-            <div class="subtext" id="orderFlowText">
-                تقدير تقريبى لتوازن الضغط بين المشترين والبائعين بناءً على اتجاه السعر والتقلب ونبض السيولة الحالى.
-            </div>
-            <div class="kpi-row">
-                <div class="kpi-pill">
-                    <span class="kpi-label">هيمنة المشترين:</span>
-                    <span class="kpi-val" id="buyersShare">---</span>
-                </div>
-                <div class="kpi-pill">
-                    <span class="kpi-label">هيمنة البائعين:</span>
-                    <span class="kpi-val" id="sellersShare">---</span>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">درجة التقلب:</span>
+                        <span class="kpi-val" id="kpiVol">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">وضع السوق:</span>
+                        <span class="kpi-val" id="kpiMode">...</span>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- توقع قصير المدى -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">توقع قصير المدى (≈ 15–30 دقيقة)</div>
-                <div class="card-tag">Short-Term Bias</div>
-            </div>
-            <div class="card-main" id="shortTermBias">---</div>
-            <div class="subtext" id="shortTermText">
-                انحياز حركى قصير المدى مبنى على دمج التغيير اليومى مع درجة التقلب وقوة السوق.
-            </div>
-            <div class="kpi-row">
-                <div class="kpi-pill">
-                    <span class="kpi-label">سيناريو الصعود:</span>
-                    <span class="kpi-val" id="upProb">---</span>
+            <!-- نبض السيولة والاتجاه -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">نبض السيولة بين المشترين والبائعين</div>
+                    <div class="card-tag">Liquidity Pulse</div>
                 </div>
-                <div class="kpi-pill">
-                    <span class="kpi-label">سيناريو الهبوط:</span>
-                    <span class="kpi-val" id="downProb">---</span>
+                <div class="card-main" id="liquidityValue">...</div>
+                <div class="subtext">
+                    قراءة مبسطة لتوازن السيولة اعتمادًا على اتجاه BTCUSDT، مع تحويل الحركة اليومية لصورة أوضح عن من يسيطر على السوق حاليًا.
                 </div>
-            </div>
-        </div>
-
-        <!-- فلتر الضوضاء فى الحركة -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">فلتر الضوضاء فى الحركة</div>
-                <div class="card-tag">Market Noise Filter</div>
-            </div>
-            <div class="card-main" id="noiseValue">---</div>
-            <div class="subtext" id="noiseText">
-                يقيس كمية الحركة “العبثية” مقابل الحركة الهادفة؛ يساعد فى معرفة ما إذا كان الأفضل عدم المطاردة وانتظار مناطق أوضح.
-            </div>
-            <div class="kpi-row">
-                <div class="kpi-pill">
-                    <span class="kpi-label">درجة الضوضاء التقديرية:</span>
-                    <span class="kpi-val" id="noiseScore">---</span>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">وضع السيولة:</span>
+                        <span class="kpi-val" id="liqLabel">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">إشارة الحركة:</span>
+                        <span class="kpi-val" id="signalPulse">...</span>
+                    </div>
                 </div>
             </div>
+
+            <!-- مؤشر التقلب اليومى للبيتكوين -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">مؤشر التقلب اليومى للبيتكوين</div>
+                    <div class="card-tag">Volatility Monitor</div>
+                </div>
+                <div class="card-main">
+                    <span id="volatilityValue">...</span>
+                    <span class="small">/ 100</span>
+                </div>
+                <div class="subtext">
+                    كلما اقترب المؤشر من 100 كان السوق أكثر عدوانية وتحتاج إدارة مخاطر صارمة، وكلما اقترب من الصفر كان السوق أكثر هدوءًا.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">نطاق اليوم:</span>
+                        <span class="kpi-val" id="rangeDetail">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">وصف التقلب:</span>
+                        <span class="kpi-val" id="volatilityLabel">...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- نظام التحذير التلقائى -->
+            <div class="card span-1" id="alertFlashCard">
+                <div class="card-header">
+                    <div class="card-title">نظام التحذير التلقائى</div>
+                    <div class="card-tag">/auto_alert</div>
+                </div>
+                <div class="card-main" id="alertReason">لا يوجد تحذير حاليًا</div>
+                <div class="subtext">
+                    آخر استجابة لمسار <code>/auto_alert</code> من البوت، مع تمييز تلقائى إذا كان النظام يرى وضع غير طبيعى فى السوق.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">آخر وقت:</span>
+                        <span class="kpi-val" id="alertTime">---</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">تم الإرسال؟</span>
+                        <span class="kpi-val" id="alertSent">---</span>
+                    </div>
+                </div>
+                <div class="btn-row">
+                    <button class="primary" onclick="callAdmin('force_alert')">إرسال تحذير فورى ⚡</button>
+                    <button class="secondary" onclick="callAdmin('test_alert')">تنبيه تجريبى 🧪</button>
+                </div>
+            </div>
+
+            <!-- مؤشر مشاعر / Sentiment + Fear & Greed -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">Sentiment Index — Fear & Greed</div>
+                    <div class="card-tag">IN CRYPTO Ai Gauge</div>
+                </div>
+                <div class="card-main">
+                    <span id="sentimentIndex">-- / 100</span>
+                </div>
+                <div class="sentiment-badge" id="sentimentBadge">
+                    <span id="sentimentLabel">جارى الحساب...</span>
+                </div>
+                <div class="subtext">
+                    قراءة مجمعة من حركة البيتكوين والتقلب ومدى اليوم، لتقدير ما إذا كان السوق أقرب لحالة خوف، حذر، أم جشع.
+                </div>
+                <div class="sentiment-meter">
+                    <div id="sentimentPointer" class="sentiment-pointer" style="left: 50%;"></div>
+                </div>
+                <div class="heatbar-labels">
+                    <span>خوف شديد</span>
+                    <span>حذر</span>
+                    <span>طبيعى</span>
+                    <span>جشع</span>
+                </div>
+            </div>
+
+            <!-- HEATMAP -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">Crypto Market Heatmap (تقدير)</div>
+                    <div class="card-tag">BTC-led Derivatives</div>
+                </div>
+                <div class="subtext">
+                    خريطة مصغرة لحركة بعض “السلال” الافتراضية للعملات (Majors / DeFi / Meme / AI) كمؤشر بصرى سريع لانتقال الزخم خارج البيتكوين.
+                </div>
+                <div class="heatmap-grid" id="heatmapGrid">
+                    <!-- يتم ملؤها من JavaScript -->
+                </div>
+            </div>
+
+            <!-- تدفق الأوامر اللحظى (تقدير) -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">تدفق الأوامر اللحظى — المشترين مقابل البائعين</div>
+                    <div class="card-tag">Order Flow Snapshot</div>
+                </div>
+                <div class="card-main" id="orderFlowValue">---</div>
+                <div class="subtext" id="orderFlowText">
+                    تقدير تقريبى لتوازن الضغط بين المشترين والبائعين بناءً على اتجاه السعر والتقلب ونبض السيولة الحالى.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">هيمنة المشترين:</span>
+                        <span class="kpi-val" id="buyersShare">---</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">هيمنة البائعين:</span>
+                        <span class="kpi-val" id="sellersShare">---</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- توقع قصير المدى -->
+            <div class="card span-2">
+                <div class="card-header">
+                    <div class="card-title">توقع قصير المدى (≈ 15–30 دقيقة)</div>
+                    <div class="card-tag">Short-Term Bias</div>
+                </div>
+                <div class="card-main" id="shortTermBias">---</div>
+                <div class="subtext" id="shortTermText">
+                    انحياز حركى قصير المدى مبنى على دمج التغيير اليومى مع درجة التقلب وقوة السوق.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">سيناريو الصعود:</span>
+                        <span class="kpi-val" id="upProb">---</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">سيناريو الهبوط:</span>
+                        <span class="kpi-val" id="downProb">---</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- فلتر الضوضاء فى الحركة -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">فلتر الضوضاء فى الحركة</div>
+                    <div class="card-tag">Market Noise Filter</div>
+                </div>
+                <div class="card-main" id="noiseValue">---</div>
+                <div class="subtext" id="noiseText">
+                    يقيس كمية الحركة “العبثية” مقابل الحركة الهادفة؛ يساعد فى معرفة ما إذا كان الأفضل عدم المطاردة وانتظار مناطق أوضح.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">درجة الضوضاء التقديرية:</span>
+                        <span class="kpi-val" id="noiseScore">---</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- وضع السكالبينج -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">وضع السكالبينج (Scalper Mode)</div>
+                    <div class="card-tag">Scalper Suitability</div>
+                </div>
+                <div class="card-main" id="scalpSuitability">---</div>
+                <div class="subtext" id="scalpText">
+                    تقييم سريع لمدى ملاءمة الظروف الحالية لاستراتيجيات السكالبينج السريعة (حركة × تقلب × ضوضاء).
+                </div>
+            </div>
+
+            <!-- نبض هيمنة البيتكوين -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">نبض هيمنة البيتكوين على السوق</div>
+                    <div class="card-tag">BTC Dominance Pulse (تقدير)</div>
+                </div>
+                <div class="card-main" id="dominanceValue">---</div>
+                <div class="subtext" id="dominanceText">
+                </div>
+            </div>
+
+            <!-- درجة حرارة الاتجاه -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">درجة حرارة الاتجاه (Trend Temperature)</div>
+                    <div class="card-tag">Momentum Gauge</div>
+                </div>
+                <div class="card-main" id="trendTempValue">---</div>
+                <div class="subtext" id="trendTempText">
+                </div>
+            </div>
+
+            <!-- مراقبة الأخطاء واللوج -->
+            <div class="card span-2" id="errorCard">
+                <div class="card-header">
+                    <div class="card-title">مراقبة الأخطاء واللوج</div>
+                    <div class="card-tag">Last error + Logs</div>
+                </div>
+                <div class="card-main" id="lastErrorTitle">لا يوجد أخطاء مسجلة</div>
+                <div class="subtext">
+                    يتم تحديث هذه البطاقة تلقائيًا عند تسجيل أى خطأ فى البوت، مع عرض Snapshot مباشر من اللوج.
+                </div>
+                <pre id="logsSnapshot">جارى تحميل اللوج...</pre>
+            </div>
+
+            <!-- صحة النظام -->
+            <div class="card span-1" id="systemHealthCard">
+                <div class="card-header">
+                    <div class="card-title">صحة نظام IN CRYPTO Ai</div>
+                    <div class="card-tag">System Health</div>
+                </div>
+                <div class="card-main" id="systemHealthValue">...</div>
+                <div class="subtext" id="systemHealthText">
+                    يتم تقييم صحة النظام استنادًا إلى حالة محرك المخاطر، آخر الأخطاء المسجلة، واستقرار التحذيرات الآلية.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">آخر خطأ:</span>
+                        <span class="kpi-val" id="systemLastError">---</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">آخر تحذير:</span>
+                        <span class="kpi-val" id="systemLastAlert">---</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- سجل التحذيرات -->
+            <div class="card span-1">
+                <div class="card-header">
+                    <div class="card-title">سجل التحذيرات</div>
+                    <div class="card-tag">Alerts History</div>
+                </div>
+                <div class="alerts-list" id="alertsList">
+                    جارِ تحميل السجل...
+                </div>
+                <div class="btn-row">
+                    <button onclick="reloadAlerts()">تحديث السجل 🔄</button>
+                    <button onclick="clearAlerts()">مسح السجل 🧹</button>
+                </div>
+            </div>
+
+            <!-- تعليق الذكاء الاصطناعى على اليوم -->
+            <div class="card span-3">
+                <div class="card-header">
+                    <div class="card-title">تعليق IN CRYPTO Ai على وضع السوق اليوم</div>
+                    <div class="card-tag">AI Market Commentary</div>
+                </div>
+                <div class="subtext" id="aiComment">
+                    جارِ تجهيز التعليق...
+                </div>
+            </div>
+
         </div>
 
-        <!-- وضع السكالبينج -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">وضع السكالبينج (Scalper Mode)</div>
-                <div class="card-tag">Scalper Suitability</div>
-            </div>
-            <div class="card-main" id="scalpSuitability">---</div>
-            <div class="subtext" id="scalpText">
-                تقييم سريع لمدى ملاءمة الظروف الحالية لاستراتيجيات السكالبينج السريعة (حركة × تقلب × ضوضاء).
-            </div>
+        <!-- ========== FOOTER ========== -->
+        <div class="footer">
+            IN CRYPTO Ai — <span>Live Market, Risk & Alert Monitor</span> مبنى بالكامل على بيانات البيتكوين الفعلية.
         </div>
-
-        <!-- نبض هيمنة البيتكوين -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">نبض هيمنة البيتكوين على السوق</div>
-                <div class="card-tag">BTC Dominance Pulse (تقدير)</div>
-            </div>
-            <div class="card-main" id="dominanceValue">---</div>
-            <div class="subtext" id="dominanceText">
-                تقدير تقريبى لما إذا كان السوق حالياً أقرب إلى وضع يقوده البيتكوين، أم سوق مختلط، أم بيئة تفضّل العملات البديلة (استنتاج من قوة الحركة ونبض السيولة).
-            </div>
-        </div>
-
-        <!-- درجة حرارة الاتجاه -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">درجة حرارة الاتجاه (Trend Temperature)</div>
-                <div class="card-tag">Momentum Gauge</div>
-            </div>
-            <div class="card-main" id="trendTempValue">---</div>
-            <div class="subtext" id="trendTempText">
-                مؤشر إحساس عام بحرارة الاتجاه: من سوق هادئ وبطىء إلى سوق محتدم ذو زخم قوى فى أى اتجاه.
-            </div>
-        </div>
-
-        <!-- تعليق الذكاء الاصطناعى على اليوم (Span 3) -->
-        <div class="card card-span-3">
-            <div class="card-header">
-                <div class="card-title">تعليق IN CRYPTO Ai على وضع السوق اليوم</div>
-                <div class="card-tag">AI Market Commentary</div>
-            </div>
-            <div class="subtext" id="aiComment">
-                جارِ تجهيز التعليق...
-            </div>
-        </div>
-
-    </div>
-
-    <!-- ========== FOOTER ========== -->
-    <div class="footer">
-        IN CRYPTO Ai — <span>Live Market, Risk & Alert Monitor</span> مبنى بالكامل على بيانات البيتكوين الفعلية.
     </div>
 
     <!-- ========== JAVASCRIPT ========== -->
@@ -946,6 +1074,50 @@
             return { temp: Math.round(temp), label };
         }
 
+        function computeSentimentIndex(change, volScore, rangePct) {
+            // 0 خوف شديد — 100 جشع عالى
+            let base = 50;
+            base += change * 4;
+            base += (rangePct - 3) * 1.2;
+            base -= (volScore - 50) * 0.4; // تقلب عالى يزيد خوف أكثر من الجشع
+            if (base < 0) base = 0;
+            if (base > 100) base = 100;
+
+            let label, zone;
+            if (base < 20) { label = "😱 خوف شديد"; zone = "Extreme Fear"; }
+            else if (base < 40) { label = "😓 حذر ميل للخوف"; zone = "Fear"; }
+            else if (base < 60) { label = "😐 حالة طبيعية"; zone = "Neutral"; }
+            else if (base < 80) { label = "😏 جشع متصاعد"; zone = "Greed"; }
+            else { label = "🤯 جشع عالى جدًا"; zone = "Extreme Greed"; }
+
+            return { index: Math.round(base), label, zone };
+        }
+
+        function computeSystemHealth(lastErr, aa, riskLevel) {
+            const hasError = lastErr && lastErr.message;
+            const hasAlert =
+                aa && aa.reason && aa.reason !== "no_alert" && aa.reason !== "duplicate";
+
+            let status, text;
+            if (!hasError && !hasAlert && riskLevel && riskLevel.includes("منخفض")) {
+                status = "🟢 Stable — النظام يعمل بشكل طبيعى";
+                text = "لا توجد أخطاء مسجلة مؤخرًا، ولا تحذيرات آلية نشطة، ومستوى المخاطر فى المنطقة الآمنة.";
+            } else if (!hasError && !hasAlert) {
+                status = "🟢 Stable (مع مراقبة)";
+                text = "النظام يعمل بشكل طبيعى، لكن يوصى بالاستمرار فى متابعة حالة السوق خصوصًا مع التغيرات الأخيرة.";
+            } else if (hasError && !hasAlert) {
+                status = "🟡 Degraded — النظام يعمل لكن يوجد أخطاء بسيطة";
+                text = "تم تسجيل خطأ واحد أو أكثر فى الخلفية، لكن المحرك ما زال يعمل. يفضل مراجعة اللوج والتأكد من عدم تكرار الأخطاء.";
+            } else if (!hasError && hasAlert) {
+                status = "🟠 Alerting — السوق يحتاج انتباه";
+                text = "لا توجد أخطاء تقنية، لكن نظام التحذير الآلى يلتقط أنماط غير مريحة فى السوق. ينصح بتخفيف المخاطر.";
+            } else {
+                status = "🔴 Attention — أخطاء + تحذيرات نشطة";
+                text = "هناك أخطاء تقنية مع تفعيل تحذيرات آلية؛ يوصى بمراجعة النظام فورًا قبل الاعتماد عليه فى قرارات كبيرة.";
+            }
+            return { status, text };
+        }
+
         function buildAIComment(change, volScore, riskMsg, riskLevel, liquidityPulse, strengthLabel, modeInfo) {
             const dirText =
                 change > 0.7 ? "السوق يميل حاليًا لصالح المشترين مع صعود ملحوظ فى البيتكوين." :
@@ -974,6 +1146,44 @@
                 modeText +
                 " دائمًا تذكر أن هذه القراءة تعليمية وليست توصية مباشرة بالشراء أو البيع."
             );
+        }
+
+        function renderHeatmap(change, volScore, rangePct) {
+            const grid = document.getElementById("heatmapGrid");
+            if (!grid) return;
+
+            // نشتق حركات تقديرية من البيتكوين (مش بيانات حقيقية)
+            const base = change;
+            const cells = [
+                { symbol: "MAJORS", name: "Top Caps", mult: 1.1 },
+                { symbol: "DEFI",   name: "DeFi Basket", mult: 1.4 },
+                { symbol: "AI",     name: "AI / Tech", mult: 1.6 },
+                { symbol: "MEME",   name: "High Beta", mult: 2.0 },
+                { symbol: "L1",     name: "L1 Basket", mult: 1.3 },
+                { symbol: "L2",     name: "L2 / Scaling", mult: 1.5 },
+                { symbol: "NFT",    name: "NFT / Metaverse", mult: 1.7 },
+                { symbol: "STBL",   name: "Stable / Yield", mult: 0.3 },
+            ];
+
+            const html = cells.map(c => {
+                let est = base * c.mult;
+                est += (rangePct - 3) * 0.15;
+                est += (volScore - 50) * 0.03;
+                if (est > 12) est = 12;
+                if (est < -12) est = -12;
+                const cls = est >= 0 ? "green" : "red";
+                const sign = est >= 0 ? "+" : "";
+                return `
+                    <div class="heatmap-cell">
+                        <div class="heatmap-symbol">${c.symbol}</div>
+                        <div class="heatmap-change ${cls}">
+                            ${sign}${est.toFixed(1)}٪
+                        </div>
+                    </div>
+                `;
+            }).join("");
+
+            grid.innerHTML = html;
         }
 
         async function loadMain() {
@@ -1020,7 +1230,7 @@
                     modeChip.style.background = "radial-gradient(circle at top, #22c55e, #064e3b)";
                 } else {
                     modeChip.style.background =
-                        "radial-gradient(circle at top, rgba(251,191,36,0.45), #020617)";
+                        "radial-gradient(circle at top, rgba(251,191,36,0.35), #020617)";
                 }
 
                 // ===== MARKET STRENGTH CARD =====
@@ -1070,7 +1280,7 @@
                 document.getElementById("volatilityLabel").textContent =
                     classifyVolatility(volScore);
 
-                // ===== LAST ERROR CARD =====
+                // ===== LAST ERROR CARD (العنوان بس — اللوج بيتحدث من loadLogs) =====
                 const lastErr = data.last_error || {};
                 const errTitle = document.getElementById("lastErrorTitle");
                 const errCard = document.getElementById("errorCard");
@@ -1134,6 +1344,28 @@
                 document.getElementById("trendTempValue").textContent =
                     tt.temp + " / 100";
                 document.getElementById("trendTempText").textContent = tt.label;
+
+                // ===== SENTIMENT INDEX =====
+                const sent = computeSentimentIndex(change, volScore, rangePct);
+                document.getElementById("sentimentIndex").textContent =
+                    sent.index + " / 100";
+                document.getElementById("sentimentLabel").textContent = sent.label;
+                const pointer = document.getElementById("sentimentPointer");
+                pointer.style.left = Math.min(96, Math.max(4, sent.index)) + "%";
+                const badge = document.getElementById("sentimentBadge");
+                badge.title = sent.zone;
+
+                // ===== HEATMAP =====
+                renderHeatmap(change, volScore, rangePct);
+
+                // ===== SYSTEM HEALTH =====
+                const sh = computeSystemHealth(lastErr, aa, riskLevel);
+                document.getElementById("systemHealthValue").textContent = sh.status;
+                document.getElementById("systemHealthText").textContent = sh.text;
+                document.getElementById("systemLastError").textContent =
+                    lastErr && lastErr.time ? lastErr.time : "لا يوجد";
+                document.getElementById("systemLastAlert").textContent =
+                    aa && aa.time ? aa.time : "لا يوجد";
 
                 // ===== AI COMMENT =====
                 const comment = buildAIComment(
