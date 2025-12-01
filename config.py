@@ -1,73 +1,81 @@
 import os
-import time
 import logging
-from logging.handlers import RotatingFileHandler
-from collections import deque
 import requests
-from flask import Request
+from collections import deque
+from datetime import datetime
 
-# ============================================
-#               إعدادات أساسية
-# ============================================
-
-BOT_DEBUG = bool(int(os.getenv("BOT_DEBUG", "0")))
+# ==============================
+#         قراءة المتغيرات
+# ==============================
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+APP_BASE_URL = os.getenv("APP_BASE_URL")
 
 if not TELEGRAM_TOKEN:
-    raise RuntimeError("❌ البيئة لا تحتوي على TELEGRAM_TOKEN")
+    raise RuntimeError("❌ البيئة لا تحتوى على TELEGRAM_TOKEN")
 
 if not ADMIN_CHAT_ID:
-    raise RuntimeError("❌ البيئة لا تحتوي على ADMIN_CHAT_ID (رقم شات الأدمن)")
+    raise RuntimeError("❌ البيئة لا تحتوى على ADMIN_CHAT_ID")
+
+if not APP_BASE_URL:
+    raise RuntimeError("❌ البيئة لا تحتوى على APP_BASE_URL")
 
 ADMIN_CHAT_ID = int(ADMIN_CHAT_ID)
 
-APP_BASE_URL = os.getenv("APP_BASE_URL")
-if not APP_BASE_URL:
-    raise RuntimeError("❌ يجب تعيين APP_BASE_URL فى متغيرات البيئة")
+# ==============================
+#        إعداد اللوج
+# ==============================
 
-TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+logger = logging.getLogger("IN_CRYPTO_AI")
+logger.setLevel(logging.INFO)
 
-# ============================================
-#                 إعدادات الكاش
-# ============================================
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+logger.addHandler(handler)
+
+
+# ==============================
+#   ثوابت النظام
+# ==============================
+
+# مدة بقاء الكاش للردود
+REALTIME_TTL_SECONDS = 8        # الكاش يعيش 8 ثوانى
+MARKET_TTL_SECONDS   = 8
+
+# Timeout لطلبات API
+HTTP_TIMEOUT = 10
+
+# ==============================
+#   مخازن وذاكرة Runtime
+# ==============================
+
+HTTP_SESSION = requests.Session()
 
 REALTIME_CACHE = {
+    "last_update": None,
     "btc_analysis": None,
     "market_report": None,
     "risk_test": None,
     "alert_text": None,
     "weekly_report": None,
-    "last_update": None,
+    "weekly_built_at": None,
+    "alert_built_at": None,
 }
 
-# تحديث بيانات السوق كل عدد ثوانى
-REALTIME_TTL_SECONDS = 10  # لتسريع التحليل
+MARKET_METRICS_CACHE = {}   # لكل عملة
 
-# تحديث بيانات الماركت (تحليل المؤشرات)
-MARKET_TTL_SECONDS = 10
+ALERTS_HISTORY = deque(maxlen=100)
 
-MARKET_METRICS_CACHE = {
-    "symbol": None,
-    "price": None,
-    "change_pct": None,
-    "range_pct": None,
-    "volatility_score": None,
-    "strength_label": None,
-    "liquidity_pulse": None,
-    "ts": 0,
+API_STATUS = {
+    "binance_ok": True,
+    "kucoin_ok": True,
+    "last_api_check": None,
 }
 
-# ============================================
-#          متابعة الشات المستخدم
-# ============================================
-
-KNOWN_CHAT_IDS = set()
-
-# ============================================
-#       حالة الأنظمة – Watchdog Tracking
-# ============================================
+# ==============================
+#     مؤشرات التشغيل / Ticks
+# ==============================
 
 LAST_REALTIME_TICK = 0
 LAST_WEEKLY_TICK = 0
@@ -76,60 +84,21 @@ LAST_WATCHDOG_TICK = 0
 
 LAST_ALERT_REASON = None
 LAST_AUTO_ALERT_INFO = {}
-LAST_ERROR_INFO = {}
 LAST_WEEKLY_SENT_DATE = None
+LAST_ERROR_INFO = {}
 
-# ============================================
-#               الـ Alerts History
-# ============================================
+KNOWN_CHAT_IDS = set()
 
-ALERTS_HISTORY = deque(maxlen=200)
 
-def add_alert_history(source, reason, price=None, change=None):
-    entry = {
-        "time": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
-        "source": source,
-        "reason": reason,
-        "price": price,
-        "change": change,
-    }
-    ALERTS_HISTORY.append(entry)
+# ==============================
+#   دوال إرسال الرسائل
+# ==============================
 
-def log_cleaned_buffer():
-    """لوج نظيف للعرض فى لوحة التحكم"""
-    try:
-        with open("runtime.log", "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception:
-        return "(no logs)"
+TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# ============================================
-#           Logging System (احترافى)
-# ============================================
-
-logger = logging.getLogger("crypto-ai")
-logger.setLevel(logging.INFO)
-
-handler = RotatingFileHandler("runtime.log", maxBytes=500_000, backupCount=3, encoding="utf-8")
-formatter = logging.Formatter(
-    "%(asctime)s - %(levelname)s - %(message)s",
-    "%Y-%m-%d %H:%M:%S"
-)
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-
-# ============================================
-#                HTTP SESSION
-# ============================================
-
-HTTP_SESSION = requests.Session()
-
-# ============================================
-#        Telegram Sender Functions
-# ============================================
 
 def send_message(chat_id, text, silent=False):
-    """إرسال رسالة تيليجرام"""
+    """إرسال رسالة عادية"""
     try:
         params = {
             "chat_id": chat_id,
@@ -137,39 +106,80 @@ def send_message(chat_id, text, silent=False):
             "parse_mode": "HTML",
             "disable_notification": silent,
         }
-        HTTP_SESSION.get(f"{TELEGRAM_API}/sendMessage", params=params, timeout=10)
+        r = HTTP_SESSION.get(f"{TELEGRAM_API}/sendMessage", params=params, timeout=HTTP_TIMEOUT)
+        return r.json()
     except Exception as e:
-        logger.exception("Send message error: %s", e)
+        logger.exception("send_message error: %s", e)
 
 
 def send_message_with_keyboard(chat_id, text, keyboard):
-    """إرسال رسالة مع Inline Keyboard"""
+    """رسالة مع Inline Keyboard"""
     try:
-        payload = {
+        params = {
             "chat_id": chat_id,
             "text": text,
             "parse_mode": "HTML",
             "reply_markup": keyboard,
         }
-        HTTP_SESSION.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
+        r = HTTP_SESSION.get(f"{TELEGRAM_API}/sendMessage", params=params, timeout=HTTP_TIMEOUT)
+        return r.json()
     except Exception as e:
-        logger.exception("Send keyboard error: %s", e)
+        logger.exception("send_message_with_keyboard error: %s", e)
 
 
 def answer_callback_query(callback_id):
+    """للرد على ضغط الأزرار"""
     try:
-        HTTP_SESSION.post(
+        HTTP_SESSION.get(
             f"{TELEGRAM_API}/answerCallbackQuery",
-            json={"callback_query_id": callback_id},
-            timeout=10,
+            params={"callback_query_id": callback_id},
+            timeout=HTTP_TIMEOUT,
         )
     except Exception as e:
-        logger.exception("CallbackQuery error: %s", e)
+        logger.exception("answer_callback_query error: %s", e)
 
-# ============================================
-#     Admin Dashboard Authentication Helper
-# ============================================
 
-def check_admin_auth(request: Request):
-    token = request.args.get("token") or request.headers.get("X-Admin-Token")
-    return token == str(ADMIN_CHAT_ID)
+# ==============================
+#      سجل التحذيرات
+# ==============================
+
+def add_alert_history(source, reason, price=None, change=None):
+    ALERTS_HISTORY.appendleft(
+        {
+            "time": datetime.utcnow().isoformat(timespec="seconds"),
+            "source": source,
+            "reason": reason,
+            "price": price,
+            "change": change,
+        }
+    )
+
+
+# ==============================
+#         Dashboard Auth
+# ==============================
+
+def check_admin_auth(request):
+    """لوحة التحكم — لازم هيدر X-Admin-Key = ADMIN_CHAT_ID"""
+    key = request.headers.get("X-Admin-Key")
+    return key == str(ADMIN_CHAT_ID)
+
+
+# ==============================
+#   لوج نظيف للوحة التحكم
+# ==============================
+
+_log_buffer = deque(maxlen=500)
+
+class _BufferHandler(logging.Handler):
+    def emit(self, record):
+        msg = self.format(record)
+        _log_buffer.append(msg)
+
+buffer_handler = _BufferHandler()
+buffer_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+logger.addHandler(buffer_handler)
+
+
+def log_cleaned_buffer():
+    return "\n".join(_log_buffer)
