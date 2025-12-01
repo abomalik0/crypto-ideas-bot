@@ -1,89 +1,62 @@
 import os
-import time
-import json
 import logging
-import threading
 import requests
 from datetime import datetime
 
 # ============================
-# إعداد اللوج — Logger
+#   LOGGER
 # ============================
 
-logger = logging.getLogger("INCRYPTO_AI")
+logger = logging.getLogger("INCRYPTO")
 logger.setLevel(logging.INFO)
-
-_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-
-_handler = logging.StreamHandler()
-_handler.setFormatter(_formatter)
-logger.addHandler(_handler)
-
-# حفظ آخر 500 سطر لوج للداشبورد
-_LOG_BUFFER = []
-
-def _push_log(line):
-    if len(_LOG_BUFFER) >= 500:
-        _LOG_BUFFER.pop(0)
-    _LOG_BUFFER.append(line)
-
-class BufferLogHandler(logging.Handler):
-    def emit(self, record):
-        msg = self.format(record)
-        _push_log(msg)
-
-logger.addHandler(BufferLogHandler())
-
-
-def log_cleaned_buffer():
-    return "\n".join(_LOG_BUFFER)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+logger.addHandler(handler)
 
 
 # ============================
-# البيئة — ENV
+#   ENV VARIABLES
 # ============================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
-APP_BASE_URL = os.getenv("APP_BASE_URL", "").strip()
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 if not BOT_TOKEN:
-    raise RuntimeError("البيئة لا تحتوى على BOT_TOKEN")
-if ADMIN_CHAT_ID == 0:
-    raise RuntimeError("البيئة لا تحتوى على ADMIN_CHAT_ID")
+    raise RuntimeError("البيئة لا تحتوي على BOT_TOKEN")
 
-TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+if not ADMIN_CHAT_ID:
+    raise RuntimeError("البيئة لا تحتوي على ADMIN_CHAT_ID")
+
+if not WEBHOOK_URL:
+    raise RuntimeError("البيئة لا تحتوي على WEBHOOK_URL")
+
 
 # ============================
-# HTTP Session
+#   API & HTTP SESSION
 # ============================
 
 HTTP_SESSION = requests.Session()
-HTTP_SESSION.headers.update({"User-Agent": "INCRYPTO_AI_BOT/1.0"})
+HTTP_SESSION.headers.update({"User-Agent": "INCRYPTO-AI-BOT/1.0"})
 
 
 # ============================
-# Flags
-# ============================
-BOT_DEBUG = False
-
-# ============================
-# سجلات وحالة النظام
+#   CACHE & TIMING CONFIG
 # ============================
 
-KNOWN_CHAT_IDS = set()
-ALERTS_HISTORY = []
+# مدة صلاحية بيانات السوق قبل إعادة التحديث
+MARKET_TTL_SECONDS = 25   # يجب أن تكون موجودة (حل الخطأ)
 
-LAST_ALERT_REASON = None
-LAST_AUTO_ALERT_INFO = {"time": None, "reason": None, "sent": False}
-LAST_ERROR_INFO = None
-LAST_WEEKLY_SENT_DATE = None
+# مدة التحديث اللحظي لمحرك الذكاء الاصطناعي
+REALTIME_TTL_SECONDS = 10
 
-LAST_REALTIME_TICK = None
-LAST_WEEKLY_TICK = None
-LAST_WEBHOOK_TICK = None
-LAST_WATCHDOG_TICK = None
+# كاش بيانات السوق
+MARKET_METRICS_CACHE = {}
 
+# سجل آخر تحذيرات تم إرسالها
+ALERT_HISTORY = []
+
+# حاله API
 API_STATUS = {
     "binance_ok": True,
     "kucoin_ok": True,
@@ -91,75 +64,76 @@ API_STATUS = {
     "last_error": None,
 }
 
-REALTIME_CACHE = {"last_update": None}
-MARKET_METRICS_CACHE = {}
 
 # ============================
-# Telegram Helpers
+#   TELEGRAM HELPERS
 # ============================
 
-def send_message(chat_id, text, silent=False):
+def tg_send_message(chat_id, text, parse="HTML"):
+    """إرسال رسالة تلغرام عادية"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
-        params = {
+        r = HTTP_SESSION.post(url, data={
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "HTML",
-            "disable_notification": silent,
-        }
-        r = HTTP_SESSION.get(f"{TELEGRAM_API}/sendMessage", params=params, timeout=10)
+            "parse_mode": parse
+        }, timeout=5)
         return r.json()
     except Exception as e:
-        logger.exception("send_message error: %s", e)
+        logger.error(f"Telegram sendMessage error: {e}")
+        return None
 
 
 def send_message_with_keyboard(chat_id, text, keyboard):
+    """إرسال رسالة مع أزرار Inline"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
-        payload = {
+        r = HTTP_SESSION.post(url, json={
             "chat_id": chat_id,
             "text": text,
             "parse_mode": "HTML",
-            "reply_markup": json.dumps(keyboard, ensure_ascii=False),
-        }
-        r = HTTP_SESSION.post(f"{TELEGRAM_API}/sendMessage", data=payload, timeout=10)
+            "reply_markup": {"inline_keyboard": keyboard},
+        }, timeout=5)
         return r.json()
     except Exception as e:
-        logger.exception("send_message_with_keyboard error: %s", e)
+        logger.error(f"Keyboard send error: {e}")
+        return None
 
 
-def answer_callback_query(callback_id):
+def answer_callback_query(callback_id, text=None):
+    """الرد على زر تم الضغط عليه"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
     try:
-        HTTP_SESSION.get(
-            f"{TELEGRAM_API}/answerCallbackQuery",
-            params={"callback_query_id": callback_id},
-            timeout=10,
-        )
+        HTTP_SESSION.post(url, data={
+            "callback_query_id": callback_id,
+            "text": text or "",
+            "show_alert": False
+        }, timeout=4)
     except Exception as e:
-        logger.exception("answer_callback_query error: %s", e)
+        logger.error(f"Callback error: {e}")
 
 
 # ============================
-#   Alert History
+#   ADMIN / AUTH
 # ============================
 
-def add_alert_history(source, reason, price=None, change=None):
-    ALERTS_HISTORY.append(
-        {
-            "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "source": source,
-            "reason": reason,
-            "price": price,
-            "change": change,
-        }
-    )
-    # نخلى العدد مايزدش عن 200
-    if len(ALERTS_HISTORY) > 200:
-        ALERTS_HISTORY.pop(0)
+def check_admin_auth(chat_id):
+    """تأكيد أن المستخدم هو الأدمن"""
+    return str(chat_id) == str(ADMIN_CHAT_ID)
 
 
 # ============================
-#   Auth Checker للوحة التحكم
+#   ALERT HISTORY CONTROL
 # ============================
 
-def check_admin_auth(req):
-    token = req.args.get("token") or req.headers.get("X-Admin-Token")
-    return str(token) == str(ADMIN_CHAT_ID)
+def add_alert_history(reason: str):
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    ALERT_HISTORY.append({"reason": reason, "time": timestamp})
+
+
+def log_cleaned_buffer():
+    """إرجاع لوج مبسط للحفظ"""
+    if len(ALERT_HISTORY) == 0:
+        return "لا يوجد تحذيرات محفوظة."
+
+    return "\n".join(f"{a['time']} - {a['reason']}" for a in ALERT_HISTORY[-20:])
