@@ -10,7 +10,7 @@ import requests
 # ==============================
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-if not TELELEGRAM_TOKEN:
+if not TELEGRAM_TOKEN:
     raise RuntimeError("البيئة لا تحتوى على TELEGRAM_TOKEN")
 
 APP_BASE_URL = os.environ.get("APP_BASE_URL")
