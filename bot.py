@@ -1,8 +1,8 @@
+# bot.py
 import time
 from datetime import datetime
 
 from flask import Flask, request, jsonify, Response
-import threading
 
 import config
 from config import (
@@ -25,10 +25,12 @@ from analysis_engine import (
     get_market_metrics_cached,
     evaluate_risk_level,
     detect_alert_condition,
+    _risk_level_ar,
 )
 import services
 
 app = Flask(__name__)
+
 
 # ==============================
 #   مسارات أساسية / Webhook
@@ -95,7 +97,7 @@ def webhook():
             "👋 أهلاً بك فى <b>IN CRYPTO Ai</b>.\n\n"
             "استخدم الأوامر التالية:\n"
             "• <code>/btc</code> — تحليل BTC\n"
-            "• <code>/vai</code> — تحليل VAI\n"
+            "• <code>/vai</code> — تحليل VAI (لو متاحة على Binance/KuCoin)\n"
             "• <code>/coin btc</code> — تحليل أى عملة\n\n"
             "تحليل السوق:\n"
             "• <code>/market</code> — نظرة عامة\n"
@@ -162,7 +164,6 @@ def webhook():
         return jsonify(ok=True)
 
     if lower_text == "/status":
-        # أمر بسيط يرد بحالة سريعة
         metrics = get_market_metrics_cached()
         if metrics:
             change = metrics["change_pct"]
@@ -191,14 +192,16 @@ def webhook():
         send_message(chat_id, msg_status)
         return jsonify(ok=True)
 
+    # رد افتراضى
     send_message(
         chat_id,
         "⚙️ اكتب /start لعرض الأوامر.\nمثال: <code>/btc</code> أو <code>/coin btc</code>."
     )
     return jsonify(ok=True)
 
+
 # ==============================
-#   /auto_alert
+#   /auto_alert (للدashboard أو cron خارجى)
 # ==============================
 
 @app.route("/auto_alert", methods=["GET"])
@@ -239,7 +242,6 @@ def auto_alert():
         return jsonify(ok=True, alert_sent=False, reason="duplicate"), 200
 
     alert_text = format_ai_alert()
-    # 🔕 Silent Alert لو المخاطر مش High
     silent = risk["level"] != "high"
     send_message(config.ADMIN_CHAT_ID, alert_text, silent=silent)
 
@@ -259,6 +261,7 @@ def auto_alert():
     )
 
     return jsonify(ok=True, alert_sent=True, reason="sent"), 200
+
 
 # ==============================
 #   مسارات اختبار / Admin / Dashboard
@@ -402,9 +405,6 @@ def admin_weekly_ai_test():
         message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط.",
     )
 
-# ==============================
-#   /status API (للإدارة أو للمراقبة)
-# ==============================
 
 @app.route("/status", methods=["GET"])
 def status_api():
@@ -426,6 +426,7 @@ def status_api():
         threads=threads,
     )
 
+
 # ==============================
 #       تفعيل الـ Webhook
 # ==============================
@@ -442,11 +443,6 @@ def setup_webhook():
     except Exception as e:
         config.logger.exception("Error while setting webhook: %s", e)
 
-# ==============================
-#   Helper: Risk level text (dashboard_usage)
-# ==============================
-
-from analysis_engine import _risk_level_ar  # for /status & dashboard_api
 
 # =====================================
 # تشغيل البوت — Main Runner
