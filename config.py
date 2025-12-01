@@ -1,270 +1,229 @@
+# config.py
 import os
-import time
 import logging
-import requests
-from datetime import datetime
 from collections import deque
 
+import requests
+
 # ==============================
-#        الإعدادات العامة
+#      قراءة متغيرات البيئة
 # ==============================
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-APP_BASE_URL = (os.getenv("APP_BASE_URL") or "").rstrip("/")
-ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "669209875"))
-
-ADMIN_DASH_PASSWORD = os.getenv("ADMIN_DASH_PASSWORD", "change_me")
-BOT_DEBUG = os.getenv("BOT_DEBUG", "0") == "1"
-
-if not TELEGRAM_TOKEN:
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+if not TELELEGRAM_TOKEN:
     raise RuntimeError("البيئة لا تحتوى على TELEGRAM_TOKEN")
 
+APP_BASE_URL = os.environ.get("APP_BASE_URL")
 if not APP_BASE_URL:
     raise RuntimeError("البيئة لا تحتوى على APP_BASE_URL")
 
+# ID شات الأدمن (يبقى رقم التيليجرام بتاعك)
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0") or "0")
+if not ADMIN_CHAT_ID:
+    raise RuntimeError("البيئة لا تحتوى على ADMIN_CHAT_ID (رقم شات الأدمن)")
+
+# توكن بسيط لحماية لوحة التحكم (تستخدمه فى ?pass=)
+ADMIN_DASHBOARD_TOKEN = os.environ.get("ADMIN_DASHBOARD_TOKEN", "")
+
+# وضع الديباج
+BOT_DEBUG = os.environ.get("BOT_DEBUG", "0") == "1"
+
+# ==============================
+#           Logging
+# ==============================
+
+logger = logging.getLogger("incrypto-bot")
+logger.setLevel(logging.DEBUG if BOT_DEBUG else logging.INFO)
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(
+    logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(message)s", "%Y-%m-%d %H:%M:%S"
+    )
+)
+logger.addHandler(_handler)
+
+# ==============================
+#     Telegram HTTP Session
+# ==============================
+
+HTTP_SESSION = requests.Session()
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# حالة آخر تحذير اتبعت تلقائى
-LAST_ALERT_REASON: str | None = None
-
-# آخر استدعاء لـ /auto_alert (للوحة المراقبة)
-LAST_AUTO_ALERT_INFO: dict = {
-    "time": None,
-    "reason": None,
-    "sent": False,
-}
-
-# آخر خطأ فى اللوج (يتحدث تلقائياً)
-LAST_ERROR_INFO: dict = {
-    "time": None,
-    "message": None,
-}
-
-# 🔁 آخر مرة تبعت فيها التقرير الأسبوعى أوتوماتيك (YYYY-MM-DD)
-LAST_WEEKLY_SENT_DATE: str | None = None
-
 # ==============================
-#  إعداد اللوج + Log Buffer للـ Dashboard
+#      كاش + حالة النظام
 # ==============================
 
-LOG_BUFFER = deque(maxlen=300)  # آخر 300 سطر لوج (هنا هنطبق cleaner تحت)
-
-class InMemoryLogHandler(logging.Handler):
-    def emit(self, record):
-        global LAST_ERROR_INFO
-        msg = self.format(record)
-        LOG_BUFFER.append(msg)
-        if record.levelno >= logging.ERROR:
-            LAST_ERROR_INFO = {
-                "time": datetime.utcnow().isoformat(timespec="seconds"),
-                "message": msg,
-            }
-
-# مستوى اللوج
-LOG_LEVEL = logging.DEBUG if BOT_DEBUG else logging.INFO
-
-logging.basicConfig(
-    level=LOG_LEVEL,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger("incrypto_bot")
-
-_memory_handler = InMemoryLogHandler()
-_memory_handler.setLevel(logging.INFO)
-_memory_handler.setFormatter(
-    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-)
-logger.addHandler(_memory_handler)
-
-# ==============================
-#  تخزين تاريخ التحذيرات للأدمن
-# ==============================
-
-ALERTS_HISTORY = deque(maxlen=100)
-
-def add_alert_history(
-    source: str, reason: str, price: float | None = None, change: float | None = None
-):
-    entry = {
-        "time": datetime.utcnow().isoformat(timespec="seconds"),
-        "source": source,
-        "reason": reason,
-        "price": price,
-        "change_pct": change,
-    }
-    ALERTS_HISTORY.append(entry)
-    logger.info("Alert history added: %s", entry)
-
-# قائمة بالشاتات
-KNOWN_CHAT_IDS: set[int] = set()
-KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
-
-# HTTP Session
-HTTP_SESSION = requests.Session()
-HTTP_SESSION.headers.update(
-    {
-        "User-Agent": "InCryptoAI-Bot/1.0",
-    }
-)
-
-# ==============================
-#   كاش الأسعار + متركس السوق
-# ==============================
-
-PRICE_CACHE: dict[str, dict] = {}
-CACHE_TTL_SECONDS = 5  # للكروت القصيرة
-
-MARKET_METRICS_CACHE: dict = {
-    "data": None,
-    "time": 0.0,
-}
-MARKET_TTL_SECONDS = 4
-
-# ==============================
-#   Real-Time Cache
-# ==============================
-
-REALTIME_CACHE: dict = {
+# كاش تحليلات / Dashboard
+REALTIME_CACHE = {
     "btc_analysis": None,
     "market_report": None,
     "risk_test": None,
     "weekly_report": None,
     "alert_text": None,
-    "last_update": None,
     "weekly_built_at": 0.0,
     "alert_built_at": 0.0,
+    "last_update": 0.0,
 }
 
-REALTIME_TTL_SECONDS = 8
+# كاش بيانات السوق الخام (BTCUSDT)
+MARKET_METRICS_CACHE = {
+    "data": None,
+    "ts": 0.0,
+}
 
-# ==============================
-#   Watchdog / Health Indicators
-# ==============================
+# زمن صلاحية الكاش (ثوانى)
+REALTIME_TTL_SECONDS = int(os.environ.get("REALTIME_TTL_SECONDS", "20"))
+MARKET_METRICS_TTL_SECONDS = int(os.environ.get("MARKET_METRICS_TTL_SECONDS", "10"))
 
-LAST_REALTIME_TICK: float = 0.0
-LAST_WEEKLY_TICK: float = 0.0
-LAST_WATCHDOG_TICK: float = 0.0
-LAST_WEBHOOK_TICK: float = 0.0
-
-API_STATUS: dict = {
+# حالة مزودى البيانات
+API_STATUS = {
     "binance_ok": True,
-    "binance_last_error": None,
     "kucoin_ok": True,
-    "kucoin_last_error": None,
     "last_api_check": None,
 }
 
+# سجل التحذيرات (للوحة التحكم)
+ALERTS_HISTORY = deque(maxlen=200)
+
+# شاتات البوت المعروفة
+KNOWN_CHAT_IDS: set[int] = set()
+
+# Ticks للمراقبة / مراقب التجمد
+LAST_REALTIME_TICK: float | None = None
+LAST_WEEKLY_TICK: float | None = None
+LAST_WEBHOOK_TICK: float | None = None
+LAST_WATCHDOG_TICK: float | None = None
+
+LAST_ALERT_REASON: str | None = None
+LAST_AUTO_ALERT_INFO: dict = {}
+LAST_ERROR_INFO: dict | None = None
+LAST_WEEKLY_SENT_DATE: str | None = None
+
+# Buffer بسيط للّوج؛ عشان لوحة التحكم
+_LOG_BUFFER = deque(maxlen=400)
+
+
 # ==============================
-#  Telegram Helpers (+ Silent Alert)
+#         دوال مساعدة
 # ==============================
 
-def send_message(
-    chat_id: int,
-    text: str,
-    parse_mode: str = "HTML",
-    silent: bool = False,
-):
-    """إرسال رسالة عادية مع خيار الإشعار الصامت."""
+def _log_to_buffer(level: str, msg: str):
     try:
-        url = f"{TELEGRAM_API}/sendMessage"
-        payload: dict = {
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": parse_mode,
-        }
-        if silent:
-            payload["disable_notification"] = True
-
-        r = HTTP_SESSION.post(url, json=payload, timeout=10)
-        if r.status_code != 200:
-            logger.warning(
-                "Telegram sendMessage error: %s - %s",
-                r.status_code,
-                r.text,
-            )
-    except Exception as e:
-        logger.exception("Exception while sending message: %s", e)
-
-
-def send_message_with_keyboard(
-    chat_id: int,
-    text: str,
-    reply_markup: dict,
-    parse_mode: str = "HTML",
-    silent: bool = False,
-):
-    """إرسال رسالة مع كيبورد إنلاين."""
-    try:
-        url = f"{TELEGRAM_API}/sendMessage"
-        payload: dict = {
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": parse_mode,
-            "reply_markup": reply_markup,
-        }
-        if silent:
-            payload["disable_notification"] = True
-
-        r = HTTP_SESSION.post(url, json=payload, timeout=10)
-        if r.status_code != 200:
-            logger.warning(
-                "Telegram sendMessage_with_keyboard error: %s - %s",
-                r.status_code,
-                r.text,
-            )
-    except Exception as e:
-        logger.exception("Exception while sending message with keyboard: %s", e)
-
-
-def answer_callback_query(
-    callback_query_id: str,
-    text: str | None = None,
-    show_alert: bool = False,
-):
-    """الرد على ضغط زر إنلاين عشان يوقف اللودنج."""
-    try:
-        url = f"{TELEGRAM_API}/answerCallbackQuery"
-        payload: dict = {
-            "callback_query_id": callback_query_id,
-            "show_alert": show_alert,
-        }
-        if text:
-            payload["text"] = text
-        r = HTTP_SESSION.post(url, json=payload, timeout=10)
-        if r.status_code != 200:
-            logger.warning(
-                "Telegram answerCallbackQuery error: %s - %s",
-                r.status_code,
-                r.text,
-            )
-    except Exception as e:
-        logger.exception("Exception while answering callback query: %s", e)
+        _LOG_BUFFER.append(f"[{level}] {msg}")
+    except Exception:
+        pass
 
 
 def log_cleaned_buffer() -> str:
-    """
-    ضغط اللوج:
-    - يشيل التكرار المتتالى
-    - اللوج أصلاً INFO+ فقط من الهاندلر
-    """
-    lines = list(LOG_BUFFER)
-    if not lines:
-        return ""
-    out: list[str] = []
-    last = None
-    for line in lines:
-        if line != last:
-            out.append(line)
-            last = line
-    return "\n".join(out)
+    """يرجع نسخة Text من آخر اللوجات ليتم عرضها فى /admin/logs"""
+    return "\n".join(_LOG_BUFFER)
 
 
-def check_admin_auth(req) -> bool:
+# نلف ال logger عشان نسجل فى buffer برضه
+class _BufferHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            _log_to_buffer(record.levelname, msg)
+        except Exception:
+            pass
+
+
+_buffer_handler = _BufferHandler()
+_buffer_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", "%H:%M:%S")
+)
+logger.addHandler(_buffer_handler)
+
+
+# ==============================
+#    Telegram Helper Functions
+# ==============================
+
+def send_message(chat_id: int, text: str, silent: bool = False):
+    """إرسال رسالة تيليجرام عادية."""
+    try:
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_notification": bool(silent),
+        }
+        r = HTTP_SESSION.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
+        if not r.ok:
+            logger.warning("send_message failed: %s - %s", r.status_code, r.text)
+        return r
+    except Exception as e:
+        logger.exception("send_message error: %s", e)
+
+
+def send_message_with_keyboard(chat_id: int, text: str, keyboard: dict, silent: bool = False):
+    """إرسال رسالة مع Inline Keyboard."""
+    try:
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "reply_markup": keyboard,
+            "disable_notification": bool(silent),
+        }
+        r = HTTP_SESSION.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
+        if not r.ok:
+            logger.warning("send_message_with_keyboard failed: %s - %s", r.status_code, r.text)
+        return r
+    except Exception as e:
+        logger.exception("send_message_with_keyboard error: %s", e)
+
+
+def answer_callback_query(callback_query_id: str, text: str | None = None):
+    """الرد على ضغط زر Inline."""
+    try:
+        payload = {"callback_query_id": callback_query_id}
+        if text:
+            payload["text"] = text
+        r = HTTP_SESSION.post(f"{TELEGRAM_API}/answerCallbackQuery", json=payload, timeout=10)
+        if not r.ok:
+            logger.warning("answer_callback_query failed: %s - %s", r.status_code, r.text)
+        return r
+    except Exception as e:
+        logger.exception("answer_callback_query error: %s", e)
+
+
+def add_alert_history(source: str, reason: str, price: float | None = None, change: float | None = None):
+    """إضافة عنصر لسجل التحذيرات (يظهر فى لوحة التحكم)."""
+    from datetime import datetime
+
+    item = {
+        "time": datetime.utcnow().isoformat(timespec="seconds"),
+        "source": source,
+        "reason": reason,
+    }
+    if price is not None:
+        item["price"] = float(price)
+    if change is not None:
+        item["change_pct"] = float(change)
+
+    ALERTS_HISTORY.append(item)
+
+
+# ==============================
+#   صلاحية لوحة التحكم / Dashboard
+# ==============================
+
+def check_admin_auth(request) -> bool:
     """
-    ممكن تضيف Basic Auth أو توكن أو مقارنة HEADER بالـ ADMIN_DASH_PASSWORD.
-    دلوقتى راجع True (مفتوح).
+    حماية بسيطة للوحة التحكم:
+    - لو ADMIN_DASHBOARD_TOKEN فاضى → نسمح (للاستخدام الشخصى).
+    - غير كده: لازم ?pass=TOKEN أو header X-Admin-Token.
     """
-    # مثال سريع لو حبيت فى المستقبل:
-    # pwd = req.headers.get("X-Admin-Password")
-    # return pwd == ADMIN_DASH_PASSWORD
-    return True
+    if not ADMIN_DASHBOARD_TOKEN:
+        return True
+
+    q_pass = request.args.get("pass") or request.args.get("password")
+    h_pass = request.headers.get("X-Admin-Token")
+
+    if q_pass == ADMIN_DASHBOARD_TOKEN or h_pass == ADMIN_DASHBOARD_TOKEN:
+        return True
+
+    return False
