@@ -1,3 +1,4 @@
+# services.py
 import time
 import json
 import threading
@@ -29,11 +30,8 @@ def load_snapshot():
 
         rt = data.get("REALTIME_CACHE")
         if isinstance(rt, dict):
-            # بس الحقول البسيطة
             for k, v in rt.items():
-                if k in config.REALTIME_CACHE and (
-                    isinstance(v, (str, int, float)) or v is None
-                ):
+                if (k in config.REALTIME_CACHE) and (isinstance(v, (str, int, float)) or v is None):
                     config.REALTIME_CACHE[k] = v
 
         config.LAST_ALERT_REASON = data.get("LAST_ALERT_REASON")
@@ -90,113 +88,45 @@ def get_cached_response(key: str, builder):
         return builder()
 
 
-def _auto_alert_from_loop(metrics: dict | None, risk: dict | None, reason: str | None, now: float) -> None:
-    """
-    تنفيذ إرسال التحذير من داخل الـ realtime loop بدون Cron خارجى.
-    - يحترم LAST_ALERT_REASON حتى لا يكرر نفس السبب.
-    - يحترم كول داون مبنى على مستوى المخاطر.
-    """
-    try:
-        if not metrics or not risk or not reason:
-            # لو مفيش سبب حالياً، نرجّع الحالة للطبيعى
-            if config.LAST_ALERT_REASON is not None:
-                config.logger.info("auto_alert_loop: market back to normal → reset alert state.")
-                config.LAST_ALERT_REASON = None
-                config.LAST_AUTO_ALERT_INFO = {
-                    "time": datetime.utcnow().isoformat(timespec="seconds"),
-                    "reason": "no_alert",
-                    "sent": False,
-                    "ts": now,
-                }
-            return
-
-        # نفس السبب بالظبط؟ نطبّق كول داون فقط
-        last_info = config.LAST_AUTO_ALERT_INFO or {}
-        last_ts = last_info.get("ts") or 0.0
-
-        # كول داون حسب مستوى المخاطر
-        if risk["level"] == "high":
-            cooldown = 30  # ثانية
-        elif risk["level"] == "medium":
-            cooldown = 60
-        else:
-            cooldown = 120
-
-        same_reason = (reason == config.LAST_ALERT_REASON)
-        delta = now - last_ts
-
-        if same_reason and delta < cooldown:
-            # تحذير مكرر ولسه فى فترة الكول داون → لا نرسل
-            return
-
-        # نبنى نص التحذير مع دمج التحليل المتقدم
-        alert_text = format_ai_alert()
-        silent = risk["level"] != "high"  # المخاطر العالية فقط بصوت، غير كده صامت
-
-        config.send_message(config.ADMIN_CHAT_ID, alert_text, silent=silent)
-
-        config.LAST_ALERT_REASON = reason
-        config.LAST_AUTO_ALERT_INFO = {
-            "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": reason,
-            "sent": True,
-            "ts": now,
-        }
-        config.add_alert_history(
-            "auto_loop",
-            reason,
-            price=metrics.get("price"),
-            change=metrics.get("change_pct"),
-        )
-        config.logger.info(
-            "auto_alert_loop: NEW alert sent! reason=%s, risk=%s, cooldown=%s",
-            reason,
-            risk["level"],
-            cooldown,
-        )
-    except Exception as e:
-        config.logger.exception("auto_alert_loop failed: %s", e)
-
-
 def realtime_engine_loop():
     """
     محرك Real-Time:
-    - يجدد تحليل BTC / السوق / المخاطر بشكل دورى.
-    - التقرير الأسبوعى يُبنى فى الكاش كل فترة بدون إرسال.
-    - التحذير يتم فحصه باستمرار من هنا (بدون Cron خارجى).
+    - يجدد تحليل BTC / السوق / المخاطر كل X ثانية (مناسب للخطة المجانية).
+    - التقرير الأسبوعى يبنى كل 10 دقائق فقط.
+    - نص التحذير يبنى حسب الحاجة أو كل 60 ثانية.
     - يحفظ Snapshot دورى.
-    - زمن التكرار (sleep) ديناميكى حسب حالة المخاطر (High/Medium/Low).
     """
     config.logger.info("Realtime engine loop started.")
+    SLEEP_SECONDS = 15  # توازن بين سرعة التحديث واستهلاك API
+
     while True:
         try:
             now = time.time()
 
-            # 1) بناء التحليلات الأساسية وتخزينها فى الكاش
             btc_msg = format_analysis("BTCUSDT")
             market_msg = format_market_report()
             risk_msg = format_risk_test()
 
-            # 2) بناء التقرير الأسبوعى فى الكاش كل 10 دقائق (بدون إرسال)
             weekly_msg = config.REALTIME_CACHE.get("weekly_report")
             last_weekly_build = config.REALTIME_CACHE.get("weekly_built_at") or 0.0
             if not weekly_msg or (now - last_weekly_build) > 600:  # 10 دقائق
                 weekly_msg = format_weekly_ai_report()
                 config.REALTIME_CACHE["weekly_built_at"] = now
 
-            # 3) قراءة متركس السوق وتقييم المخاطر + شرط التحذير
+            alert_msg = config.REALTIME_CACHE.get("alert_text")
+            last_alert_build = config.REALTIME_CACHE.get("alert_built_at") or 0.0
+
             metrics = get_market_metrics_cached()
-            risk = None
-            reason = None
             if metrics:
                 risk = evaluate_risk_level(
                     metrics["change_pct"], metrics["volatility_score"]
                 )
                 reason = detect_alert_condition(metrics, risk)
+            else:
+                risk = None
+                reason = None
 
-            # 4) تحديث نص alert_text فى الكاش فقط (للوحة التحكم + /alert)
-            alert_msg = config.REALTIME_CACHE.get("alert_text")
-            last_alert_build = config.REALTIME_CACHE.get("alert_built_at") or 0.0
+            # نبنى التحذير من جديد لو فى سبب أو كل 60 ثانية
             if reason or not alert_msg or (now - last_alert_build) > 60:
                 alert_msg = format_ai_alert()
                 config.REALTIME_CACHE["alert_built_at"] = now
@@ -212,40 +142,24 @@ def realtime_engine_loop():
                 }
             )
 
-            # 5) تشغيل نظام التحذير الأوتوماتيك من داخل اللوب
-            _auto_alert_from_loop(metrics, risk, reason, now)
-
-            # 6) تحديث health + snapshot
             config.LAST_REALTIME_TICK = now
             save_snapshot()
-
-            # 7) زمن النوم الديناميكى حسب المخاطر (مناسب للخطة المجانية)
-            sleep_seconds = 15.0  # افتراضى
-            if risk:
-                if risk["level"] == "high":
-                    sleep_seconds = 5.0
-                elif risk["level"] == "medium":
-                    sleep_seconds = 10.0
-                else:
-                    sleep_seconds = 20.0
-            else:
-                sleep_seconds = 20.0
-
-            time.sleep(sleep_seconds)
+            time.sleep(SLEEP_SECONDS)
         except Exception as e:
             config.logger.exception("Error in realtime engine loop: %s", e)
-            # لو حصل مشكلة، ننام شوية ونرجع نحاول
-            time.sleep(10)
+            time.sleep(SLEEP_SECONDS)
 
 
 def send_weekly_report_to_all_chats() -> list[int]:
     """يبعت التقرير الأسبوعى لكل الشاتات."""
+    from config import send_message  # import هنا عشان نتجنب circular import
+
     report = get_cached_response("weekly_report", format_weekly_ai_report)
     sent_to: list[int] = []
 
     for cid in list(config.KNOWN_CHAT_IDS):
         try:
-            config.send_message(cid, report)
+            send_message(cid, report)
             sent_to.append(cid)
         except Exception as e:
             config.logger.exception("Error sending weekly report to %s: %s", cid, e)
@@ -269,9 +183,7 @@ def weekly_scheduler_loop():
 
             if now.weekday() == 4 and now.hour == 11:
                 if config.LAST_WEEKLY_SENT_DATE != today_str:
-                    config.logger.info(
-                        "Weekly scheduler: sending weekly_ai_report automatically."
-                    )
+                    config.logger.info("Weekly scheduler: sending weekly_ai_report automatically.")
                     send_weekly_report_to_all_chats()
                     config.LAST_WEEKLY_SENT_DATE = today_str
             time.sleep(60)
@@ -297,11 +209,10 @@ def watchdog_loop():
 
             # Realtime Engine monitoring
             rt_delta = now - (config.LAST_REALTIME_TICK or 0)
-            if rt_delta > 30:
+            if rt_delta > 60:
                 config.logger.warning(
                     "Watchdog: realtime engine seems stalled (%.1f s).", rt_delta
                 )
-                # لو مفيش ثريد باسمه → نحاول نخلق واحد جديد
                 if not any(t.name == "RealtimeEngine" for t in threading.enumerate()):
                     config.logger.warning("Watchdog: restarting realtime engine thread.")
                     start_realtime_thread()
@@ -313,14 +224,12 @@ def watchdog_loop():
                     "Watchdog: weekly scheduler seems stalled (%.1f s).", ws_delta
                 )
                 if not any(t.name == "WeeklyScheduler" for t in threading.enumerate()):
-                    config.logger.warning(
-                        "Watchdog: restarting weekly scheduler thread."
-                    )
+                    config.logger.warning("Watchdog: restarting weekly scheduler thread.")
                     start_weekly_scheduler_thread()
 
             # Webhook monitoring
             wh_delta = now - (config.LAST_WEBHOOK_TICK or 0)
-            if config.LAST_WEBHOOK_TICK and wh_delta > 3600:  # ساعة بدون webhook
+            if config.LAST_WEBHOOK_TICK and wh_delta > 3600:
                 config.logger.info(
                     "Watchdog: No webhook activity for %.1f seconds (might be normal at night).",
                     wh_delta,
@@ -333,9 +242,7 @@ def watchdog_loop():
 
 
 def start_realtime_thread():
-    t_rt = threading.Thread(
-        target=realtime_engine_loop, daemon=True, name="RealtimeEngine"
-    )
+    t_rt = threading.Thread(target=realtime_engine_loop, daemon=True, name="RealtimeEngine")
     t_rt.start()
     config.logger.info("Realtime engine thread started.")
     return t_rt
