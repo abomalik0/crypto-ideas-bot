@@ -1,142 +1,148 @@
 import os
-import json
-import logging
 import requests
+import logging
+import json
 from datetime import datetime, timezone
 
 # ============================
-#   إعداد اللوجر
+#     Logging system
 # ============================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger("INCRYPTO-BOT")
+
+logger = logging.getLogger("crypto-ai-bot")
+logger.setLevel(logging.INFO)
+
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+logger.addHandler(handler)
 
 # ============================
-#   المتغيرات البيئية
+#     Environment Variables
 # ============================
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 if not BOT_TOKEN:
     raise RuntimeError("البيئة لا تحتوى على BOT_TOKEN")
 
+if not ADMIN_CHAT_ID:
+    raise RuntimeError("البيئة لا تحتوى على ADMIN_CHAT_ID")
+
 if not WEBHOOK_URL:
-    logger.warning("⚠️ لا يوجد WEBHOOK_URL فى البيئة!")
+    raise RuntimeError("البيئة لا تحتوى على WEBHOOK_URL")
 
-# وضع الديباج
-BOT_DEBUG = False  # ← مهم للبوت.py
+ADMIN_CHAT_ID = str(ADMIN_CHAT_ID)
 
 # ============================
-#   جلسة HTTP واحدة سريعة
+#     Telegram API Base
 # ============================
+
+TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
 HTTP_SESSION = requests.Session()
-HTTP_SESSION.headers.update({"User-Agent": "INCRYPTO-BOT/1.0"})
+
+def send_message(chat_id, text, reply_markup=None):
+    """إرسال رسالة عادية"""
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    r = HTTP_SESSION.post(f"{TG_API}/sendMessage", json=payload)
+    return r.json()
+
+
+def send_message_with_keyboard(chat_id, text, buttons):
+    """إرسال رسالة مع كيبورد تحت"""
+    keyboard = {"inline_keyboard": buttons}
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "reply_markup": keyboard
+    }
+    r = HTTP_SESSION.post(f"{TG_API}/sendMessage", json=payload)
+    return r.json()
+
+
+def answer_callback_query(callback_id, text=None):
+    """الرد على زر مضغوط"""
+    payload = {"callback_query_id": callback_id}
+    if text:
+        payload["text"] = text
+
+    return HTTP_SESSION.post(f"{TG_API}/answerCallbackQuery", json=payload).json()
 
 # ============================
-#   كاش السوق
+#     Alert History
 # ============================
-MARKET_METRICS_CACHE = {
-    "symbol": None,
-    "ts": None
-}
-MARKET_TTL_SECONDS = 15  # ثانية
+
+ALERT_HISTORY = []
+
+def add_alert_history(reason: str, data: dict):
+    """حفظ سجل التحذيرات"""
+    ALERT_HISTORY.append({
+        "reason": reason,
+        "data": data,
+        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")
+    })
+    # حفظ آخر 50 فقط
+    if len(ALERT_HISTORY) > 50:
+        ALERT_HISTORY.pop(0)
 
 # ============================
-#   حالة الـ API
+#     Log buffer system
 # ============================
+
+LOG_BUFFER = []
+
+def log_cleaned_buffer(message: str):
+    """يسجل رسائل نظيفة لأغراض الديباج"""
+    try:
+        LOG_BUFFER.append({
+            "message": message,
+            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")
+        })
+        if len(LOG_BUFFER) > 50:
+            LOG_BUFFER.pop(0)
+    except Exception as e:
+        logger.error(f"log_cleaned_buffer error: {e}")
+
+# ============================
+#   API STATUS
+# ============================
+
 API_STATUS = {
     "binance_ok": True,
     "kucoin_ok": True,
     "last_api_check": None,
-    "last_error": None,
+    "last_error": None
 }
 
 # ============================
-#   سجل التحذيرات لتجنب التكرار
+#   MARKET CACHE
 # ============================
-ALERT_HISTORY = {
-    "last_reason": None,
-    "last_ts": 0,
-    "cooldown_seconds": 900,  # 15 دقيقة
-}
 
-
-def add_alert_history(reason: str):
-    """تسجيل آخر تنبيه لتجنب الإرسال المكرر"""
-    ALERT_HISTORY["last_reason"] = reason
-    ALERT_HISTORY["last_ts"] = datetime.now(timezone.utc).timestamp()
-
+MARKET_METRICS_CACHE = {}
+MARKET_TTL_SECONDS = 10  # cache for metrics
 
 # ============================
-#   إرسال رسالة عادية
+#   Bot flags
 # ============================
-def send_message(chat_id, text, parse_mode="HTML"):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+BOT_DEBUG = False   # إذا True يعرض رسائل إضافية
+
+# ============================
+#   Utility helpers
+# ============================
+
+def notify_admin(text):
+    """إرسال رسالة للإدمن"""
     try:
-        r = HTTP_SESSION.post(url, json={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": parse_mode,
-            "disable_web_page_preview": True
-        }, timeout=10)
-        return r.json()
+        send_message(ADMIN_CHAT_ID, text)
     except Exception as e:
-        logger.error(f"خطأ فى send_message: {e}")
-        return None
-
-
-# ============================
-#   إرسال رسالة + كيبوورد
-# ============================
-def send_message_with_keyboard(chat_id, text, keyboard, parse_mode="HTML"):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": parse_mode,
-        "reply_markup": json.dumps(keyboard)
-    }
-    try:
-        r = HTTP_SESSION.post(url, json=payload, timeout=10)
-        return r.json()
-    except Exception as e:
-        logger.error(f"send_message_with_keyboard ERROR: {e}")
-        return None
-
-
-# ============================
-#   الرد على ضغط زر (Callback)
-# ============================
-def answer_callback_query(callback_id, text=None, show_alert=False):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
-    payload = {"callback_query_id": callback_id}
-    if text:
-        payload["text"] = text
-    if show_alert:
-        payload["show_alert"] = True
-    try:
-        return HTTP_SESSION.post(url, json=payload, timeout=10).json()
-    except Exception as e:
-        logger.error(f"Callback error: {e}")
-        return None
-
-
-# ============================
-#   إرسال Webhook عند التشغيل
-# ============================
-def set_webhook():
-    if not WEBHOOK_URL:
-        logger.warning("⚠️ لم يتم ضبط WEBHOOK_URL — البوت سيعمل بدون Webhook")
-        return None
-
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-    try:
-        r = HTTP_SESSION.post(url, json={"url": WEBHOOK_URL}, timeout=10)
-        logger.info(f"Webhook response: {r.status_code} - {r.text}")
-        return r.json()
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return None
+        logger.error(f"notify_admin error: {e}")
