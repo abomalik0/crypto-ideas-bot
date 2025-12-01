@@ -1,278 +1,239 @@
+# analysis_engine.py
+import math
 import time
 from datetime import datetime
 
+import requests
+
 import config
 
-# ==============================
-#   تجهيز رمز العملة + المنصات
-# ==============================
+HTTP = config.HTTP_SESSION
 
-def normalize_symbol(user_symbol: str):
-    base = user_symbol.strip().upper()
-    base = base.replace("USDT", "").replace("-", "").strip()
-    if not base:
-        return None, None, None
+BINANCE_BASE = "https://api.binance.com"
+KUCOIN_BASE = "https://api.kucoin.com"
 
-    binance_symbol = base + "USDT"
-    kucoin_symbol = base + "-USDT"
-    return base, binance_symbol, kucoin_symbol
 
 # ==============================
-#   كاش خفيف لتسريع جلب الأسعار
+#  Helpers: Fetch Ticker Data
 # ==============================
 
-def _get_cached(key: str):
-    item = config.PRICE_CACHE.get(key)
-    if not item:
-        return None
-    if time.time() - item["time"] > config.CACHE_TTL_SECONDS:
-        return None
-    return item["data"]
-
-def _set_cached(key: str, data: dict):
-    config.PRICE_CACHE[key] = {
-        "time": time.time(),
-        "data": data,
-    }
-
-# ==============================
-#   جلب البيانات من Binance / KuCoin + API Health
-# ==============================
-
-def fetch_from_binance(symbol: str):
+def _fetch_binance_24h(symbol: str) -> dict | None:
     try:
-        url = "https://api.binance.com/api/v3/ticker/24hr"
-        r = config.HTTP_SESSION.get(url, params={"symbol": symbol}, timeout=10)
-        config.API_STATUS["last_api_check"] = datetime.utcnow().isoformat(timespec="seconds")
-
-        if r.status_code != 200:
+        r = HTTP.get(
+            f"{BINANCE_BASE}/api/v3/ticker/24hr",
+            params={"symbol": symbol.upper()},
+            timeout=10,
+        )
+        if r.status_code == 400:
+            # invalid symbol
             config.API_STATUS["binance_ok"] = False
-            config.API_STATUS["binance_last_error"] = f"{r.status_code}: {r.text[:120]}"
-            config.logger.info(
-                "Binance error %s for %s: %s",
-                r.status_code,
-                symbol,
-                r.text,
-            )
             return None
-
+        r.raise_for_status()
         data = r.json()
-        price = float(data["lastPrice"])
-        change_pct = float(data["priceChangePercent"])
-        high = float(data.get("highPrice", price))
-        low = float(data.get("lowPrice", price))
-        volume = float(data.get("volume", 0))
-
         config.API_STATUS["binance_ok"] = True
-        return {
-            "exchange": "binance",
-            "symbol": symbol,
-            "price": price,
-            "change_pct": change_pct,
-            "high": high,
-            "low": low,
-            "volume": volume,
-        }
-    except Exception as e:
-        config.API_STATUS["binance_ok"] = False
-        config.API_STATUS["binance_last_error"] = str(e)
-        config.logger.exception("Error fetching from Binance: %s", e)
-        return None
-
-
-def fetch_from_kucoin(symbol: str):
-    try:
-        url = "https://api.kucoin.com/api/v1/market/stats"
-        r = config.HTTP_SESSION.get(url, params={"symbol": symbol}, timeout=10)
         config.API_STATUS["last_api_check"] = datetime.utcnow().isoformat(timespec="seconds")
+        return data
+    except Exception as e:
+        config.logger.warning("Binance error for %s: %s", symbol, e)
+        config.API_STATUS["binance_ok"] = False
+        return None
 
-        if r.status_code != 200:
-            config.API_STATUS["kucoin_ok"] = False
-            config.API_STATUS["kucoin_last_error"] = f"{r.status_code}: {r.text[:120]}"
-            config.logger.info(
-                "KuCoin error %s for %s: %s",
-                r.status_code,
-                symbol,
-                r.text,
-            )
-            return None
 
-        payload = r.json()
-        if payload.get("code") != "200000":
-            config.API_STATUS["kucoin_ok"] = False
-            config.API_STATUS["kucoin_last_error"] = f"code={payload.get('code')}"
-            config.logger.info("KuCoin non-success code: %s", payload)
-            return None
+def _fetch_kucoin_24h(symbol: str) -> dict | None:
+    """
+    KuCoin إسم الزوج بيكون مثلاً BTC-USDT
+    """
+    try:
+        if symbol.upper().endswith("USDT"):
+            base = symbol.upper().replace("USDT", "")
+            pair = f"{base}-USDT"
+        else:
+            pair = symbol.upper()
 
-        data = payload.get("data") or {}
-        price = float(data.get("last") or 0)
-        change_rate = float(data.get("changeRate") or 0.0)
-        change_pct = change_rate * 100.0
-        high = float(data.get("high") or price)
-        low = float(data.get("low") or price)
-        volume = float(data.get("vol") or 0)
-
+        r = HTTP.get(
+            f"{KUCOIN_BASE}/api/v1/market/stats",
+            params={"symbol": pair},
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if data.get("code") != "200000":
+            raise RuntimeError(f"KuCoin returned code {data.get('code')}")
+        stats = data.get("data") or {}
         config.API_STATUS["kucoin_ok"] = True
+        config.API_STATUS["last_api_check"] = datetime.utcnow().isoformat(timespec="seconds")
         return {
-            "exchange": "kucoin",
-            "symbol": symbol,
-            "price": price,
-            "change_pct": change_pct,
-            "high": high,
-            "low": low,
-            "volume": volume,
+            "lastPrice": stats.get("last"),
+            "priceChangePercent": stats.get("changeRate", 0) * 100 if stats.get("changeRate") is not None else 0,
+            "highPrice": stats.get("high"),
+            "lowPrice": stats.get("low"),
         }
     except Exception as e:
+        config.logger.warning("KuCoin error for %s: %s", symbol, e)
         config.API_STATUS["kucoin_ok"] = False
-        config.API_STATUS["kucoin_last_error"] = str(e)
-        config.logger.exception("Error fetching from KuCoin: %s", e)
         return None
 
 
-def fetch_price_data(user_symbol: str):
-    base, binance_symbol, kucoin_symbol = normalize_symbol(user_symbol)
-    if not base:
+# ==============================
+#  Metrics Builder
+# ==============================
+
+def _safe_float(x, default=0.0):
+    try:
+        return float(x)
+    except Exception:
+        return default
+
+
+def get_symbol_metrics(symbol: str) -> dict | None:
+    """
+    يرجع:
+    {
+        price,
+        change_pct,
+        range_pct,
+        volatility_score (0–100),
+        strength_label,
+        liquidity_pulse,
+        rsi_estimate
+    }
+    """
+    data = _fetch_binance_24h(symbol)
+    if not data:
+        data = _fetch_kucoin_24h(symbol)
+        if not data:
+            return None
+
+    price = _safe_float(data.get("lastPrice") or data.get("last"))
+    change_pct = _safe_float(data.get("priceChangePercent"))
+    high = _safe_float(data.get("highPrice") or data.get("high"))
+    low = _safe_float(data.get("lowPrice") or data.get("low"))
+
+    if price <= 0 or high <= 0 or low <= 0:
         return None
 
-    cache_key_binance = f"BINANCE:{binance_symbol}"
-    cache_key_kucoin = f"KUCOIN:{kucoin_symbol}"
+    day_range = high - low
+    range_pct = (day_range / price) * 100 if price else 0
 
-    cached = _get_cached(cache_key_binance)
-    if cached:
-        return cached
+    # تقدير بسيط للتقلب (0–100)
+    volatility_score = max(0.0, min(100.0, range_pct * 3.2))
 
-    cached = _get_cached(cache_key_kucoin)
-    if cached:
-        return cached
+    # تقدير RSI بسيط من التغير اليومى
+    rsi_est = 50 + (change_pct * 4)
+    if rsi_est < 5:
+        rsi_est = 5
+    if rsi_est > 95:
+        rsi_est = 95
 
-    data = fetch_from_binance(binance_symbol)
-    if data:
-        _set_cached(cache_key_binance, data)
-        return data
-
-    data = fetch_from_kucoin(kucoin_symbol)
-    if data:
-        _set_cached(cache_key_kucoin, data)
-        return data
-
-    return None
-
-# ==============================
-#  بناء Metrics
-# ==============================
-
-def build_symbol_metrics(
-    price: float,
-    change_pct: float,
-    high: float,
-    low: float,
-) -> dict:
-    if price > 0 and high >= low:
-        range_pct = ((high - low) / price) * 100.0
-    else:
-        range_pct = 0.0
-
-    volatility_raw = abs(change_pct) * 1.5 + range_pct
-    volatility_score = max(0.0, min(100.0, volatility_raw))
-
-    if change_pct >= 3:
-        strength_label = "صعود قوى وزخم واضح فى الحركة."
-    elif change_pct >= 1:
-        strength_label = "صعود هادئ مع تحسن تدريجى فى الزخم."
-    elif change_pct > -1:
-        strength_label = "حركة متذبذبة بدون اتجاه واضح."
-    elif change_pct > -3:
-        strength_label = "هبوط خفيف مع ضغط بيعى ملحوظ."
-    else:
-        strength_label = "هبوط قوى مع ضغوط بيعية عالية."
-
-    if change_pct >= 2 and range_pct <= 5:
-        liquidity_pulse = "السيولة تميل إلى الدخول بشكل منظم."
-    elif change_pct >= 2 and range_pct > 5:
-        liquidity_pulse = "صعود سريع مع تقلب عالى → قد يكون فيه تصريف جزئى."
-    elif -2 < change_pct < 2:
-        liquidity_pulse = "السيولة متوازنة تقريباً بين المشترين والبائعين."
-    elif change_pct <= -2 and range_pct > 4:
-        liquidity_pulse = "خروج سيولة واضح مع هبوط ملحوظ."
-    else:
-        liquidity_pulse = "يوجد بعض الضغوط البيعية لكن بدون ذعر كبير."
+    # قوة السوق
+    strength_label = _build_strength_label(change_pct, volatility_score, range_pct)
+    liquidity_pulse = _build_liquidity_pulse(change_pct, volatility_score)
 
     return {
+        "symbol": symbol.upper(),
         "price": price,
         "change_pct": change_pct,
-        "high": high,
-        "low": low,
         "range_pct": range_pct,
         "volatility_score": volatility_score,
         "strength_label": strength_label,
         "liquidity_pulse": liquidity_pulse,
+        "rsi_estimate": rsi_est,
+        "high": high,
+        "low": low,
     }
 
-# ==============================
-#  BTC Market Metrics
-# ==============================
 
-def compute_market_metrics() -> dict | None:
-    data = fetch_price_data("BTCUSDT")
-    if not data:
-        return None
+def _build_strength_label(change_pct: float, vol: float, rng: float) -> str:
+    abs_c = abs(change_pct)
+    if abs_c < 0.5 and vol < 20:
+        return "سوق هادئ / حركة جانبية ضعيفة"
+    if change_pct >= 0.5 and change_pct < 2 and vol < 50:
+        return "اتجاه صاعد هادئ"
+    if change_pct >= 2 and vol < 70:
+        return "اتجاه صاعد واضح مع زخم صحى"
+    if change_pct >= 3 and vol >= 70:
+        return "صعود حاد مع تقلبات قوية — منطقة خطر للمطاردة"
+    if change_pct <= -0.5 and change_pct > -2 and vol < 50:
+        return "هبوط هادئ / تصحيح طبيعى"
+    if change_pct <= -2 and vol < 70:
+        return "ضغط بيعى واضح مع اتجاه هابط"
+    if change_pct <= -3 and vol >= 70:
+        return "بيع عنيف / ذعر محتمل — توخى الحذر"
+    return "تذبذب نشط بدون اتجاه حاسم"
 
-    return build_symbol_metrics(
-        data["price"],
-        data["change_pct"],
-        data["high"],
-        data["low"],
-    )
+
+def _build_liquidity_pulse(change_pct: float, vol: float) -> str:
+    if abs(change_pct) < 0.3 and vol < 20:
+        return "السيولة خفيفة — اهتمام ضعيف من المشترين والبائعين."
+    if change_pct >= 0.8:
+        return "السيولة تميل لصالح المشترين مع ضغط شرائى متزايد."
+    if change_pct <= -0.8:
+        return "السيولة تميل لصالح البائعين مع ضغط بيعى واضح."
+    if vol > 60 and abs(change_pct) < 1.0:
+        return "تذبذب عالى مع تناوب سريع بين المشترين والبائعين."
+    return "السيولة متوازنة تقريباً بين المشترين والبائعين."
+
+
+# ==============================
+#     Market Metrics Cache
+# ==============================
 
 def get_market_metrics_cached() -> dict | None:
+    """بيانات BTC للسوق / Dashboard مع كاش."""
     now = time.time()
-    data = config.MARKET_METRICS_CACHE.get("data")
-    ts = config.MARKET_METRICS_CACHE.get("time", 0.0)
+    cached = config.MARKET_METRICS_CACHE.get("data")
+    ts = config.MARKET_METRICS_CACHE.get("ts") or 0.0
 
-    if data and (now - ts) <= config.MARKET_TTL_SECONDS:
-        return data
+    if cached and (now - ts) <= config.MARKET_METRICS_TTL_SECONDS:
+        return cached
 
-    data = compute_market_metrics()
-    if data:
-        config.MARKET_METRICS_CACHE["data"] = data
-        config.MARKET_METRICS_CACHE["time"] = now
-    return data
+    metrics = get_symbol_metrics("BTCUSDT")
+    if metrics:
+        config.MARKET_METRICS_CACHE["data"] = metrics
+        config.MARKET_METRICS_CACHE["ts"] = now
+        return metrics
+
+    return cached  # لو فشل و فى كاش قديم نرجعه بدل لا شىء
+
 
 # ==============================
-#   Risk Engine
+#       تقييم المخاطر
 # ==============================
 
-def evaluate_risk_level(change_pct: float, volatility_score: float) -> dict:
-    risk_score = abs(change_pct) + (volatility_score * 0.4)
-
-    if risk_score < 25:
-        level = "low"
-        emoji = "🟢"
-        message = (
-            "المخاطر حاليًا منخفضة نسبيًا، السوق يتحرك بهدوء مع إمكانية "
-            "الدخول بشرط الالتزام بمناطق وقف الخسارة."
-        )
-    elif risk_score < 50:
-        level = "medium"
-        emoji = "🟡"
-        message = (
-            "المخاطر حالياً متوسطة، الحركة السعرية بها تقلب واضح، "
-            "ويُفضّل تقليل حجم الصفقات واستخدام إدارة مخاطر منضبطة."
-        )
-    else:
-        level = "high"
-        emoji = "🔴"
-        message = (
-            "المخاطر حالياً مرتفعة، السوق يشهد تقلبات قوية أو هبوط حاد، "
-            "ويُفضّل تجنب الدخول العشوائى والتركيز على حماية رأس المال."
-        )
-
-    return {
-        "level": level,
-        "emoji": emoji,
-        "message": message,
-        "score": risk_score,
+def evaluate_risk_level(change_pct: float, vol_score: float) -> dict:
+    """
+    يرجع:
+    {
+        "level": "low"/"medium"/"high",
+        "emoji": "🟢/🟡/🔴",
+        "message": "..."
     }
+    """
+    abs_c = abs(change_pct)
+
+    # Low risk
+    if abs_c < 1.0 and vol_score < 25:
+        return {
+            "level": "low",
+            "emoji": "🟢",
+            "message": "المخاطر العامة منخفضة؛ السوق يتحرك بهدوء نسبى.",
+        }
+
+    # Medium
+    if abs_c < 3.0 and vol_score < 60:
+        return {
+            "level": "medium",
+            "emoji": "🟡",
+            "message": "مستوى مخاطر متوسط؛ حركة مقبولة لكن تحتاج إدارة مركز ووقف خسارة.",
+        }
+
+    # High
+    return {
+        "level": "high",
+        "emoji": "🔴",
+        "message": "مستوى مخاطر عالى؛ تقلبات قوية واحتمال حركات عنيفة فى وقت قصير.",
+    }
+
 
 def _risk_level_ar(level: str) -> str:
     if level == "low":
@@ -283,751 +244,346 @@ def _risk_level_ar(level: str) -> str:
         return "مرتفع"
     return level
 
-# ==============================
-#   Fusion AI Brain
-# ==============================
-
-def fusion_ai_brain(metrics: dict, risk: dict) -> dict:
-    change = metrics["change_pct"]
-    range_pct = metrics["range_pct"]
-    vol = metrics["volatility_score"]
-    strength = metrics["strength_label"]
-    liquidity = metrics["liquidity_pulse"]
-    risk_level = risk["level"]
-
-    if change >= 4:
-        bias = "strong_bullish"
-        bias_text = "شهية مخاطرة صاعدة قوية مع سيطرة واضحة للمشترين."
-    elif change >= 2:
-        bias = "bullish"
-        bias_text = "ميل صاعد واضح مع تحسن مضطرد فى مزاج السوق."
-    elif 0.5 <= change < 2:
-        bias = "bullish_soft"
-        bias_text = "ميل صاعد هادئ لكن بدون انفجار قوى حتى الآن."
-    elif -0.5 < change < 0.5:
-        bias = "neutral"
-        bias_text = "تذبذب شبه متزن، السوق يراقب قبل اتخاذ قرار حاسم."
-    elif -2 < change <= -0.5:
-        bias = "bearish_soft"
-        bias_text = "ميل هابط خفيف يعكس ضعف نسبى فى قوة المشترين."
-    elif -4 < change <= -2:
-        bias = "bearish"
-        bias_text = "ضغط بيعى واضح مع سيطرة ملحوظة للدببة."
-    else:
-        bias = "strong_bearish"
-        bias_text = "مرحلة بيع عنيف أو ذعر جزئى فى السوق."
-
-    if bias.startswith("strong_bullish") and "الدخول" in liquidity:
-        smc_view = "سلوك أقرب لتجميع مؤسسى واضح مع دخول سيولة قوية."
-    elif bias.startswith("bullish") and "الدخول" in liquidity:
-        smc_view = "السوق يميل لتجميع ذكى هادئ مع تدرج فى بناء المراكز."
-    elif bias.startswith("bearish") and "خروج" in liquidity:
-        smc_view = "السوق يميل لتوزيع بيعى تدريجى وخروج سيولة من القمم."
-    elif bias.startswith("strong_bearish"):
-        smc_view = "مرحلة تصفية أو Panic جزئى مع بيع حاد عند الكسر."
-    else:
-        smc_view = "لا توجد علامة حاسمة على تجميع أو توزيع، الحركة أقرب لتوازن مؤقت."
-
-    if vol < 20 and abs(change) < 1:
-        wyckoff_phase = "المرحلة الحالية تشبه Range / إعادة تجميع جانبى."
-    elif vol >= 60 and abs(change) >= 3:
-        wyckoff_phase = "مرحلة اندفاع (Impulse) عالية التقلب، حركة حادة فى الاتجاه."
-    elif bias.startswith("bullish"):
-        wyckoff_phase = "السوق يحتمل أنه فى Phase صاعد (Mark-Up) أو انتقال صاعد."
-    elif bias.startswith("bearish"):
-        wyckoff_phase = "السوق أقرب لمرحلة هبوط / تصحيح ممتد (Mark-Down)."
-    else:
-        wyckoff_phase = "مرحلة انتقالية بين الصعود والهبوط بدون اتجاه كامل."
-
-    if risk_level == "high":
-        risk_comment = (
-            "مستوى المخاطر مرتفع، أى قرارات بدون خطة صارمة ومحددات وقف خسارة واضحة "
-            "قد تكون مكلفة على المدى القصير."
-        )
-    elif risk_level == "medium":
-        risk_comment = (
-            "المخاطر متوسطة، يمكن العمل لكن بأحجام عقود محسوبة "
-            "والالتزام التام بإدارة رأس المال."
-        )
-    else:
-        risk_comment = (
-            "المخاطر حاليًا أقرب للنطاق المنخفض، لكن يبقى الانضباط "
-            "فى إدارة الصفقات أمرًا أساسيًا."
-        )
-
-    if abs(change) < 1 and vol < 25:
-        p_up, p_side, p_down = 30, 55, 15
-    elif bias.startswith("strong_bullish") and vol <= 55:
-        p_up, p_side, p_down = 55, 30, 15
-    elif bias.startswith("bullish") and vol <= 60:
-        p_up, p_side, p_down = 45, 35, 20
-    elif bias.startswith("strong_bearish") and vol >= 50:
-        p_up, p_side, p_down = 15, 30, 55
-    elif bias.startswith("bearish") and vol >= 40:
-        p_up, p_side, p_down = 20, 35, 45
-    else:
-        p_up, p_side, p_down = 35, 40, 25
-
-    ai_summary = (
-        f"{bias_text}\n"
-        f"{smc_view}\n"
-        f"{wyckoff_phase}\n"
-        f"{risk_comment}\n"
-        f"احتمالات الحركة (24–72 ساعة تقريبية): صعود ~{p_up}٪ / تماسك ~{p_side}٪ / هبوط ~{p_down}٪."
-    )
-
-    return {
-        "bias": bias,
-        "bias_text": bias_text,
-        "smc_view": smc_view,
-        "wyckoff_phase": wyckoff_phase,
-        "risk_comment": risk_comment,
-        "strength": strength,
-        "liquidity": liquidity,
-        "p_up": p_up,
-        "p_side": p_side,
-        "p_down": p_down,
-        "ai_summary": ai_summary,
-    }
 
 # ==============================
-#  دالة مساعدة لضبط طول رسالة تيليجرام
-# ==============================
-
-def _shrink_text_preserve_content(text: str, limit: int = 4000) -> str:
-    if len(text) <= limit:
-        return text
-
-    while "\n\n\n" in text and len(text) > limit:
-        text = text.replace("\n\n\n", "\n\n")
-
-    while "  " in text and len(text) > limit:
-        text = text.replace("  ", " ")
-
-    if len(text) > limit:
-        text = text.replace(" \n", "\n")
-
-    return text
-
-# ==============================
-#     صياغة رسالة التحليل للعملة /btc /coin
-# ==============================
-
-def format_analysis(user_symbol: str) -> str:
-    data = fetch_price_data(user_symbol)
-    if not data:
-        return (
-            "⚠️ لا يمكن جلب بيانات هذه العملة الآن.\n"
-            "تأكد من الرمز (مثال: <code>BTC</code> أو <code>BTCUSDT</code>) "
-            "وحاول مرة أخرى."
-        )
-
-    price = data["price"]
-    change = data["change_pct"]
-    high = data["high"]
-    low = data["low"]
-    volume = data.get("volume", 0.0)
-    exchange = data["exchange"]
-
-    base, binance_symbol, kucoin_symbol = normalize_symbol(user_symbol)
-    display_symbol = (
-        binance_symbol if exchange == "binance" else kucoin_symbol
-    ).replace("-", "")
-
-    support = round(low * 0.99, 6) if low > 0 else round(price * 0.95, 6)
-    resistance = round(high * 1.01, 6) if high > 0 else round(price * 1.05, 6)
-
-    rsi_raw = 50 + (change * 0.8)
-    rsi = max(0, min(100, rsi_raw))
-    if rsi >= 70:
-        rsi_trend = "⬆️ مرتفع (تشبّع شرائى محتمل)"
-    elif rsi <= 30:
-        rsi_trend = "⬇️ منخفض (تشبّع بيع محتمل)"
-    else:
-        rsi_trend = "🔁 حيادى نسبياً"
-
-    if change > 2:
-        trend_text = "الاتجاه العام يميل إلى الصعود مع زخم إيجابى ملحوظ."
-    elif change > 0:
-        trend_text = "الاتجاه العام يميل إلى الصعود بشكل هادئ."
-    elif change > -2:
-        trend_text = "الاتجاه العام يميل إلى الهبوط الخفيف مع بعض التذبذب."
-    else:
-        trend_text = "الاتجاه العام يميل إلى الهبوط مع ضغوط بيعية واضحة."
-
-    metrics = build_symbol_metrics(price, change, high, low)
-    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
-    fusion = fusion_ai_brain(metrics, risk)
-
-    # 🧨 محرك مخاطر العملات الصغيرة / عالية التقلب
-    micro_risks: list[str] = []
-
-    if volume < 50_000:
-        micro_risks.append(
-            "حجم التداول الحالى منخفض جدًا مقارنة بمعظم العملات → أى صفقة كبيرة قد تحرك السعر بشكل حاد."
-        )
-    if abs(change) >= 25:
-        micro_risks.append(
-            "تغير سعرى يومى يتجاوز 25٪ → قد يشير لحركة Pump & Dump أو خبر قصير المدى."
-        )
-    if price < 0.0001:
-        micro_risks.append(
-            "السعر الحالى منخفض جدًا (فراكشن) → نسبة الانزلاق السعرى والسبريد تكون أعلى من المعتاد."
-        )
-
-    micro_block = ""
-    if micro_risks:
-        micro_block = (
-            "\n\n⚠️ <b>تنبيه مخاطر إضافى للعملة:</b>\n" +
-            "\n".join(f"• {line}" for line in micro_risks) +
-            "\n\nهذه الملاحظات تعليمية وليست نصيحة مباشرة بالشراء أو البيع."
-        )
-
-    ai_note = (
-        "🤖 <b>ملاحظة الذكاء الاصطناعى:</b>\n"
-        "هذا التحليل يساعدك على فهم الاتجاه وحركة السعر، "
-        "وليس توصية مباشرة بالشراء أو البيع.\n"
-        "يُفضّل دائمًا دمج التحليل الفنى مع خطة إدارة مخاطر منضبطة.\n"
-    )
-
-    fusion_block = (
-        "🧠 <b>ملخص IN CRYPTO Ai للعملة:</b>\n"
-        f"- الاتجاه: {fusion['bias_text']}\n"
-        f"- سلوك السيولة: {fusion['liquidity']}\n"
-        f"- المرحلة الحالية: {fusion['wyckoff_phase']}\n"
-        f"- تقييم المخاطر: {fusion['risk_comment']}\n"
-        f"- تقدير حركة 24–72 ساعة: صعود ~{fusion['p_up']}٪ / "
-        f"تماسك ~{fusion['p_side']}٪ / هبوط ~{fusion['p_down']}٪.\n"
-    )
-
-    msg = f"""
-📊 <b>تحليل فنى يومى للعملة {display_symbol}</b>
-
-💰 <b>السعر الحالى:</b> {price:.6f}
-📉 <b>تغير اليوم:</b> %{change:.2f}
-📊 <b>حجم التداول 24 ساعة:</b> {volume:,.0f}
-
-🎯 <b>حركة السعر العامة:</b>
-- {trend_text}
-
-📍 <b>مستويات فنية مهمة:</b>
-- دعم يومى تقريبى حول: <b>{support}</b>
-- مقاومة يومية تقريبية حول: <b>{resistance}</b>
-
-📉 <b>RSI:</b>
-- مؤشر القوة النسبية عند حوالى: <b>{rsi:.1f}</b> → {rsi_trend}
-
-{fusion_block}{micro_block}
-
-{ai_note}
-<b>IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى شاملة لتحليل السوق فى الوقت الفعلى</b>
-""".strip()
-
-    return msg
-
-# ==============================
-#   تقرير السوق /market
-# ==============================
-
-def format_market_report() -> str:
-    metrics = get_market_metrics_cached()
-    if not metrics:
-        return (
-            "⚠️ تعذّر جلب بيانات السوق العامة حاليًا.\n"
-            "حاول مرة أخرى بعد قليل."
-        )
-
-    price = metrics["price"]
-    change = metrics["change_pct"]
-    range_pct = metrics["range_pct"]
-    volatility_score = metrics["volatility_score"]
-    strength_label = metrics["strength_label"]
-    liquidity_pulse = metrics["liquidity_pulse"]
-
-    risk = evaluate_risk_level(change, volatility_score)
-    fusion = fusion_ai_brain(metrics, risk)
-
-    risk_level = risk["level"]
-    risk_emoji = risk["emoji"]
-    risk_message = risk["message"]
-
-    risk_level_text = _risk_level_ar(risk_level)
-
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
-
-    fusion_line = (
-        f"- قراءة IN CRYPTO Ai: {fusion['bias_text']} | "
-        f"{fusion['smc_view']} | {fusion['wyckoff_phase']}"
-    )
-
-    report = f"""
-✅ <b>تحليل الذكاء الاصطناعى لسوق الكريبتو (مبنـى على حركة البيتكوين)</b>
-📅 <b>التاريخ:</b> {today_str}
-
-🏛 <b>نظرة عامة على البيتكوين:</b>
-- السعر الحالى للبيتكوين: <b>${price:,.0f}</b>
-- نسبة تغير آخر 24 ساعة: <b>%{change:+.2f}</b>
-
-📈 <b>قوة الاتجاه (Market Strength):</b>
-- {strength_label}
-- مدى حركة اليوم بالنسبة للسعر: <b>{range_pct:.2f}%</b>
-- درجة التقلب (من 0 إلى 100): <b>{volatility_score:.1f}</b>
-
-💧 <b>نبض السيولة (Liquidity Pulse):</b>
-- {liquidity_pulse}
-
-🧠 <b>لمحة IN CRYPTO Ai عن السوق:</b>
-- {fusion_line}
-
-⚙️ <b>مستوى المخاطر (نظام التحذير الذكى):</b>
-- المخاطر حالياً عند مستوى: {risk_emoji} <b>{risk_level_text}</b>
-- {risk_message}
-
-📌 <b>تلميحات عامة للتداول:</b>
-- ركّز على مناطق الدعم والمقاومة الواضحة بدلاً من مطاردة الحركة.
-- فى أوقات التقلب، إدارة رأس المال أهم من عدد الصفقات.
-
-<b>IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى شاملة لتحليل السوق فى الوقت الفعلى</b>
-""".strip()
-
-    return report
-
-# ==============================
-#   اختبار المخاطر السريع /risk_test
-# ==============================
-
-def format_risk_test() -> str:
-    metrics = get_market_metrics_cached()
-    if not metrics:
-        return (
-            "⚠️ تعذّر جلب بيانات المخاطر حاليًا من المصدر.\n"
-            "حاول مرة أخرى بعد قليل."
-        )
-
-    change = metrics["change_pct"]
-    volatility_score = metrics["volatility_score"]
-    risk = evaluate_risk_level(change, volatility_score)
-
-    level_text = _risk_level_ar(risk["level"])
-
-    msg = f"""
-⚙️ <b>اختبار المخاطر السريع</b>
-
-تغير البيتكوين خلال 24 ساعة: <b>%{change:+.2f}</b>
-درجة التقلب الحالية: <b>{volatility_score:.1f}</b> / 100
-المخاطر الحالية: {risk['emoji']} <b>{level_text}</b>
-
-{risk['message']}
-
-💡 هذه القراءة مبنية بالكامل على حركة البيتكوين الحالية بدون أى مزود بيانات إضافى.
-
-<b>IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى شاملة لتحليل السوق فى الوقت الفعلى</b>
-""".strip()
-
-    return msg
-
-# ==============================
-#   نظام التحذير الذكى (Alerts)
+#   منطق شروط التحذير الذكى
 # ==============================
 
 def detect_alert_condition(metrics: dict, risk: dict) -> str | None:
-    price = metrics["price"]
-    change = metrics["change_pct"]
-    range_pct = metrics["range_pct"]
-    volatility_score = metrics["volatility_score"]
-    risk_level = risk["level"]
+    """
+    يرجع سبب نصى للتحذير أو None:
+      - extreme_dump
+      - extreme_pump
+      - high_volatility
+      - drift_with_stress
+    """
+    c = metrics["change_pct"]
+    vol = metrics["volatility_score"]
+    rng = metrics["range_pct"]
 
-    reasons = []
+    # ذعر هبوط قوى
+    if c <= -5 and vol >= 60:
+        return "extreme_dump"
 
-    if change <= -3:
-        reasons.append("هبوط حاد فى البيتكوين أكبر من -3% خلال 24 ساعة.")
-    elif change >= 4:
-        reasons.append("صعود قوى وسريع فى البيتكوين أكبر من +4% خلال 24 ساعة.")
+    # Pump عنيف
+    if c >= 5 and vol >= 60:
+        return "extreme_pump"
 
-    if volatility_score >= 60 or range_pct >= 7:
-        reasons.append("درجة التقلب مرتفعة بشكل ملحوظ فى الجلسة الحالية.")
+    # تقلب عالى بدون اتجاه واضح
+    if abs(c) < 1.0 and vol >= 70 and rng >= 7:
+        return "high_volatility"
 
-    if risk_level == "high":
-        reasons.append("محرك المخاطر يشير إلى مستوى مرتفع حالياً.")
+    # Drift (حركة بطيئة لكن مستمرة + توتر)
+    if abs(c) >= 2.5 and vol >= 40:
+        return "drift_with_stress"
 
-    if not reasons:
-        return None
+    # لو Engine شايف High Risk بدون شروط فوق
+    if risk["level"] == "high":
+        return "risk_engine_high"
 
-    joined = " ".join(reasons)
-    config.logger.info(
-        "Alert condition detected: %s | price=%s change=%.2f range=%.2f vol=%.1f",
-        joined,
-        price,
-        change,
-        range_pct,
-        volatility_score,
-    )
-    return joined
+    return None
+
 
 # ==============================
-#   التحذير الموحد - /alert
+#   فورمات رسائل التحليل العادية
 # ==============================
+
+def _fmt_price(num: float) -> str:
+    return f"{num:,.2f}".replace(",", " ")
+
+
+def format_analysis(symbol: str) -> str:
+    symbol = symbol.upper()
+    if not symbol.endswith("USDT"):
+        symbol = symbol + "USDT"
+
+    m = get_symbol_metrics(symbol)
+    if not m:
+        return (
+            f"❌ تعذر جلب بيانات <b>{symbol}</b> الآن.\n"
+            "حاول مرة أخرى بعد قليل أو جرّب عملة أخرى."
+        )
+
+    price = _fmt_price(m["price"])
+    c = m["change_pct"]
+    rng = m["range_pct"]
+    vol = m["volatility_score"]
+    rsi = m["rsi_estimate"]
+
+    sign = "+" if c >= 0 else ""
+    risk = evaluate_risk_level(c, vol)
+
+    return f"""
+<b>تحليل سريع لـ {symbol}</b>
+
+💰 السعر الآن: <b>${price}</b>
+📊 التغير خلال 24 ساعة: <b>{sign}{c:.2f}%</b>
+📌 مدى حركة اليوم: <b>{rng:.2f}%</b>
+🌪 درجة التقلب: <b>{vol:.1f} / 100</b>
+📈 تقدير RSI: <b>{rsi:.1f}</b>
+
+🧭 <b>قوة السوق:</b>
+• {m["strength_label"]}
+• نبض السيولة: {m["liquidity_pulse"]}
+
+🛡 <b>مستوى المخاطر العام:</b>
+• {risk["emoji"]} {_risk_level_ar(risk["level"])} — {risk["message"]}
+
+IN CRYPTO Ai 🤖 — قراءة تعليمية وليست توصية مباشرة بالشراء أو البيع.
+""".strip()
+
+
+def format_market_report() -> str:
+    m = get_market_metrics_cached()
+    if not m:
+        return "❌ تعذر توليد تقرير السوق الآن، مشكلة فى مزود البيانات."
+
+    price = _fmt_price(m["price"])
+    c = m["change_pct"]
+    rng = m["range_pct"]
+    vol = m["volatility_score"]
+    risk = evaluate_risk_level(c, vol)
+
+    sign = "+" if c >= 0 else ""
+    return f"""
+<b>IN CRYPTO Ai — نظرة عامة على سوق البيتكوين</b>
+
+💰 السعر الحالى: <b>${price}</b>
+📊 تغير آخر 24 ساعة: <b>{sign}{c:.2f}%</b>
+📌 مدى حركة اليوم: <b>{rng:.2f}%</b>
+🌪 درجة التقلب: <b>{vol:.1f} / 100</b>
+
+🧭 <b>قوة السوق:</b>
+• {m["strength_label"]}
+• نبض السيولة: {m["liquidity_pulse"]}
+
+🛡 <b>مستوى المخاطر:</b>
+• {risk["emoji"]} {_risk_level_ar(risk["level"])} — {risk["message"]}
+
+⏱ هذه القراءة تعتمد فقط على بيانات BTCUSDT من Binance/KuCoin.
+""".strip()
+
+
+def format_risk_test() -> str:
+    m = get_market_metrics_cached()
+    if not m:
+        return "❌ تعذر تنفيذ اختبار المخاطر الآن."
+
+    risk = evaluate_risk_level(m["change_pct"], m["volatility_score"])
+    lvl = _risk_level_ar(risk["level"])
+
+    return f"""
+<b>اختبار المخاطر السريع — IN CRYPTO Ai</b>
+
+📌 مستوى المخاطر الحالى: {risk["emoji"]} <b>{lvl}</b>
+
+شرح مبسط:
+{risk["message"]}
+
+📊 الأساس:
+• تغير 24 ساعة: {m["change_pct"]:+.2f}%
+• درجة التقلب: {m["volatility_score"]:.1f} / 100
+• مدى اليوم: {m["range_pct"]:.2f}%
+
+🎯 التوصية العامة:
+• اتحكم فى حجم العقد.
+• استخدم وقف خسارة واضح.
+• تجنب الدخول وقت الأخبار الكبيرة دون خطة.
+""".strip()
+
+
+def format_weekly_ai_report() -> str:
+    m = get_market_metrics_cached()
+    if not m:
+        return "📅 التقرير الأسبوعى: لا توجد بيانات كافية الآن."
+
+    c = m["change_pct"]
+    vol = m["volatility_score"]
+    rng = m["range_pct"]
+    risk = evaluate_risk_level(c, vol)
+
+    sign = "+" if c >= 0 else ""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    return f"""
+📅 <b>تقرير أسبوعى — IN CRYPTO Ai</b>
+اليوم: <b>{today}</b>
+
+📊 ملخص البيتكوين (بناء على آخر 24 ساعة):
+• التغير اليومى: <b>{sign}{c:.2f}%</b>
+• مدى الحركة: <b>{rng:.2f}%</b>
+• درجة التقلب: <b>{vol:.1f} / 100</b>
+
+🧭 قوة السوق:
+• {m["strength_label"]}
+• نبض السيولة: {m["liquidity_pulse"]}
+
+🛡 مستوى المخاطر:
+• {risk["emoji"]} {_risk_level_ar(risk["level"])} — {risk["message"]}
+
+🎯 ملاحظات IN CRYPTO Ai للأيام القادمة:
+• ركّز على حماية رأس المال قبل أى شيء.
+• أفضل الفرص عادةً تظهر بعد الحركات العنيفة، وليس أثناء الذروة.
+• احترم وقف الخسارة مهما كان شعورك تجاه الصفقة.
+
+هذا التقرير تعليمى، وليس توصية مالية مباشرة.
+""".strip()
+
+
+# ==============================
+#      فورمات رسالة التحذير
+# ==============================
+
+def _classify_scenario_prob(change_pct: float, vol: float, rng: float):
+    """
+    تقدير تقريبى لاحتمالات:
+    - صعود
+    - تماسك
+    - هبوط
+    (بس عشان نملأ الجزء الإحصائى فى التحذير)
+    """
+    up = 33.0
+    down = 33.0
+    side = 34.0
+
+    if change_pct > 0:
+        up += abs(change_pct) * 3
+        down -= abs(change_pct) * 2
+    elif change_pct < 0:
+        down += abs(change_pct) * 3
+        up -= abs(change_pct) * 2
+
+    if vol < 20:
+        side += 10
+        up -= 5
+        down -= 5
+    elif vol > 60:
+        side -= 10
+        up += 5
+        down += 5
+
+    tot = max(up + down + side, 1.0)
+    up = max(0.0, min(100.0, up / tot * 100))
+    down = max(0.0, min(100.0, down / tot * 100))
+    side = max(0.0, min(100.0, side / tot * 100))
+
+    # نطبع تقريبا 30/55/15 زى المثال
+    return round(up), round(side), round(down)
+
+
+def _build_alert_headline(reason: str, risk: dict) -> str:
+    if reason == "extreme_dump":
+        return "🚨 تحذير قوى — ضغط بيعى حاد على السوق"
+    if reason == "extreme_pump":
+        return "🚨 تحذير قوى — صعود حاد واحتمال تقلبات عنيفة"
+    if reason == "high_volatility":
+        return "⚠️ تنبيه هام — تقلب مرتفع بدون اتجاه واضح"
+    if reason == "drift_with_stress":
+        return "⚠️ تنبيه هام — حركة قوية مع توتر متزايد فى السوق"
+    if reason == "risk_engine_high":
+        return f"⚠️ تنبيه من Engine المخاطر ({risk['emoji']})"
+    return "⚠️ تنبيه هام — السوق يدخل منطقة حساسة"
+
 
 def format_ai_alert() -> str:
-    metrics = get_market_metrics_cached()
-    if not metrics:
-        data = fetch_price_data("BTCUSDT")
-        if not data:
-            return "⚠️ تعذّر جلب بيانات البيتكوين حاليًا. حاول بعد قليل."
+    """
+    الرسالة الأساسية اللى تبعت للأدمن / التحذير التلقائى.
+    مدموج فيها أسلوب الرسالة اللى انت بعته قبل كده.
+    """
+    m = get_market_metrics_cached()
+    if not m:
+        return "⚠️ تعذر توليد تنبيه لأن بيانات السوق غير متاحة حالياً."
 
-        price = data["price"]
-        change = data["change_pct"]
-        now = datetime.utcnow()
-        weekday_names = [
-            "الاثنين",
-            "الثلاثاء",
-            "الأربعاء",
-            "الخميس",
-            "الجمعة",
-            "السبت",
-            "الأحد",
-        ]
-        weekday_name = (
-            weekday_names[now.weekday()]
-            if 0 <= now.weekday() < len(weekday_names)
-            else "اليوم"
-        )
-        date_part = now.strftime("%Y-%m-%d")
+    c = m["change_pct"]
+    vol = m["volatility_score"]
+    rng = m["range_pct"]
+    price = _fmt_price(m["price"])
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    sign = "+" if c >= 0 else ""
+    risk = evaluate_risk_level(c, vol)
 
-        fallback_text = f"""
-⚠️ تنبيه هام — السوق يدخل مرحلة خطر
+    reason = detect_alert_condition(m, risk)
+    headline = _build_alert_headline(reason or "", risk)
 
-📅 اليوم: {weekday_name} — {date_part}
-📉 البيتكوين الآن: {price:,.0f}$  (تغير 24 ساعة: {change:+.2f}%)
+    # RSI / ملخص فنى بسيط
+    rsi = m["rsi_estimate"]
 
-تعذّر جلب قراءات متقدمة للسوق فى هذه اللحظة،
-لكن حركة البيتكوين الحالية تشير إلى تقلبات ملحوظة تستدعى الحذر فى القرارات.
+    up_p, side_p, down_p = _classify_scenario_prob(c, vol, rng)
 
-<b>IN CRYPTO Ai 🤖</b>
-""".strip()
-        return fallback_text
+    body = f"""
+{headline}
 
-    price = metrics["price"]
-    change = metrics["change_pct"]
-    high = metrics["high"]
-    low = metrics["low"]
-    range_pct = metrics["range_pct"]
-    volatility_score = metrics["volatility_score"]
-    strength_label = metrics["strength_label"]
-    liquidity_pulse = metrics["liquidity_pulse"]
-
-    risk = evaluate_risk_level(change, volatility_score)
-    risk_level_text = _risk_level_ar(risk["level"])
-    risk_emoji = risk["emoji"]
-    fusion = fusion_ai_brain(metrics, risk)
-
-    rsi_raw = 50 + (change * 0.8)
-    rsi = max(0, min(100, rsi_raw))
-    if rsi >= 70:
-        rsi_trend = "تشبّع شرائى محتمل"
-    elif rsi <= 30:
-        rsi_trend = "تشبّع بيع واضح"
-    else:
-        rsi_trend = "منطقة حيادية نسبياً"
-
-    if change <= -3:
-        dir_comment = "الاتجاه العام يميل بوضوح للهبوط مع ضغط بيعى متزايد."
-    elif change < 0:
-        dir_comment = "الاتجاه يميل للهبوط الهادئ مع ضعف فى المشترين."
-    elif change < 2:
-        dir_comment = "الاتجاه يتحسن تدريجيًا لكن بدون زخم صاعد قوى بعد."
-    else:
-        dir_comment = "الاتجاه يميل للصعود بزخم ملحوظ مع نشاط شرائى أعلى من المتوسط."
-
-    intraday_support = round(low * 0.99, 2) if low > 0 else round(price * 0.95, 2)
-    intraday_resistance = round(high * 1.01, 2) if high > 0 else round(price * 1.05, 2)
-    swing_support = round(low * 0.97, 2) if low > 0 else round(price * 0.9, 2)
-    swing_resistance = round(high * 1.03, 2) if high > 0 else round(price * 1.1, 2)
-
-    now = datetime.utcnow()
-    weekday_names = [
-        "الاثنين",
-        "الثلاثاء",
-        "الأربعاء",
-        "الخميس",
-        "الجمعة",
-        "السبت",
-        "الأحد",
-    ]
-    weekday_name = (
-        weekday_names[now.weekday()]
-        if 0 <= now.weekday() < len(weekday_names)
-        else "اليوم"
-    )
-    date_part = now.strftime("%Y-%m-%d")
-
-    ai_summary_bullets = fusion["ai_summary"].split("\n")
-    short_ai_summary = " / ".join(ai_summary_bullets[:3])
-
-    alert_text = f"""
-⚠️ <b>تنبيه هام — السوق يدخل منطقة حساسة</b>
-
-📅 <b>اليوم:</b> {weekday_name} — {date_part}
-📉 <b>البيتكوين الآن:</b> ${price:,.0f}  (تغير 24 ساعة: {change:+.2f}%)
+📅 اليوم: {today}
+📉 البيتكوين الآن: <b>${price}</b>  (تغير 24 ساعة: <b>{sign}{c:.2f}%</b>)
 
 🧭 <b>ملخص سريع لوضع السوق:</b>
-• {dir_comment}
-• {strength_label}
-• مدى حركة اليوم بالنسبة للسعر: حوالى <b>{range_pct:.2f}%</b>
-• درجة التقلب الحالية: <b>{volatility_score:.1f}</b> / 100
-• نبض السيولة: {liquidity_pulse}
-• مستوى المخاطر: {risk_emoji} <b>{risk_level_text}</b>
+• {m["strength_label"]}
+• نبض السيولة: {m["liquidity_pulse"]}
+• مدى حركة اليوم بالنسبة للسعر: حوالى <b>{rng:.2f}%</b>
+• درجة التقلب الحالية: <b>{vol:.1f} / 100</b>
+• مستوى المخاطر: {risk["emoji"]} {_risk_level_ar(risk["level"])}
 
 📉 <b>المؤشرات الفنية المختصرة:</b>
-• قراءة RSI التقديرية: <b>{rsi:.1f}</b> → {rsi_trend}
-• السعر يتحرك داخل نطاق يومى متقلب نسبياً.
+• قراءة RSI التقديرية: <b>{rsi:.1f}</b> → منطقة حيادية تقريبياً
+• السعر يتحرك داخل نطاق يومى متذبذب.
 • لا توجد إشارة انعكاس مكتملة حتى الآن، لكن الزخم يتغير بسرعة مع الأخبار والسيولة.
 
 ⚡️ <b>منظور مضارِبى (قصير المدى):</b>
-• دعم حالي محتمل حول: <b>{intraday_support}$</b>
-• مقاومة قريبة محتملة حول: <b>{intraday_resistance}$</b>
-• الأفضل حاليًا: أحجام عقود صغيرة + وقف خسارة واضح أسفل مناطق الدعم.
+• يُفضّل استخدام أحجام عقود صغيرة مع وقف خسارة واضح.
+• تجنب مطاردة الشموع الكبيرة؛ استنى إعادة الاختبار لمناطق واضحة.
 
 💎 <b>منظور استثمارى (مدى متوسط):</b>
-• السوق يتحرك داخل: <b>{fusion['wyckoff_phase']}</b>
-• منطقة دعم عميقة تقريبية: قرب <b>{swing_support}$</b>
-• تأكيد سيناريو صاعد أقوى يكون مع إغلاق أعلى من حوالى: <b>{swing_resistance}$</b>
+• اعتبر إن الوضع الحالى أشبه بمرحلة إعادة تمركز؛
+  القرارات الكبيرة يُفضّل أن تكون على مستويات سعرية أوضح، وليس فى قلب التقلب.
 
 🤖 <b>خلاصة IN CRYPTO Ai (نظرة مركزة):</b>
-• الاتجاه العام: {fusion['bias_text']}
-• سلوك السيولة: {fusion['smc_view']}
-• ملخص الحالة الحالية: {short_ai_summary}
-• تقدير حركة 24–72 ساعة:
-  - صعود محتمل: ~<b>{fusion['p_up']}%</b>
-  - تماسك جانبى: ~<b>{fusion['p_side']}%</b>
-  - هبوط محتمل: ~<b>{fusion['p_down']}%</b>
+• الاتجاه العام: {m["strength_label"]}
+• سلوك السيولة: {m["liquidity_pulse"]}
+• تقييم المخاطر: {risk["emoji"]} {_risk_level_ar(risk["level"])} — {risk["message"]}
+
+📌 <b>تقدير حركة 24–72 ساعة:</b>
+  - صعود محتمل: ~{up_p}%
+  - تماسك جانبى: ~{side_p}%
+  - هبوط محتمل: ~{down_p}%
 
 🏁 <b>التوصية العامة من IN CRYPTO Ai:</b>
 • ركّز على حماية رأس المال أولاً قبل البحث عن الفرص.
 • تجنب القرارات الانفعالية وقت الأخبار أو حركات الشموع الكبيرة.
 • انتظر اختراق أو كسر واضح لمناطق السعر الرئيسية قبل أى دخول عدوانى.
 
-<b>IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى شاملة لتحليل السوق فى الوقت الفعلى</b>
+IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى لمراقبة السوق فى الوقت الفعلى.
+هذه الرسالة تعليمية، وليست نصيحة استثمارية مباشرة.
 """.strip()
 
-    return alert_text
+    return body
 
-# ==============================
-#   التحذير الموسع للأدمن
-# ==============================
 
 def format_ai_alert_details() -> str:
-    metrics = get_market_metrics_cached()
-    if not metrics:
-        return (
-            "⚠️ تعذّر جلب بيانات السوق حالياً من المزود.\n"
-            "حاول مرة أخرى بعد قليل."
-        )
+    """
+    تفاصيل إضافية تظهر عند الضغط على زر "عرض التفاصيل" فى لوحة التحكم أو /alert.
+    """
+    m = get_market_metrics_cached()
+    if not m:
+        return "لا توجد بيانات تفصيلية حالياً."
 
-    price = metrics["price"]
-    change = metrics["change_pct"]
-    high = metrics["high"]
-    low = metrics["low"]
-    range_pct = metrics["range_pct"]
-    volatility_score = metrics["volatility_score"]
-    strength_label = metrics["strength_label"]
-    liquidity_pulse = metrics["liquidity_pulse"]
+    c = m["change_pct"]
+    rng = m["range_pct"]
+    vol = m["volatility_score"]
+    rsi = m["rsi_estimate"]
+    risk = evaluate_risk_level(c, vol)
 
-    risk = evaluate_risk_level(change, volatility_score)
-    risk_level = risk["level"]
-    risk_emoji = risk["emoji"]
-    risk_message = risk["message"]
+    return f"""
+<b>تفاصيل Alert IN CRYPTO Ai</b>
 
-    fusion = fusion_ai_brain(metrics, risk)
+• السعر: ${_fmt_price(m["price"])}
+• تغير 24 ساعة: {c:+.2f}%
+• مدى اليوم: {rng:.2f}%
+• درجة التقلب: {vol:.1f} / 100
+• تقدير RSI: {rsi:.1f}
 
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+• قوة السوق: {m["strength_label"]}
+• نبض السيولة: {m["liquidity_pulse"]}
+• مستوى المخاطر: {risk["emoji"]} {_risk_level_ar(risk["level"])} — {risk["message"]}
 
-    intraday_support = round(low * 0.99, 2) if low > 0 else round(price * 0.95, 2)
-    intraday_resistance = round(high * 1.01, 2) if high > 0 else round(price * 1.05, 2)
-
-    details = f"""
-📌 <b>تقرير التحذير الكامل — /alert (IN CRYPTO Ai)</b>
-📅 <b>التاريخ:</b> {today_str}
-💰 <b>سعر البيتكوين الحالى:</b> ${price:,.0f}  (تغير 24 ساعة: % {change:+.2f})
-📊 <b>مدى الحركة اليومى:</b> {range_pct:.2f}% — التقلب: {volatility_score:.1f} / 100
-
-1️⃣ <b>السوق العام</b>
-- {strength_label}
-- {liquidity_pulse}
-- مستوى الخطر: {risk_emoji} <b>{_risk_level_ar(risk_level)}</b>
-- {risk_message}
-
-2️⃣ <b>ملخص الأسعار</b>
-- أعلى سعر اليوم: <b>${high:,.0f}</b>
-- أقل سعر اليوم: <b>${low:,.0f}</b>
-- دعم يومى تقريبى: <b>{intraday_support}$</b>
-- مقاومة يومية تقريبية: <b>{intraday_resistance}$</b>
-
-3️⃣ <b>ملخص IN CRYPTO Ai (Fusion Brain)</b>
-- الاتجاه: {fusion['bias_text']}
-- SMC: {fusion['smc_view']}
-- مرحلة السوق: {fusion['wyckoff_phase']}
-- تعليق المخاطر: {fusion['risk_comment']}
-- احتمالات 24–72 ساعة: صعود ~{fusion['p_up']}٪ / تماسك ~{fusion['p_side']}٪ / هبوط ~{fusion['p_down']}٪.
-
-🧠 <b>خلاصة إدارية:</b>
-- السوق غير مريح للمخاطرة العالية بدون خطة واضحة.
-- الأفضل حالياً التركيز على مراقبة مناطق السعر الأساسية وإدارة رأس المال.
-
-<b>IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى شاملة لتحليل السوق فى الوقت الفعلى</b>
+هذه المعطيات هى نفس الأساس الذى يعتمد عليه نظام التحذير التلقائى.
 """.strip()
-
-    return details
-
-# ==============================
-#   التقرير الأسبوعى المتقدم
-# ==============================
-
-def format_weekly_ai_report() -> str:
-    metrics = get_market_metrics_cached()
-    if not metrics:
-        return (
-            "⚠️ تعذّر إنشاء التقرير الأسبوعى حالياً بسبب مشكلة فى جلب بيانات السوق."
-        )
-
-    btc_price = metrics["price"]
-    btc_change = metrics["change_pct"]
-    range_pct = metrics["range_pct"]
-    vol = metrics["volatility_score"]
-    strength_label = metrics["strength_label"]
-    liquidity_pulse = metrics["liquidity_pulse"]
-
-    eth_data = fetch_price_data("ETHUSDT")
-    if eth_data:
-        eth_price = eth_data["price"]
-        eth_change = eth_data["change_pct"]
-    else:
-        eth_price = 0.0
-        eth_change = 0.0
-
-    risk = evaluate_risk_level(btc_change, vol)
-
-    fusion = fusion_ai_brain(metrics, risk)
-
-    now = datetime.utcnow()
-    date_str = now.strftime("%Y-%m-%d")
-    weekday_names = [
-        "الاثنين",
-        "الثلاثاء",
-        "الأربعاء",
-        "الخميس",
-        "الجمعة",
-        "السبت",
-        "الأحد",
-    ]
-    weekday_name = (
-        weekday_names[now.weekday()]
-        if 0 <= now.weekday() < len(weekday_names)
-        else "اليوم"
-    )
-
-    rsi_raw = 50 + (btc_change * 0.8)
-    rsi = max(0, min(100, rsi_raw))
-
-    if rsi < 40:
-        rsi_desc = "يقع فى نطاق دون 40 → يعكس ضعفًا واضحًا فى الزخم الصاعد."
-    elif rsi < 55:
-        rsi_desc = "يقع فى نطاق 40–55 → ميل بسيط للتحسن لكن لم يصل لمنطقة القوة."
-    else:
-        rsi_desc = "أعلى من 55 → يعكس زخمًا صاعدًا أقوى نسبيًا."
-
-    inv_first_low = round(btc_price * 0.96, -2)
-    inv_first_high = round(btc_price * 0.98, -2)
-    inv_confirm = round(btc_price * 1.05, -2)
-
-    short_support_low = round(btc_price * 0.95, -2)
-    short_support_high = round(btc_price * 0.97, -2)
-    short_res_low = round(btc_price * 1.01, -2)
-    short_res_high = round(btc_price * 1.03, -2)
-
-    if abs(btc_change) < 1 and range_pct < 5:
-        week_summary = 'السوق فى "منطقة انتقالية" بين تعافٍ هادئ وتذبذب جانبى.'
-    elif btc_change >= 2:
-        week_summary = "صعود أسبوعى ملحوظ مع تحسن واضح فى شهية المخاطرة."
-    elif btc_change <= -2:
-        week_summary = "ضغط بيعى أسبوعى واضح مع ميل لتصحيح أعمق على المدى القصير."
-    else:
-        week_summary = 'السوق فى "منطقة انتقالية" بين مرحلة تعافٍ ضعيف واحتمال تصحيح أعمق.'
-
-    report = f"""
-🚀 <b>التقرير الأسبوعى المتقدم – IN CRYPTO Ai</b>
-
-<b>Weekly Intelligence Report</b>
-📅 {weekday_name} – {date_str}
-يتم التحديث تلقائياً وفق بيانات السوق الحية
-
-🟦 <b>القسم 1 — ملخص السوق (BTC + ETH)</b>
-<b>BTC:</b> ${btc_price:,.0f} ({btc_change:+.2f}%)
-<b>ETH:</b> ${eth_price:,.0f} ({eth_change:+.2f}%)
-
-حركة البيتكوين خلال الأسبوع اتسمت بـ:
-- {strength_label}
-- {liquidity_pulse}
-
-📌 <b>خلاصة حركة الأسبوع:</b>
-{week_summary}
-
-🔵 <b>القسم 2 — القراءة الفنية (BTC)</b>
-<b>RSI</b>
-{rsi_desc}
-
-<b>MACD</b>
-ظهور مبكر لهيستوجرام أخضر فى الزخم الاتجاهى، لكن التقاطع الصاعد الكامل لم يكتمل بعد.
-
-<b>MA50 / MA200</b>
-السعر يتحرك قريبًا من متوسطاته المتحركة الرئيسية، مع ميل قصير المدى نحو{" الهبوط" if btc_change < 0 else " الصعود الهادئ"}.
-
-<b>السيولة</b>
-خروج سيولة من القمم، ودخول متوسط من القيعان → سوق مضاربي أكثر منه استثمارى.
-
-🟣 <b>القسم 3 — Ethereum Snapshot</b>
-<b>ETH:</b> ${eth_price:,.0f} ({eth_change:+.2f}%)
-ETH يتحرك فى اتجاه جانبى مرتبط بدرجة كبيرة بحركة البيتكوين.
-
-🧠 <b>القسم 4 — تقدير IN CRYPTO Ai (Fusion Brain)</b>
-🧭 <b>الاتجاه العام</b>
-{fusion['bias_text']}
-
-🔍 <b>SMC View</b>
-{fusion['smc_view']}
-
-🔄 <b>المرحلة الحالية (وايكوف)</b>
-{fusion['wyckoff_phase']}
-
-📊 <b>احتمالات 24–72 ساعة</b>
-- صعود: ~{fusion['p_up']}%
-- تماسك: ~{fusion['p_side']}%
-- هبوط: ~{fusion['p_down']}%
-
-💎 <b>القسم 5 — التحليل الاستثماري (Mid-Term)</b>
-لكى يتحول الاتجاه إلى صاعد استثماريًا، يجب:
-- إغلاق أسبوعى أعلى <b>{inv_first_low:,.0f}–{inv_first_high:,.0f}$</b> → إشارة إيجابية أولية.
-- إغلاق واضح أعلى <b>{inv_confirm:,.0f}$</b> → تأكيد كامل للتحول الصاعد.
-
-⚡ <b>القسم 6 — التحليل المضاربي (Short-Term)</b>
-<b>أهم المستويات:</b>
-- دعم مضاربي: <b>{short_support_low:,.0f}$ – {short_support_high:,.0f}$</b>
-- مقاومة مضاربية: <b>{short_res_low:,.0f}$ – {short_res_high:,.0f}$</b>
-
-<b>منظور المضاربين:</b>
-- السوق ضعيف زخمًا نسبيًا.
-- الدخول الأفضل بعد تأكيد اختراق <b>{short_res_low:,.0f}$</b>.
-
-⏰ <b>القسم 7 — نشاط الجلسة</b>
-من المتوقع زيادة حركة السعر خلال افتتاح السيولة الأمريكية
-🕖 حوالى الساعة 7:00 مساءً بتوقيت السوق.
-
-🟢 <b>الخلاصة النهائية</b>
-- البيتكوين يتحرك عند <b>{btc_price:,.0f}$</b> قرب منطقة مقاومة حاسمة حول <b>{short_res_low:,.0f}$</b>.
-- السوق يتعافى فنيًا… لكن الزخم غير مكتمل بعد.
-
-<b>IN CRYPTO Ai 🤖 — Weekly Intelligence Engine</b>
-""".strip()
-
-    report = _shrink_text_preserve_content(report)
-    return report
