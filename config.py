@@ -1,148 +1,165 @@
 import os
-import requests
-import logging
+import time
 import json
-from datetime import datetime, timezone
+import logging
+import threading
+import requests
+from datetime import datetime
 
 # ============================
-#     Logging system
+# إعداد اللوج — Logger
 # ============================
 
-logger = logging.getLogger("crypto-ai-bot")
+logger = logging.getLogger("INCRYPTO_AI")
 logger.setLevel(logging.INFO)
 
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-logger.addHandler(handler)
+_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(_formatter)
+logger.addHandler(_handler)
+
+# حفظ آخر 500 سطر لوج للداشبورد
+_LOG_BUFFER = []
+
+def _push_log(line):
+    if len(_LOG_BUFFER) >= 500:
+        _LOG_BUFFER.pop(0)
+    _LOG_BUFFER.append(line)
+
+class BufferLogHandler(logging.Handler):
+    def emit(self, record):
+        msg = self.format(record)
+        _push_log(msg)
+
+logger.addHandler(BufferLogHandler())
+
+
+def log_cleaned_buffer():
+    return "\n".join(_LOG_BUFFER)
+
 
 # ============================
-#     Environment Variables
+# البيئة — ENV
 # ============================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
+APP_BASE_URL = os.getenv("APP_BASE_URL", "").strip()
 
 if not BOT_TOKEN:
     raise RuntimeError("البيئة لا تحتوى على BOT_TOKEN")
-
-if not ADMIN_CHAT_ID:
+if ADMIN_CHAT_ID == 0:
     raise RuntimeError("البيئة لا تحتوى على ADMIN_CHAT_ID")
 
-if not WEBHOOK_URL:
-    raise RuntimeError("البيئة لا تحتوى على WEBHOOK_URL")
-
-ADMIN_CHAT_ID = str(ADMIN_CHAT_ID)
+TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # ============================
-#     Telegram API Base
+# HTTP Session
 # ============================
-
-TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 HTTP_SESSION = requests.Session()
+HTTP_SESSION.headers.update({"User-Agent": "INCRYPTO_AI_BOT/1.0"})
 
-def send_message(chat_id, text, reply_markup=None):
-    """إرسال رسالة عادية"""
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML"
-    }
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
-
-    r = HTTP_SESSION.post(f"{TG_API}/sendMessage", json=payload)
-    return r.json()
-
-
-def send_message_with_keyboard(chat_id, text, buttons):
-    """إرسال رسالة مع كيبورد تحت"""
-    keyboard = {"inline_keyboard": buttons}
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML",
-        "reply_markup": keyboard
-    }
-    r = HTTP_SESSION.post(f"{TG_API}/sendMessage", json=payload)
-    return r.json()
-
-
-def answer_callback_query(callback_id, text=None):
-    """الرد على زر مضغوط"""
-    payload = {"callback_query_id": callback_id}
-    if text:
-        payload["text"] = text
-
-    return HTTP_SESSION.post(f"{TG_API}/answerCallbackQuery", json=payload).json()
 
 # ============================
-#     Alert History
+# Flags
 # ============================
-
-ALERT_HISTORY = []
-
-def add_alert_history(reason: str, data: dict):
-    """حفظ سجل التحذيرات"""
-    ALERT_HISTORY.append({
-        "reason": reason,
-        "data": data,
-        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")
-    })
-    # حفظ آخر 50 فقط
-    if len(ALERT_HISTORY) > 50:
-        ALERT_HISTORY.pop(0)
+BOT_DEBUG = False
 
 # ============================
-#     Log buffer system
+# سجلات وحالة النظام
 # ============================
 
-LOG_BUFFER = []
+KNOWN_CHAT_IDS = set()
+ALERTS_HISTORY = []
 
-def log_cleaned_buffer(message: str):
-    """يسجل رسائل نظيفة لأغراض الديباج"""
-    try:
-        LOG_BUFFER.append({
-            "message": message,
-            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")
-        })
-        if len(LOG_BUFFER) > 50:
-            LOG_BUFFER.pop(0)
-    except Exception as e:
-        logger.error(f"log_cleaned_buffer error: {e}")
+LAST_ALERT_REASON = None
+LAST_AUTO_ALERT_INFO = {"time": None, "reason": None, "sent": False}
+LAST_ERROR_INFO = None
+LAST_WEEKLY_SENT_DATE = None
 
-# ============================
-#   API STATUS
-# ============================
+LAST_REALTIME_TICK = None
+LAST_WEEKLY_TICK = None
+LAST_WEBHOOK_TICK = None
+LAST_WATCHDOG_TICK = None
 
 API_STATUS = {
     "binance_ok": True,
     "kucoin_ok": True,
     "last_api_check": None,
-    "last_error": None
+    "last_error": None,
 }
 
-# ============================
-#   MARKET CACHE
-# ============================
-
+REALTIME_CACHE = {"last_update": None}
 MARKET_METRICS_CACHE = {}
-MARKET_TTL_SECONDS = 10  # cache for metrics
 
 # ============================
-#   Bot flags
+# Telegram Helpers
 # ============================
 
-BOT_DEBUG = False   # إذا True يعرض رسائل إضافية
-
-# ============================
-#   Utility helpers
-# ============================
-
-def notify_admin(text):
-    """إرسال رسالة للإدمن"""
+def send_message(chat_id, text, silent=False):
     try:
-        send_message(ADMIN_CHAT_ID, text)
+        params = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_notification": silent,
+        }
+        r = HTTP_SESSION.get(f"{TELEGRAM_API}/sendMessage", params=params, timeout=10)
+        return r.json()
     except Exception as e:
-        logger.error(f"notify_admin error: {e}")
+        logger.exception("send_message error: %s", e)
+
+
+def send_message_with_keyboard(chat_id, text, keyboard):
+    try:
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "reply_markup": json.dumps(keyboard, ensure_ascii=False),
+        }
+        r = HTTP_SESSION.post(f"{TELEGRAM_API}/sendMessage", data=payload, timeout=10)
+        return r.json()
+    except Exception as e:
+        logger.exception("send_message_with_keyboard error: %s", e)
+
+
+def answer_callback_query(callback_id):
+    try:
+        HTTP_SESSION.get(
+            f"{TELEGRAM_API}/answerCallbackQuery",
+            params={"callback_query_id": callback_id},
+            timeout=10,
+        )
+    except Exception as e:
+        logger.exception("answer_callback_query error: %s", e)
+
+
+# ============================
+#   Alert History
+# ============================
+
+def add_alert_history(source, reason, price=None, change=None):
+    ALERTS_HISTORY.append(
+        {
+            "time": datetime.utcnow().isoformat(timespec="seconds"),
+            "source": source,
+            "reason": reason,
+            "price": price,
+            "change": change,
+        }
+    )
+    # نخلى العدد مايزدش عن 200
+    if len(ALERTS_HISTORY) > 200:
+        ALERTS_HISTORY.pop(0)
+
+
+# ============================
+#   Auth Checker للوحة التحكم
+# ============================
+
+def check_admin_auth(req):
+    token = req.args.get("token") or req.headers.get("X-Admin-Token")
+    return str(token) == str(ADMIN_CHAT_ID)
