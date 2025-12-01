@@ -1,4 +1,3 @@
-# bot.py
 import time
 from datetime import datetime
 
@@ -24,17 +23,16 @@ from analysis_engine import (
     format_weekly_ai_report,
     get_market_metrics_cached,
     evaluate_risk_level,
-    detect_alert_condition,
     _risk_level_ar,
 )
 import services
 
 app = Flask(__name__)
 
-
 # ==============================
 #   مسارات أساسية / Webhook
 # ==============================
+
 
 @app.route("/", methods=["GET"])
 def index():
@@ -86,6 +84,7 @@ def webhook():
     text = (msg.get("text") or "").strip()
     lower_text = text.lower()
 
+    # حفظ الشات عشان التحذيرات توصل لكل المستخدمين
     try:
         config.KNOWN_CHAT_IDS.add(chat_id)
     except Exception:
@@ -96,20 +95,22 @@ def webhook():
         welcome = (
             "👋 أهلاً بك فى <b>IN CRYPTO Ai</b>.\n\n"
             "استخدم الأوامر التالية:\n"
-            "• <code>/btc</code> — تحليل BTC\n"
-            "• <code>/vai</code> — تحليل VAI (لو متاحة على Binance/KuCoin)\n"
+            "• <code>/btc</code> — تحليل البيتكوين\n"
+            "• <code>/vai</code> — تحليل VAI\n"
             "• <code>/coin btc</code> — تحليل أى عملة\n\n"
             "تحليل السوق:\n"
-            "• <code>/market</code> — نظرة عامة\n"
-            "• <code>/risk_test</code> — اختبار مخاطر\n"
-            "• <code>/alert</code> — تحذير كامل (للأدمن فقط)\n\n"
+            "• <code>/market</code> — نظرة عامة على السوق\n"
+            "• <code>/risk_test</code> — اختبار مستوى المخاطر\n"
+            "• <code>/alert</code> — تحذير فورى (للأدمن فقط)\n\n"
             "النظام يجلب البيانات أولاً من Binance ثم KuCoin تلقائيًا."
         )
         send_message(chat_id, welcome)
         return jsonify(ok=True)
 
     if lower_text == "/btc":
-        reply = services.get_cached_response("btc_analysis", lambda: format_analysis("BTCUSDT"))
+        reply = services.get_cached_response(
+            "btc_analysis", lambda: format_analysis("BTCUSDT")
+        )
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
@@ -129,6 +130,7 @@ def webhook():
         return jsonify(ok=True)
 
     if lower_text == "/alert":
+        # أمر يدوى للأدمن – يستخدم نفس نص التحذير الذكى ولكن بدون فلترة
         if chat_id != config.ADMIN_CHAT_ID:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
@@ -136,12 +138,7 @@ def webhook():
         alert_text = services.get_cached_response("alert_text", format_ai_alert)
         keyboard = {
             "inline_keyboard": [
-                [
-                    {
-                        "text": "عرض التفاصيل 📊",
-                        "callback_data": "alert_details",
-                    }
-                ]
+                [{"text": "عرض التفاصيل 📊", "callback_data": "alert_details"}]
             ]
         }
         send_message_with_keyboard(chat_id, alert_text, keyboard)
@@ -169,7 +166,9 @@ def webhook():
             change = metrics["change_pct"]
             vol = metrics["volatility_score"]
             risk = evaluate_risk_level(change, vol)
-            risk_text = f"{risk['emoji']} {_risk_level_ar(risk['level'])}" if risk else "N/A"
+            risk_text = (
+                f"{risk['emoji']} {_risk_level_ar(risk['level'])}" if risk else "N/A"
+            )
         else:
             risk_text = "N/A"
 
@@ -195,77 +194,26 @@ def webhook():
     # رد افتراضى
     send_message(
         chat_id,
-        "⚙️ اكتب /start لعرض الأوامر.\nمثال: <code>/btc</code> أو <code>/coin btc</code>."
+        "⚙️ اكتب /start لعرض الأوامر المتاحة.\nمثال: <code>/btc</code> أو <code>/coin btc</code>.",
     )
     return jsonify(ok=True)
 
 
 # ==============================
-#   /auto_alert (للدashboard أو cron خارجى)
+#   /auto_alert  (يُستخدم مع cron أو يدوى)
 # ==============================
+
 
 @app.route("/auto_alert", methods=["GET"])
 def auto_alert():
-    metrics = get_market_metrics_cached()
-    if not metrics:
-        config.logger.warning("auto_alert: cannot fetch metrics")
-        config.LAST_AUTO_ALERT_INFO = {
-            "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": "metrics_failed",
-            "sent": False,
-        }
-        return jsonify(ok=False, alert_sent=False, reason="metrics_failed"), 200
-
-    risk = evaluate_risk_level(
-        metrics["change_pct"], metrics["volatility_score"]
-    )
-    reason = detect_alert_condition(metrics, risk)
-
-    if not reason:
-        if config.LAST_ALERT_REASON is not None:
-            config.logger.info("auto_alert: market normal again → reset alert state.")
-        config.LAST_ALERT_REASON = None
-        config.LAST_AUTO_ALERT_INFO = {
-            "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": "no_alert",
-            "sent": False,
-        }
-        return jsonify(ok=True, alert_sent=False, reason="no_alert"), 200
-
-    if reason == config.LAST_ALERT_REASON:
-        config.logger.info("auto_alert: skipped (same reason).")
-        config.LAST_AUTO_ALERT_INFO = {
-            "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": "duplicate",
-            "sent": False,
-        }
-        return jsonify(ok=True, alert_sent=False, reason="duplicate"), 200
-
-    alert_text = format_ai_alert()
-    silent = risk["level"] != "high"
-    send_message(config.ADMIN_CHAT_ID, alert_text, silent=silent)
-
-    config.LAST_ALERT_REASON = reason
-    config.LAST_AUTO_ALERT_INFO = {
-        "time": datetime.utcnow().isoformat(timespec="seconds"),
-        "reason": reason,
-        "sent": True,
-    }
-    config.logger.info("auto_alert: NEW alert sent! reason=%s", reason)
-
-    add_alert_history(
-        "auto",
-        reason,
-        price=metrics["price"],
-        change=metrics["change_pct"],
-    )
-
-    return jsonify(ok=True, alert_sent=True, reason="sent"), 200
+    result = services.maybe_send_market_alert(source="cron")
+    return jsonify(result), 200
 
 
 # ==============================
 #   مسارات اختبار / Admin / Dashboard
 # ==============================
+
 
 @app.route("/test_alert", methods=["GET"])
 def test_alert():
@@ -290,9 +238,7 @@ def dashboard_api():
     if not metrics:
         return jsonify(ok=False, error="metrics_failed"), 200
 
-    risk = evaluate_risk_level(
-        metrics["change_pct"], metrics["volatility_score"]
-    )
+    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
 
     return jsonify(
         ok=True,
@@ -344,10 +290,7 @@ def admin_alerts_history():
     if not check_admin_auth(request):
         return jsonify(ok=False, error="unauthorized"), 401
 
-    return jsonify(
-        ok=True,
-        alerts=list(config.ALERTS_HISTORY),
-    )
+    return jsonify(ok=True, alerts=list(config.ALERTS_HISTORY))
 
 
 @app.route("/admin/clear_alerts", methods=["GET"])
@@ -401,9 +344,13 @@ def admin_weekly_ai_test():
     send_message(config.ADMIN_CHAT_ID, report)
     config.logger.info("Admin requested weekly AI report test.")
     return jsonify(
-        ok=True,
-        message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط.",
+        ok=True, message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط."
     )
+
+
+# ==============================
+#   /status API (للمراقبة)
+# ==============================
 
 
 @app.route("/status", methods=["GET"])
@@ -431,6 +378,7 @@ def status_api():
 #       تفعيل الـ Webhook
 # ==============================
 
+
 def setup_webhook():
     webhook_url = f"{config.APP_BASE_URL}/webhook"
     try:
@@ -447,6 +395,7 @@ def setup_webhook():
 # =====================================
 # تشغيل البوت — Main Runner
 # =====================================
+
 
 if __name__ == "__main__":
     try:
