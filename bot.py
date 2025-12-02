@@ -25,7 +25,7 @@ from analysis_engine import (
     get_market_metrics_cached,
     evaluate_risk_level,
     detect_alert_condition,
-    compute_smart_market_snapshot,  # ✅ جديد: Snapshot لـ Smart Alert
+    compute_smart_market_snapshot,  # Snapshot لـ Smart Alert
 )
 import services
 
@@ -98,7 +98,6 @@ def _format_smart_snapshot(snapshot: dict, title: str) -> str:
     risk_level = risk.get("level")
     risk_emoji = risk.get("emoji", "")
     try:
-        # هيتم استيراد _risk_level_ar تحت، التنفيذ هنا وقت النداء مش وقت تعريف الفنكشن
         from analysis_engine import _risk_level_ar as _rl_txt
         risk_text = _rl_txt(risk_level) if risk_level else "غير معروف"
     except Exception:
@@ -344,15 +343,12 @@ def webhook():
             )
             return jsonify(ok=True)
 
-        # كارت Debug
         msg_mock = _format_smart_snapshot(snapshot, "Smart Alert — MOCK / DEBUG")
-        # كارت Live
         msg_real = _format_smart_snapshot(snapshot, "Smart Alert — LIVE SNAPSHOT")
 
         send_message(chat_id, msg_mock)
         send_message(chat_id, msg_real)
 
-        # تسجيل فى History كمعلومة أن فى Test اتبعت
         metrics = snapshot.get("metrics") or {}
         add_alert_history(
             "smart_test",
@@ -379,13 +375,12 @@ def webhook():
         return jsonify(ok=True)
 
     if lower_text == "/status":
-        # أمر بسيط يرد بحالة سريعة
         metrics = get_market_metrics_cached()
         if metrics:
             change = metrics["change_pct"]
             vol = metrics["volatility_score"]
             risk = evaluate_risk_level(change, vol)
-            from analysis_engine import _risk_level_ar as _rl_txt  # import محلى خفيف
+            from analysis_engine import _risk_level_ar as _rl_txt
             risk_text = (
                 f"{risk['emoji']} {_rl_txt(risk['level'])}" if risk else "N/A"
             )
@@ -411,7 +406,6 @@ def webhook():
         send_message(chat_id, msg_status)
         return jsonify(ok=True)
 
-    # لو مفيش أى أمر معروف
     return jsonify(ok=True)
 
 
@@ -421,10 +415,6 @@ def webhook():
 
 @app.route("/auto_alert", methods=["GET"])
 def auto_alert():
-    """
-    Endpoint يشتغل مع الـ scheduler فى services.py لإرسال تحذير ذكى تلقائى
-    عندما تتحقق شروط معينة من حركة البيتكوين.
-    """
     metrics = get_market_metrics_cached()
     if not metrics:
         config.logger.warning("auto_alert: metrics is None")
@@ -434,7 +424,6 @@ def auto_alert():
 
     reason = detect_alert_condition(metrics, risk)
     if not reason:
-        # لا يوجد سبب كافى لإرسال تنبيه جديد
         config.logger.info("auto_alert: no condition met.")
         config.LAST_AUTO_ALERT_INFO = {
             "time": datetime.utcnow().isoformat(timespec="seconds"),
@@ -443,7 +432,6 @@ def auto_alert():
         }
         return jsonify(ok=True, alert_sent=False, reason="no_condition"), 200
 
-    # لو نفس السبب اتبعت قريب نتجنب التكرار
     if config.LAST_ALERT_REASON == reason:
         config.logger.info("auto_alert: same reason as last alert, skip.")
         config.LAST_AUTO_ALERT_INFO = {
@@ -456,7 +444,6 @@ def auto_alert():
             200,
         )
 
-    # إرسال التحذير للأدمن فقط (حاليًا)
     text = format_ai_alert()
     send_message(config.ADMIN_CHAT_ID, text)
 
@@ -691,6 +678,12 @@ if __name__ == "__main__":
         services.start_realtime_thread()
     except Exception as e:
         config.logger.exception("Failed to start realtime engine thread: %s", e)
+
+    # ✅ جديد: تشغيل Smart Alert Loop تلقائياً
+    try:
+        services.start_smart_alert_thread()
+    except Exception as e:
+        config.logger.exception("Failed to start smart alert thread: %s", e)
 
     try:
         services.start_watchdog_thread()
