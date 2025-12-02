@@ -25,10 +25,180 @@ from analysis_engine import (
     get_market_metrics_cached,
     evaluate_risk_level,
     detect_alert_condition,
+    compute_smart_market_snapshot,  # ✅ جديد: Snapshot لـ Smart Alert
 )
 import services
 
 app = Flask(__name__)
+
+
+# ==============================
+#   Helpers صغيرة لـ Smart Alert Test
+# ==============================
+
+def _fmt_price(v):
+    try:
+        if v is None:
+            return "-"
+        return f"{float(v):,.2f}"
+    except Exception:
+        return str(v)
+
+
+def _fmt_pct(v):
+    try:
+        if v is None:
+            return "-"
+        return f"{float(v):+.2f}%"
+    except Exception:
+        return str(v)
+
+
+def _fmt_num(v):
+    try:
+        if v is None:
+            return "-"
+        return f"{float(v):.2f}"
+    except Exception:
+        return str(v)
+
+
+def _fmt_secs(v):
+    try:
+        if v is None:
+            return "-"
+        v = float(v)
+        if v < 1:
+            return f"{v:.2f} ثانية"
+        return f"{v:.1f} ثانية"
+    except Exception:
+        return str(v) if v is not None else "-"
+
+
+def _format_smart_snapshot(snapshot: dict, title: str) -> str:
+    """
+    تنسيق Snapshot الذكى فى رسالة قصيرة للأدمن.
+    ما بيغيرش أى حاجة فى المنطق، كله قراءة من dict فقط.
+    """
+    metrics = snapshot.get("metrics") or {}
+    risk = snapshot.get("risk") or {}
+    pulse = snapshot.get("pulse") or {}
+    events = snapshot.get("events") or {}
+    alert_level = snapshot.get("alert_level") or {}
+    zones = snapshot.get("zones") or {}
+    interval = snapshot.get("adaptive_interval")
+
+    price = metrics.get("price")
+    change = metrics.get("change_pct")
+    range_pct = metrics.get("range_pct")
+    vol = metrics.get("volatility_score")
+    strength_label = metrics.get("strength_label")
+    liquidity_pulse = metrics.get("liquidity_pulse")
+
+    risk_level = risk.get("level")
+    risk_emoji = risk.get("emoji", "")
+    try:
+        # هيتم استيراد _risk_level_ar تحت، التنفيذ هنا وقت النداء مش وقت تعريف الفنكشن
+        from analysis_engine import _risk_level_ar as _rl_txt
+        risk_text = _rl_txt(risk_level) if risk_level else "غير معروف"
+    except Exception:
+        risk_text = "غير معروف"
+
+    regime = pulse.get("regime")
+    speed_index = pulse.get("speed_index")
+    direction_conf = pulse.get("direction_confidence")
+
+    shock_score = alert_level.get("shock_score")
+    level = alert_level.get("level")
+    trend_bias = alert_level.get("trend_bias")
+
+    active_labels = events.get("active_labels") or []
+
+    scenario = zones.get("dominant_scenario")
+    downside_1 = zones.get("downside_zone_1")
+    downside_2 = zones.get("downside_zone_2")
+    upside_1 = zones.get("upside_zone_1")
+    upside_2 = zones.get("upside_zone_2")
+
+    lines: list[str] = []
+
+    lines.append(f"🧪 <b>{title}</b>")
+    lines.append("")
+
+    if price is not None:
+        lines.append(
+            f"• السعر الآن: <b>${_fmt_price(price)}</b> ({_fmt_pct(change)})"
+        )
+    else:
+        lines.append("• السعر الآن: غير متوفر")
+
+    lines.append(
+        f"• مدى اليوم ≈ {_fmt_num(range_pct)}٪ / التقلب ≈ {_fmt_num(vol)} / 100"
+    )
+    lines.append(
+        f"• قوة السوق: {strength_label or '-'} / نبض السيولة: {liquidity_pulse or '-'}"
+    )
+    lines.append(
+        f"• وضع التقلب: {regime or '-'} / سرعة الحركة ≈ {_fmt_num(speed_index)} / 100"
+    )
+    if direction_conf is not None:
+        lines.append(f"• ثقة اتجاه قصير المدى ≈ {_fmt_num(direction_conf)} / 100")
+
+    lines.append(
+        f"• مستوى المخاطر: {risk_emoji} {risk_text} (score ≈ {_fmt_num(risk.get('score'))})"
+    )
+
+    lines.append("")
+    lines.append(
+        f"• Smart Alert Level: {(str(level).upper() if level else 'NONE')} "
+        f"/ Shock Score ≈ {_fmt_num(shock_score)} / 100"
+    )
+    if trend_bias:
+        lines.append(f"• اتجاه قصير المدى: {trend_bias}")
+
+    if active_labels:
+        labels_text = ", ".join(active_labels)
+        lines.append(f"• أحداث نشطة: {labels_text}")
+    else:
+        lines.append("• لا توجد أحداث مؤسسية قوية جدًا حاليًا حسب Smart Pulse.")
+
+    if interval is not None:
+        lines.append(f"• الفحص التالى المقترح بعد: {_fmt_secs(interval)}")
+
+    # مناطق تقديرية "نازلين لفين / طالعين لفين"
+    if any([downside_1, downside_2, upside_1, upside_2]):
+        lines.append("")
+        lines.append("• مناطق حركة تقديرية (تعليمية فقط):")
+
+        def _zone_line(label: str, z):
+            if not z or len(z) != 2:
+                return None
+            low, high = z
+            try:
+                return (
+                    f"  - {label}: تقريبًا بين "
+                    f"<b>{float(low):,.0f}$</b> و <b>{float(high):,.0f}$</b>"
+                )
+            except Exception:
+                return None
+
+        z1 = _zone_line("منطقة هبوط 1", downside_1)
+        z2 = _zone_line("منطقة هبوط 2", downside_2)
+        u1 = _zone_line("منطقة صعود 1", upside_1)
+        u2 = _zone_line("منطقة صعود 2", upside_2)
+
+        for ln in (z1, z2, u1, u2):
+            if ln:
+                lines.append(ln)
+
+    reason = snapshot.get("reason")
+    if reason:
+        lines.append("")
+        lines.append("📌 <b>ملخص سريع من Smart Alert:</b>")
+        lines.append(reason)
+
+    return "\n".join(lines)
+
 
 # ==============================
 #   مسارات أساسية / Webhook
@@ -107,7 +277,9 @@ def webhook():
         return jsonify(ok=True)
 
     if lower_text == "/btc":
-        reply = services.get_cached_response("btc_analysis", lambda: format_analysis("BTCUSDT"))
+        reply = services.get_cached_response(
+            "btc_analysis", lambda: format_analysis("BTCUSDT")
+        )
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
@@ -146,6 +318,51 @@ def webhook():
         add_alert_history("manual", "Manual /alert command")
         return jsonify(ok=True)
 
+    # ==============================
+    #   /test_smart — تشخيص Smart Alert (للأدمن فقط)
+    # ==============================
+    if lower_text == "/test_smart":
+        if chat_id != config.ADMIN_CHAT_ID:
+            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
+            return jsonify(ok=True)
+
+        try:
+            snapshot = compute_smart_market_snapshot()
+        except Exception as e:
+            config.logger.exception("Error in /test_smart snapshot: %s", e)
+            send_message(
+                chat_id,
+                "⚠️ حدث خطأ أثناء بناء Smart Alert Snapshot.\n"
+                "راجع لوحة التحكم / اللوج لمزيد من التفاصيل.",
+            )
+            return jsonify(ok=True)
+
+        if not snapshot:
+            send_message(
+                chat_id,
+                "⚠️ لم أستطع بناء Snapshot للسوق حالياً (قد تكون مشكلة بيانات أو API).",
+            )
+            return jsonify(ok=True)
+
+        # كارت Debug
+        msg_mock = _format_smart_snapshot(snapshot, "Smart Alert — MOCK / DEBUG")
+        # كارت Live
+        msg_real = _format_smart_snapshot(snapshot, "Smart Alert — LIVE SNAPSHOT")
+
+        send_message(chat_id, msg_mock)
+        send_message(chat_id, msg_real)
+
+        # تسجيل فى History كمعلومة أن فى Test اتبعت
+        metrics = snapshot.get("metrics") or {}
+        add_alert_history(
+            "smart_test",
+            "Manual /test_smart snapshot",
+            price=metrics.get("price"),
+            change=metrics.get("change_pct"),
+        )
+
+        return jsonify(ok=True)
+
     if lower_text.startswith("/coin"):
         parts = lower_text.split()
         if len(parts) < 2:
@@ -168,7 +385,10 @@ def webhook():
             change = metrics["change_pct"]
             vol = metrics["volatility_score"]
             risk = evaluate_risk_level(change, vol)
-            risk_text = f"{risk['emoji']} {_risk_level_ar(risk['level'])}" if risk else "N/A"
+            from analysis_engine import _risk_level_ar as _rl_txt  # import محلى خفيف
+            risk_text = (
+                f"{risk['emoji']} {_rl_txt(risk['level'])}" if risk else "N/A"
+            )
         else:
             risk_text = "N/A"
 
@@ -191,57 +411,54 @@ def webhook():
         send_message(chat_id, msg_status)
         return jsonify(ok=True)
 
-    send_message(
-        chat_id,
-        "⚙️ اكتب /start لعرض الأوامر.\nمثال: <code>/btc</code> أو <code>/coin btc</code>."
-    )
+    # لو مفيش أى أمر معروف
     return jsonify(ok=True)
 
+
 # ==============================
-#   /auto_alert
+#   /auto_alert Endpoint
 # ==============================
 
 @app.route("/auto_alert", methods=["GET"])
 def auto_alert():
+    """
+    Endpoint يشتغل مع الـ scheduler فى services.py لإرسال تحذير ذكى تلقائى
+    عندما تتحقق شروط معينة من حركة البيتكوين.
+    """
     metrics = get_market_metrics_cached()
     if not metrics:
-        config.logger.warning("auto_alert: cannot fetch metrics")
-        config.LAST_AUTO_ALERT_INFO = {
-            "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": "metrics_failed",
-            "sent": False,
-        }
-        return jsonify(ok=False, alert_sent=False, reason="metrics_failed"), 200
+        config.logger.warning("auto_alert: metrics is None")
+        return jsonify(ok=False, error="metrics_failed"), 200
 
-    risk = evaluate_risk_level(
-        metrics["change_pct"], metrics["volatility_score"]
-    )
+    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
+
     reason = detect_alert_condition(metrics, risk)
-
     if not reason:
-        if config.LAST_ALERT_REASON is not None:
-            config.logger.info("auto_alert: market normal again → reset alert state.")
-        config.LAST_ALERT_REASON = None
+        # لا يوجد سبب كافى لإرسال تنبيه جديد
+        config.logger.info("auto_alert: no condition met.")
         config.LAST_AUTO_ALERT_INFO = {
             "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": "no_alert",
+            "reason": "no_condition",
             "sent": False,
         }
-        return jsonify(ok=True, alert_sent=False, reason="no_alert"), 200
+        return jsonify(ok=True, alert_sent=False, reason="no_condition"), 200
 
-    if reason == config.LAST_ALERT_REASON:
-        config.logger.info("auto_alert: skipped (same reason).")
+    # لو نفس السبب اتبعت قريب نتجنب التكرار
+    if config.LAST_ALERT_REASON == reason:
+        config.logger.info("auto_alert: same reason as last alert, skip.")
         config.LAST_AUTO_ALERT_INFO = {
             "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": "duplicate",
+            "reason": "duplicate_reason",
             "sent": False,
         }
-        return jsonify(ok=True, alert_sent=False, reason="duplicate"), 200
+        return (
+            jsonify(ok=True, alert_sent=False, reason="duplicate_reason"),
+            200,
+        )
 
-    alert_text = format_ai_alert()
-    # 🔕 Silent Alert لو المخاطر مش High
-    silent = risk["level"] != "high"
-    send_message(config.ADMIN_CHAT_ID, alert_text, silent=silent)
+    # إرسال التحذير للأدمن فقط (حاليًا)
+    text = format_ai_alert()
+    send_message(config.ADMIN_CHAT_ID, text)
 
     config.LAST_ALERT_REASON = reason
     config.LAST_AUTO_ALERT_INFO = {
@@ -259,6 +476,7 @@ def auto_alert():
     )
 
     return jsonify(ok=True, alert_sent=True, reason="sent"), 200
+
 
 # ==============================
 #   مسارات اختبار / Admin / Dashboard
@@ -291,6 +509,8 @@ def dashboard_api():
         metrics["change_pct"], metrics["volatility_score"]
     )
 
+    from analysis_engine import _risk_level_ar as _rl_txt
+
     return jsonify(
         ok=True,
         price=metrics["price"],
@@ -299,7 +519,7 @@ def dashboard_api():
         volatility_score=metrics["volatility_score"],
         strength_label=metrics["strength_label"],
         liquidity_pulse=metrics["liquidity_pulse"],
-        risk_level=_risk_level_ar(risk["level"]),
+        risk_level=_rl_txt(risk["level"]),
         risk_emoji=risk["emoji"],
         risk_message=risk["message"],
         last_auto_alert=config.LAST_AUTO_ALERT_INFO,
@@ -402,6 +622,7 @@ def admin_weekly_ai_test():
         message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط.",
     )
 
+
 # ==============================
 #   /status API (للإدارة أو للمراقبة)
 # ==============================
@@ -426,6 +647,7 @@ def status_api():
         threads=threads,
     )
 
+
 # ==============================
 #       تفعيل الـ Webhook
 # ==============================
@@ -442,11 +664,6 @@ def setup_webhook():
     except Exception as e:
         config.logger.exception("Error while setting webhook: %s", e)
 
-# ==============================
-#   Helper: Risk level text (dashboard_usage)
-# ==============================
-
-from analysis_engine import _risk_level_ar  # for /status & dashboard_api
 
 # =====================================
 # تشغيل البوت — Main Runner
