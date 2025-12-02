@@ -329,33 +329,6 @@ def fusion_ai_brain(metrics: dict, risk: dict) -> dict:
         smc_view = "لا توجد علامة حاسمة على تجميع أو توزيع، الحركة أقرب لتوازن مؤقت."
 
     if vol < 20 and abs(change) < 1:
-        wyckoff_phase = "المرحلة الحالية تشبه Range / إعادة تجميع جانبى."
-    elif vol >= 60 and abs(change) >= 3:
-        wyckoff_phase = "مرحلة اندفاع (Impulse) عالية التقلب، حركة حادة فى الاتجاه."
-    elif bias.startswith("bullish"):
-        wyckoff_phase = "السوق يحتمل أنه فى Phase صاعد (Mark-Up) أو انتقال صاعد."
-    elif bias.startswith("bearish"):
-        wyckoff_phase = "السوق أقرب لمرحلة هبوط / تصحيح ممتد (Mark-Down)."
-    else:
-        wyckoff_phase = "مرحلة انتقالية بين الصعود والهبوط بدون اتجاه كامل."
-
-    if risk_level == "high":
-        risk_comment = (
-            "مستوى المخاطر مرتفع، أى قرارات بدون خطة صارمة ومحددات وقف خسارة واضحة "
-            "قد تكون مكلفة على المدى القصير."
-        )
-    elif risk_level == "medium":
-        risk_comment = (
-            "المخاطر متوسطة، يمكن العمل لكن بأحجام عقود محسوبة "
-            "والالتزام التام بإدارة رأس المال."
-        )
-    else:
-        risk_comment = (
-            "المخاطر حاليًا أقرب للنطاق المنخفض، لكن يبقى الانضباط "
-            "فى إدارة الصفقات أمرًا أساسيًا."
-        )
-
-    if abs(change) < 1 and vol < 25:
         p_up, p_side, p_down = 30, 55, 15
     elif bias.startswith("strong_bullish") and vol <= 55:
         p_up, p_side, p_down = 55, 30, 15
@@ -408,6 +381,492 @@ def _shrink_text_preserve_content(text: str, limit: int = 4000) -> str:
         text = text.replace(" \n", "\n")
 
     return text
+
+# ==============================
+#   Institutional Smart Pulse Engine
+#   (مرحلة C — أقصى مستوى داخل الخطة المجانية)
+# ==============================
+
+def _compute_volatility_regime(volatility_score: float, range_pct: float) -> str:
+    """
+    تصنيف وضع التقلب الحالى إلى:
+    calm / normal / expansion / explosion
+    """
+    if volatility_score < 20 and range_pct < 3:
+        return "calm"
+    if volatility_score < 40 and range_pct < 5:
+        return "normal"
+    if volatility_score < 70 and range_pct < 8:
+        return "expansion"
+    return "explosion"
+
+
+def update_market_pulse(metrics: dict) -> dict:
+    """
+    تحديث نبض السوق وتخزين آخر القراءات فى PULSE_HISTORY داخل config،
+    مع حساب سرعة الحركة، التسارع، وثقة الاتجاه.
+    هذه الدالة لا ترسل أى تنبيه، فقط تحضير بيانات للأنظمة الأعلى.
+    """
+    price = metrics["price"]
+    change = metrics["change_pct"]
+    range_pct = metrics["range_pct"]
+    vol = metrics["volatility_score"]
+
+    regime = _compute_volatility_regime(vol, range_pct)
+
+    # التعامل مع التاريخ المخزن فى config.PULSE_HISTORY بأمان
+    history = getattr(config, "PULSE_HISTORY", None)
+    if history is None:
+        # احتياطى: لو لسبب ما PULSE_HISTORY غير معرف، ننشئ واحد خفيف
+        from collections import deque
+        history = deque(maxlen=30)
+        config.PULSE_HISTORY = history  # type: ignore[assignment]
+
+    # snapshot قبل الإضافة للحصول على النظام السابق
+    prev_entry = history[-1] if len(history) > 0 else None
+    prev_regime = prev_entry.get("regime") if isinstance(prev_entry, dict) else None
+
+    now = time.time()
+    entry = {
+        "time": now,
+        "price": float(price),
+        "change_pct": float(change),
+        "volatility_score": float(vol),
+        "range_pct": float(range_pct),
+        "regime": regime,
+    }
+    history.append(entry)
+
+    hist_list = list(history)
+    n = len(hist_list)
+
+    # سرعة الحركة (Speed Index): متوسط التغير بين القراءات الأخيرة
+    if n >= 2:
+        diffs = [
+            abs(hist_list[i]["change_pct"] - hist_list[i - 1]["change_pct"])
+            for i in range(1, n)
+        ]
+        avg_diff = sum(diffs) / len(diffs) if diffs else 0.0
+    else:
+        avg_diff = 0.0
+
+    # تسارع الحركة (Acceleration Index): الفرق بين آخر جزء وأول جزء من السلسلة
+    if n >= 5:
+        mid = max(2, n // 2)
+        early_diffs = [
+            abs(hist_list[i]["change_pct"] - hist_list[i - 1]["change_pct"])
+            for i in range(1, mid)
+        ]
+        late_diffs = [
+            abs(hist_list[i]["change_pct"] - hist_list[i - 1]["change_pct"])
+            for i in range(mid, n)
+        ]
+        early_avg = sum(early_diffs) / len(early_diffs) if early_diffs else 0.0
+        late_avg = sum(late_diffs) / len(late_diffs) if late_diffs else 0.0
+        accel = late_avg - early_avg
+    else:
+        accel = 0.0
+
+    # ثقة الاتجاه: نسبة القراءات الأخيرة فى نفس اتجاه التغير الحالى
+    if n >= 3:
+        recent = hist_list[-6:] if n >= 6 else hist_list
+        same_sign_count = 0
+        total = len(recent)
+        for e in recent:
+            c = e["change_pct"]
+            if change > 0 and c > 0:
+                same_sign_count += 1
+            elif change < 0 and c < 0:
+                same_sign_count += 1
+        direction_confidence = (same_sign_count / total) * 100.0 if total else 0.0
+    else:
+        direction_confidence = 0.0
+
+    # تقليم القيم لمقياس 0–100
+    speed_index = max(0.0, min(100.0, avg_diff * 8.0))
+    accel_index = max(-100.0, min(100.0, accel * 10.0))
+
+    pulse = {
+        "time": now,
+        "price": price,
+        "change_pct": change,
+        "volatility_score": vol,
+        "range_pct": range_pct,
+        "regime": regime,
+        "prev_regime": prev_regime,
+        "speed_index": speed_index,
+        "accel_index": accel_index,
+        "direction_confidence": direction_confidence,
+        "history_len": n,
+    }
+
+    return pulse
+
+
+def detect_institutional_events(pulse: dict, metrics: dict, risk: dict) -> dict:
+    """
+    كشف الأحداث "المؤسسية" الأساسية على حسب نبض السوق والمخاطر الحالية.
+    لا ترجع نصوص، فقط إشارات منطقية (Booleans) + قائمة بأسماء الأحداث النشطة.
+    """
+    change = metrics["change_pct"]
+    range_pct = metrics["range_pct"]
+    vol = metrics["volatility_score"]
+    risk_level = risk["level"]
+
+    speed = pulse["speed_index"]
+    accel = pulse["accel_index"]
+    regime = pulse["regime"]
+    prev_regime = pulse.get("prev_regime")
+
+    events = {
+        "vol_explosion": False,
+        "momentum_spike_down": False,
+        "momentum_spike_up": False,
+        "panic_drop": False,
+        "liquidity_shock": False,
+        "regime_switch": False,
+    }
+
+    # انفجار فى التقلب
+    if regime == "explosion" or vol >= 75 or range_pct >= 8:
+        events["vol_explosion"] = True
+
+    # Momentum Spike لأعلى/لأسفل
+    if abs(change) >= 2.5 and speed >= 35:
+        if change > 0:
+            events["momentum_spike_up"] = True
+        else:
+            events["momentum_spike_down"] = True
+
+    # Panic Drop – هبوط حاد مع تقلب وخطر مرتفع
+    if change <= -4 and (vol >= 55 or risk_level == "high"):
+        events["panic_drop"] = True
+
+    # Liquidity Shock – خروج سيولة عنيف تقريباً
+    # تقريبية بناء على range + حركة اليوم
+    if change <= -2.5 and range_pct >= 6 and vol >= 45:
+        events["liquidity_shock"] = True
+
+    # Regime Switch – انتقال واضح بين أوضاع التقلب
+    if prev_regime and prev_regime != regime:
+        events["regime_switch"] = True
+
+    active_labels: list[str] = []
+    if events["vol_explosion"]:
+        active_labels.append("انفجار فى التقلب اليومى")
+    if events["momentum_spike_down"]:
+        active_labels.append("هبوط سريع (Momentum Spike Down)")
+    if events["momentum_spike_up"]:
+        active_labels.append("اندفاع صاعد قوى (Momentum Spike Up)")
+    if events["panic_drop"]:
+        active_labels.append("هبوط حاد يشبه Panic Drop")
+    if events["liquidity_shock"]:
+        active_labels.append("صدمة سيولة (Liquidity Shock)")
+    if events["regime_switch"]:
+        active_labels.append("تحول فى نمط السوق (Regime Switch)")
+
+    events["active_labels"] = active_labels
+    events["active_count"] = len(active_labels)
+    return events
+
+
+def classify_alert_level(
+    metrics: dict,
+    risk: dict,
+    pulse: dict,
+    events: dict,
+) -> dict:
+    """
+    يحسب Shock Score (0–100) ومستوى التحذير:
+    low / medium / high / critical
+    """
+    change = metrics["change_pct"]
+    range_pct = metrics["range_pct"]
+    vol = metrics["volatility_score"]
+
+    speed = pulse["speed_index"]
+    accel = pulse["accel_index"]
+    direction_conf = pulse["direction_confidence"]
+    risk_level = risk["level"]
+
+    shock_score = 0.0
+
+    # مساهمة من التقلب والمدى
+    shock_score += min(40.0, vol * 0.4)
+    shock_score += min(20.0, max(0.0, range_pct - 3.0) * 1.2)
+
+    # مساهمة من التغير اليومى وسرعة الحركة
+    shock_score += min(20.0, abs(change) * 2.0)
+    shock_score += min(10.0, speed * 0.25)
+
+    # تسارع عالى فى نفس اتجاه الهبوط يزيد الدرجة
+    if change < 0 and accel > 0:
+        shock_score += min(10.0, accel * 0.5)
+
+    # المخاطر العامة
+    if risk_level == "high":
+        shock_score += 10.0
+    elif risk_level == "medium":
+        shock_score += 5.0
+
+    # الأحداث المؤسسية
+    if events.get("vol_explosion"):
+        shock_score += 10.0
+    if events.get("panic_drop"):
+        shock_score += 15.0
+    if events.get("liquidity_shock"):
+        shock_score += 10.0
+    if events.get("regime_switch"):
+        shock_score += 5.0
+
+    # تقليم
+    shock_score = max(0.0, min(100.0, shock_score))
+
+    # تحديد المستوى
+    if shock_score >= 80 or events.get("panic_drop"):
+        level = "critical"
+    elif shock_score >= 60:
+        level = "high"
+    elif shock_score >= 40:
+        level = "medium"
+    elif shock_score >= 20:
+        level = "low"
+    else:
+        level = None  # لا يتم إرسال تحذير ذكى فى هذه الحالة
+
+    # ثقة الاتجاه مفيدة لو الهبوط ثابت
+    trend_bias = "neutral"
+    if direction_conf >= 65 and change < 0:
+        trend_bias = "down_strong"
+    elif direction_conf >= 65 and change > 0:
+        trend_bias = "up_strong"
+    elif 45 <= direction_conf < 65 and change != 0:
+        trend_bias = "directional_soft"
+
+    return {
+        "level": level,
+        "shock_score": round(shock_score, 1),
+        "trend_bias": trend_bias,
+    }
+
+
+def compute_potential_zones(metrics: dict, pulse: dict, risk: dict) -> dict:
+    """
+    يحسب مناطق تقريبية محتملة للهبوط/الصعود (مش مستويات سحرية، بل نطاقات تقديرية)،
+    لتستخدم فى رسائل التحذير (نازلين لفين / طالعين لفين).
+    """
+    price = metrics["price"]
+    high = metrics["high"]
+    low = metrics["low"]
+    change = metrics["change_pct"]
+    range_abs = max(0.0, high - low)
+
+    # لو البيانات غير منطقية نستخدم مدى افتراضى صغير
+    if range_abs <= 0:
+        range_abs = price * 0.02  # 2%
+
+    # مدى أساسى للاستخدام
+    base_range = range_abs
+
+    # لو التقلب عالى جداً نوسع النطاق
+    vol = metrics["volatility_score"]
+    if vol >= 70:
+        base_range *= 1.2
+    elif vol <= 25:
+        base_range *= 0.8
+
+    # مناطق هبوط تقديرية
+    down_zone_1_low = price - 0.25 * base_range
+    down_zone_1_high = price - 0.12 * base_range
+
+    down_zone_2_low = price - 0.60 * base_range
+    down_zone_2_high = price - 0.40 * base_range
+
+    # مناطق صعود تقديرية
+    up_zone_1_low = price + 0.12 * base_range
+    up_zone_1_high = price + 0.25 * base_range
+
+    up_zone_2_low = price + 0.40 * base_range
+    up_zone_2_high = price + 0.70 * base_range
+
+    # تحديد السيناريو الغالب
+    if change <= -2.0 or risk["level"] == "high":
+        dominant_scenario = "downside"
+    elif change >= 2.0:
+        dominant_scenario = "upside"
+    else:
+        # لو الحركة متذبذبة نعتبره نطاق جانبى
+        dominant_scenario = "balanced"
+
+    return {
+        "dominant_scenario": dominant_scenario,
+        "downside_zone_1": (round(down_zone_1_low, 2), round(down_zone_1_high, 2)),
+        "downside_zone_2": (round(down_zone_2_low, 2), round(down_zone_2_high, 2)),
+        "upside_zone_1": (round(up_zone_1_low, 2), round(up_zone_1_high, 2)),
+        "upside_zone_2": (round(up_zone_2_low, 2), round(up_zone_2_high, 2)),
+    }
+
+
+def build_smart_alert_reason(
+    metrics: dict,
+    risk: dict,
+    pulse: dict,
+    events: dict,
+    alert_level: dict,
+    zones: dict,
+) -> str:
+    """
+    يبنى نص مختصر يشرح سبب التحذير الذكى + يدمج الأحداث + المناطق المحتملة.
+    هذا النص سيُستخدم داخل ثريد التنبيهات فى services.py.
+    """
+    price = metrics["price"]
+    change = metrics["change_pct"]
+    range_pct = metrics["range_pct"]
+    vol = metrics["volatility_score"]
+
+    shock = alert_level["shock_score"]
+    level = alert_level["level"]
+    trend_bias = alert_level["trend_bias"]
+
+    active_events = events.get("active_labels", [])
+    scenario = zones["dominant_scenario"]
+
+    risk_text = _risk_level_ar(risk["level"])
+
+    # وصف الاتجاه القصير
+    if trend_bias == "down_strong":
+        trend_line = "الهبوط الحالى مدعوم بزخم هابط متماسك فى القراءات اللحظية."
+    elif trend_bias == "up_strong":
+        trend_line = "الصعود الحالى مدعوم بزخم إيجابى واضح فى القراءات اللحظية."
+    elif trend_bias == "directional_soft":
+        trend_line = "يوجد ميل اتجاهى واضح لكنه ما زال تحت الاختبار."
+    else:
+        trend_line = "قراءات الاتجاه اللحظى ما زالت متوازنة نسبيًا."
+
+    parts: list[str] = []
+
+    parts.append(
+        f"مستوى التحذير الحالى: {level.upper()} — Shock Score ~ {shock} / 100."
+    )
+    parts.append(
+        f"تغير البيتكوين خلال 24 ساعة حوالى %{change:+.2f} مع مدى يومى ≈ {range_pct:.2f}% وتقلب مقداره {vol:.1f} / 100."
+    )
+    parts.append(
+        f"مستوى المخاطر العام حسب محرك المخاطر: {risk['emoji']} {risk_text}."
+    )
+    parts.append(trend_line)
+
+    if active_events:
+        parts.append(
+            "الأحداث النشطة التى يلتقطها النظام الآن: " + " / ".join(active_events) + "."
+        )
+
+    # دمج معلومات المناطق المحتملة
+    dz1_low, dz1_high = zones["downside_zone_1"]
+    dz2_low, dz2_high = zones["downside_zone_2"]
+    uz1_low, uz1_high = zones["upside_zone_1"]
+    uz2_low, uz2_high = zones["upside_zone_2"]
+
+    if scenario in ("downside", "balanced"):
+        parts.append(
+            f"مناطق هبوط تقريبية فى حالة استمرار نفس الزخم:\n"
+            f"- منطقة أولى: {dz1_low:,.0f}$ – {dz1_high:,.0f}$\n"
+            f"- منطقة ثانية أعمق: {dz2_low:,.0f}$ – {dz2_high:,.0f}$"
+        )
+
+    if scenario in ("upside", "balanced"):
+        parts.append(
+            f"ومناطق صعود تقريبية لو تحوّل الزخم لصالح المشترين:\n"
+            f"- منطقة أولى: {uz1_low:,.0f}$ – {uz1_high:,.0f}$\n"
+            f"- منطقة ثانية: {uz2_low:,.0f}$ – {uz2_high:,.0f}$"
+        )
+
+    parts.append(
+        "هذه المستويات تقريبية تعليمية مبنية على حركة اليوم فقط، "
+        "وليست توصية مباشرة بالشراء أو البيع."
+    )
+
+    return "\n".join(parts)
+
+
+def compute_adaptive_interval(metrics: dict, pulse: dict, risk: dict) -> float:
+    """
+    يحسب الفترة المثالية بين فحوصات Smart Alert (بالثوانى)
+    داخل الحدود [SMART_ALERT_MIN_INTERVAL, SMART_ALERT_MAX_INTERVAL].
+    """
+    min_iv = getattr(config, "SMART_ALERT_MIN_INTERVAL", 1.0)
+    max_iv = getattr(config, "SMART_ALERT_MAX_INTERVAL", 5.0)
+
+    change = metrics["change_pct"]
+    vol = metrics["volatility_score"]
+    speed = pulse["speed_index"]
+
+    base_iv = max_iv
+
+    # تقليل الفترة مع زيادة التقلب والسرعة
+    if vol >= 75 or abs(change) >= 4:
+        base_iv = min_iv
+    elif vol >= 55 or abs(change) >= 2.5 or speed >= 40:
+        base_iv = min_iv + (max_iv - min_iv) * 0.25  # 25% من المسافة
+    elif vol >= 35 or abs(change) >= 1.0 or speed >= 25:
+        base_iv = min_iv + (max_iv - min_iv) * 0.5  # 50% من المسافة
+    else:
+        base_iv = max_iv
+
+    return max(min_iv, min(max_iv, base_iv))
+
+
+def compute_smart_market_snapshot() -> dict | None:
+    """
+    الدالة الرئيسية التى سيستخدمها ثريد Smart Alert فى services.py.
+    تقوم بـ:
+        - جلب بيانات السوق الحالية
+        - حساب المخاطر
+        - تحديث Pulse
+        - كشف الأحداث المؤسسية
+        - حساب مستوى التحذير + Shock Score
+        - حساب مناطق الهبوط/الصعود المحتملة
+        - حساب الفترة التكيفية التالية
+        - بناء سبب نصى مختصر للتحذير
+
+    لا ترسل رسائل ولا تتعامل مع تيليجرام مباشرة.
+    """
+    metrics = get_market_metrics_cached()
+    if not metrics:
+        return None
+
+    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
+    pulse = update_market_pulse(metrics)
+    events = detect_institutional_events(pulse, metrics, risk)
+    alert_level = classify_alert_level(metrics, risk, pulse, events)
+
+    # لو مفيش مستوى تحذير (None) → نرجع snapshot لكن من غير سبب تحذير
+    zones = compute_potential_zones(metrics, pulse, risk)
+    interval = compute_adaptive_interval(metrics, pulse, risk)
+
+    reason_text = None
+    if alert_level["level"] is not None:
+        reason_text = build_smart_alert_reason(
+            metrics,
+            risk,
+            pulse,
+            events,
+            alert_level,
+            zones,
+        )
+
+    snapshot = {
+        "metrics": metrics,
+        "risk": risk,
+        "pulse": pulse,
+        "events": events,
+        "alert_level": alert_level,
+        "zones": zones,
+        "adaptive_interval": interval,
+        "reason": reason_text,
+    }
+
+    return snapshot
 
 # ==============================
 #     صياغة رسالة التحليل للعملة /btc /coin
@@ -867,7 +1326,6 @@ def format_ai_alert_details() -> str:
 - الاتجاه: {fusion['bias_text']}
 - SMC: {fusion['smc_view']}
 - مرحلة السوق: {fusion['wyckoff_phase']}
-- تعليق المخاطر: {fusion['risk_comment']}
 - احتمالات 24–72 ساعة: صعود ~{fusion['p_up']}٪ / تماسك ~{fusion['p_side']}٪ / هبوط ~{fusion['p_down']}٪.
 
 🧠 <b>خلاصة إدارية:</b>
