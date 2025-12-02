@@ -14,6 +14,7 @@ from config import (
     HTTP_SESSION,
     TELEGRAM_API,
 )
+
 from analysis_engine import (
     format_analysis,
     format_market_report,
@@ -24,9 +25,10 @@ from analysis_engine import (
     get_market_metrics_cached,
     evaluate_risk_level,
     detect_alert_condition,
+    _risk_level_ar,
 )
+
 import services
-from analysis_engine import _risk_level_ar  # for /status & dashboard_api
 
 app = Flask(__name__)
 
@@ -44,12 +46,18 @@ def webhook():
     update = request.get_json(force=True, silent=True) or {}
     config.LAST_WEBHOOK_TICK = time.time()
 
-    if config.BOT_DEBUG:
-        config.logger.info("Update: %s", update)
-    else:
-        config.logger.debug("Update keys: %s", list(update.keys()))
+    # لوجينج مرن حسب وضع الديبج
+    try:
+        if getattr(config, "BOT_DEBUG", False):
+            config.logger.info("Update: %s", update)
+        else:
+            config.logger.debug("Update keys: %s", list(update.keys()))
+    except Exception:
+        pass
 
-    # callback_query
+    # --------------------------
+    #  callback_query
+    # --------------------------
     if "callback_query" in update:
         cq = update["callback_query"]
         callback_id = cq.get("id")
@@ -64,6 +72,7 @@ def webhook():
             answer_callback_query(callback_id)
 
         if data == "alert_details":
+            # التفاصيل المتقدمة للتحذير
             if from_id != config.ADMIN_CHAT_ID:
                 if chat_id:
                     send_message(chat_id, "❌ هذا الزر مخصص للإدارة فقط.")
@@ -75,15 +84,19 @@ def webhook():
 
         return jsonify(ok=True)
 
-    # رسائل عادية
+    # --------------------------
+    #  رسائل عادية
+    # --------------------------
     if "message" not in update:
         return jsonify(ok=True)
 
     msg = update["message"]
-    chat_id = msg["chat"]["id"]
+    chat = msg.get("chat") or {}
+    chat_id = chat.get("id")
     text = (msg.get("text") or "").strip()
     lower_text = text.lower()
 
+    # حفظ الشات فى الذاكرة علشان البث / التقارير
     try:
         config.KNOWN_CHAT_IDS.add(chat_id)
     except Exception:
@@ -93,23 +106,22 @@ def webhook():
     if lower_text == "/start":
         welcome = (
             "👋 أهلاً بك فى <b>IN CRYPTO Ai</b>.\n\n"
-            "أوامر التحليل السريعة:\n"
-            "• <code>/btc</code> — تحليل BTCUSDT\n"
-            "• <code>/vai</code> — تحليل VAIUSDT\n"
-            "• أى زوج مباشر: مثلاً <code>/btcusdt</code> أو <code>/hookusdt</code>\n\n"
-            "تحليل السوق والمخاطر:\n"
-            "• <code>/market</code> — نظرة عامة على السوق\n"
-            "• <code>/risk_test</code> — اختبار مخاطر السوق\n"
-            "• <code>/alert</code> — تحذير كامل (للأدمن فقط)\n\n"
-            "النظام يجلب البيانات أولاً من Binance ثم KuCoin تلقائيًا."
+            "استخدم الأوامر التالية:\n"
+            "• <code>/btc</code> — تحليل BTC\n"
+            "• <code>/vai</code> — تحليل VAI\n\n"
+            "تحليل السوق:\n"
+            "• <code>/market</code> — نظرة عامة على سوق البيتكوين\n"
+            "• <code>/risk_test</code> — اختبار حالة المخاطر الآن\n"
+            "• <code>/status</code> — حالة نظام البوت (للإدارة)\n"
+            "• <code>/alert</code> — إرسال تحذير يدوى (للأدمن فقط)\n\n"
+            "النظام يجلب البيانات أولاً من Binance ثم KuCoin تلقائيًا.\n"
+            "⚠️ التحذيرات التلقائية ترسل عندما يدخل السوق منطقة خطرة حسب خوارزمية الذكاء الاصطناعى."
         )
         send_message(chat_id, welcome)
         return jsonify(ok=True)
 
-    # ========= أوامر التحليل الأساسية =========
-
+    # /btc — تحليل BTCUSDT (مع كاش سريع)
     if lower_text == "/btc":
-        # نستخدم الكاش السريع من الـ realtime engine
         reply = services.get_cached_response(
             "btc_analysis",
             lambda: format_analysis("BTCUSDT"),
@@ -117,52 +129,54 @@ def webhook():
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
+    # /vai — تحليل VAIUSDT (KuCoin يدعم VAI-USDT)
     if lower_text == "/vai":
-        # تحليل VAIUSDT (مع نفس قالب التحليل الذكى)
         reply = format_analysis("VAIUSDT")
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # أى أمر بالشكل /btcusdt /hookusdt /cfxusdt ... الخ
-    # شرط: مفيش مسافات – وينتهى بـ usdt
-    if (
-        lower_text.startswith("/")
-        and " " not in lower_text
-        and lower_text.endswith("usdt")
-        and len(lower_text) > 5  # مش بس "/usdt"
-    ):
-        symbol = lower_text[1:].upper()  # نشيل "/" ونخلى كابيتال
-        try:
-            reply = format_analysis(symbol)
-            send_message(chat_id, reply)
-        except Exception as e:
-            config.logger.exception("Error in generic symbol analysis for %s: %s", symbol, e)
-            send_message(
-                chat_id,
-                "⚠️ تعذَّر جلب بيانات السوق حالياً لهذا الزوج، حاول بعد قليل.",
-            )
-        return jsonify(ok=True)
-
-    # ========= أوامر السوق والمخاطر =========
-
+    # /market — تقرير سوق البيتكوين
     if lower_text == "/market":
-        reply = services.get_cached_response("market_report", format_market_report)
+        reply = services.get_cached_response(
+            "market_report",
+            format_market_report,
+        )
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
+    # /risk_test — اختبار المخاطر
     if lower_text == "/risk_test":
-        reply = services.get_cached_response("risk_test", format_risk_test)
+        reply = services.get_cached_response(
+            "risk_test",
+            format_risk_test,
+        )
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # ========= أوامر التحذير للأدمن =========
-
+    # /alert — تحذير يدوى برو من الأدمن فقط
     if lower_text == "/alert":
         if chat_id != config.ADMIN_CHAT_ID:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
-        alert_text = services.get_cached_response("alert_text", format_ai_alert)
+        # نبنى رسالة تحذير برو من analysis_engine
+        metrics = get_market_metrics_cached()
+        risk = None
+        reason = None
+        if metrics:
+            risk = evaluate_risk_level(
+                metrics["change_pct"],
+                metrics["volatility_score"],
+            )
+            reason = detect_alert_condition(metrics, risk)
+
+        alert_text = format_ai_alert(
+            metrics=metrics,
+            risk=risk,
+            reason=reason,
+        )
+
+        # زر عرض التفاصيل
         keyboard = {
             "inline_keyboard": [
                 [
@@ -173,27 +187,31 @@ def webhook():
                 ]
             ]
         }
+
+        # نبعته للأدمن فقط (يدوى) – التحذيرات التلقائية هى اللى بتبث للجميع
         send_message_with_keyboard(chat_id, alert_text, keyboard)
-        add_alert_history("manual", "Manual /alert command")
+
+        add_alert_history("manual", "Manual /alert command by admin")
         return jsonify(ok=True)
 
-    # ========= حالة النظام /status =========
-
+    # /status — حالة النظام (ممكن تخليها للأدمن بس لو حابب)
     if lower_text == "/status":
         metrics = get_market_metrics_cached()
         if metrics:
             change = metrics["change_pct"]
             vol = metrics["volatility_score"]
             risk = evaluate_risk_level(change, vol)
-            risk_text = f"{risk['emoji']} {_risk_level_ar(risk['level'])}" if risk else "N/A"
+            risk_text = (
+                f"{risk['emoji']} {_risk_level_ar(risk['level'])}" if risk else "N/A"
+            )
         else:
             risk_text = "N/A"
 
         msg_status = f"""
 🛰 <b>حالة نظام IN CRYPTO Ai</b>
 
-• حالة Binance: {"✅" if config.API_STATUS["binance_ok"] else "⚠️"}
-• حالة KuCoin: {"✅" if config.API_STATUS["kucoin_ok"] else "⚠️"}
+• حالة Binance: {"✅" if config.API_STATUS.get("binance_ok") else "⚠️"}
+• حالة KuCoin: {"✅" if config.API_STATUS.get("kucoin_ok") else "⚠️"}
 • آخر فحص API: {config.API_STATUS.get("last_api_check")}
 
 • آخر تحديث Real-Time: {config.REALTIME_CACHE.get("last_update")}
@@ -208,77 +226,30 @@ def webhook():
         send_message(chat_id, msg_status)
         return jsonify(ok=True)
 
-    # ========= رد افتراضى =========
-
+    # رد افتراضى
     send_message(
         chat_id,
         "⚙️ اكتب /start لعرض الأوامر.\n"
-        "مثال: <code>/btc</code> أو <code>/btcusdt</code> أو <code>/vai</code>.",
+        "مثال: <code>/btc</code> أو <code>/vai</code> أو <code>/market</code>.",
     )
     return jsonify(ok=True)
 
+
 # ==============================
-#   /auto_alert
+#   /auto_alert  (Smart Trigger)
 # ==============================
 
 @app.route("/auto_alert", methods=["GET"])
 def auto_alert():
-    metrics = get_market_metrics_cached()
-    if not metrics:
-        config.logger.warning("auto_alert: cannot fetch metrics")
-        config.LAST_AUTO_ALERT_INFO = {
-            "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": "metrics_failed",
-            "sent": False,
-        }
-        return jsonify(ok=False, alert_sent=False, reason="metrics_failed"), 200
+    """
+    دى اللى يستدعيها Koyeb (أو أى Cron) كل 30–60 ثانية.
+    الخدمات الذكية / المنع من التكرار موجودين فى services.maybe_send_market_alert
+    """
+    result = services.maybe_send_market_alert(source="cron")
+    # result مثال:
+    # { "ok": True, "alert_sent": True/False, "reason": "panic_sell"/"no_alert"/"duplicate", "sent_to": [...chat_ids...] }
+    return jsonify(result), 200
 
-    risk = evaluate_risk_level(
-        metrics["change_pct"], metrics["volatility_score"]
-    )
-    reason = detect_alert_condition(metrics, risk)
-
-    if not reason:
-        if config.LAST_ALERT_REASON is not None:
-            config.logger.info("auto_alert: market normal again → reset alert state.")
-        config.LAST_ALERT_REASON = None
-        config.LAST_AUTO_ALERT_INFO = {
-            "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": "no_alert",
-            "sent": False,
-        }
-        return jsonify(ok=True, alert_sent=False, reason="no_alert"), 200
-
-    if reason == config.LAST_ALERT_REASON:
-        config.logger.info("auto_alert: skipped (same reason).")
-        config.LAST_AUTO_ALERT_INFO = {
-            "time": datetime.utcnow().isoformat(timespec="seconds"),
-            "reason": "duplicate",
-            "sent": False,
-        }
-        return jsonify(ok=True, alert_sent=False, reason="duplicate"), 200
-
-    alert_text = format_ai_alert()
-    # 🔕 Silent Alert لو المخاطر مش High
-    silent = risk["level"] != "high"
-    send_message(config.ADMIN_CHAT_ID, alert_text, silent=silent)
-
-    config.LAST_ALERT_REASON = reason
-    config.LAST_AUTO_ALERT_INFO = {
-        "time": datetime.utcnow().isoformat(timespec="seconds"),
-        "reason": reason,
-        "sent": True,
-    }
-    config.logger.info("auto_alert: NEW alert sent! reason=%s", reason)
-
-    add_alert_history(
-        "auto",
-        reason,
-        price=metrics["price"],
-        change=metrics["change_pct"],
-    )
-
-    return jsonify(ok=True, alert_sent=True, reason="sent"), 200
 
 # ==============================
 #   مسارات اختبار / Admin / Dashboard
@@ -308,7 +279,8 @@ def dashboard_api():
         return jsonify(ok=False, error="metrics_failed"), 200
 
     risk = evaluate_risk_level(
-        metrics["change_pct"], metrics["volatility_score"]
+        metrics["change_pct"],
+        metrics["volatility_score"],
     )
 
     return jsonify(
@@ -382,7 +354,17 @@ def admin_force_alert():
     if not check_admin_auth(request):
         return jsonify(ok=False, error="unauthorized"), 401
 
-    text = format_ai_alert()
+    metrics = get_market_metrics_cached()
+    risk = None
+    reason = None
+    if metrics:
+        risk = evaluate_risk_level(
+            metrics["change_pct"],
+            metrics["volatility_score"],
+        )
+        reason = detect_alert_condition(metrics, risk)
+
+    text = format_ai_alert(metrics=metrics, risk=risk, reason=reason)
     send_message(config.ADMIN_CHAT_ID, text)
     add_alert_history("force", "Force alert from admin dashboard")
     config.logger.info("Admin forced alert from dashboard.")
@@ -422,8 +404,9 @@ def admin_weekly_ai_test():
         message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط.",
     )
 
+
 # ==============================
-#   /status API (للإدارة أو للمراقبة)
+#   /status API (Monitoring)
 # ==============================
 
 @app.route("/status", methods=["GET"])
@@ -446,11 +429,15 @@ def status_api():
         threads=threads,
     )
 
+
 # ==============================
 #       تفعيل الـ Webhook
 # ==============================
 
 def setup_webhook():
+    """
+    يبعت setWebhook لتليجرام باستخدام APP_BASE_URL من config
+    """
     webhook_url = f"{config.APP_BASE_URL}/webhook"
     try:
         r = HTTP_SESSION.get(
@@ -462,9 +449,10 @@ def setup_webhook():
     except Exception as e:
         config.logger.exception("Error while setting webhook: %s", e)
 
-# =====================================
-# تشغيل البوت — Main Runner
-# =====================================
+
+# ==============================
+#   Main Runner
+# ==============================
 
 if __name__ == "__main__":
     try:
