@@ -24,7 +24,7 @@ if not APP_BASE_URL:
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# حالة آخر تحذير اتبعت تلقائى
+# حالة آخر تحذير اتبعت تلقائى (النظام القديم /auto_alert)
 LAST_ALERT_REASON: str | None = None
 
 # آخر استدعاء لـ /auto_alert (للوحة المراقبة)
@@ -32,6 +32,17 @@ LAST_AUTO_ALERT_INFO: dict = {
     "time": None,
     "reason": None,
     "sent": False,
+}
+
+# آخر حالة للتحذير الذكى (Smart Trigger المتطور)
+# يتم تحديثها من اللوب الجديد فى services.smart_alert_loop
+LAST_SMART_ALERT_INFO: dict = {
+    "time": None,
+    "reason": None,       # وصف السبب (منطق الأحداث الذكية)
+    "level": None,        # low / medium / high / critical
+    "shock_score": None,  # 0–100 تقدير عنف الحركة
+    "risk_level": None,   # low / medium / high (من evaluate_risk_level)
+    "sent_to": 0,         # عدد الشاتات التى استقبلت آخر تحذير
 }
 
 # آخر خطأ فى اللوج (يتحدث تلقائياً)
@@ -95,7 +106,7 @@ def add_alert_history(
     ALERTS_HISTORY.append(entry)
     logger.info("Alert history added: %s", entry)
 
-# قائمة بالشاتات
+# قائمة بالشاتات (كل مستخدم استخدم البوت مرة واحدة على الأقل)
 KNOWN_CHAT_IDS: set[int] = set()
 KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
 
@@ -119,6 +130,13 @@ MARKET_METRICS_CACHE: dict = {
     "time": 0.0,
 }
 MARKET_TTL_SECONDS = 4
+
+# ------------------------------
+#   Pulse History (Smart Engine)
+# ------------------------------
+# يحتفظ بآخر N قراءات من نبض السوق (السعر، التغير، التقلب، المدى، إلخ)
+# علشان نقدر نقيس السرعة والتسارع واتجاه الحركة بدون تخزين بيانات ضخمة.
+PULSE_HISTORY = deque(maxlen=30)
 
 # ==============================
 #   Real-Time Cache
@@ -146,6 +164,9 @@ LAST_WEEKLY_TICK: float = 0.0
 LAST_WATCHDOG_TICK: float = 0.0
 LAST_WEBHOOK_TICK: float = 0.0
 
+# آخر نشاط للـ Smart Alert Loop (يراقبه الـ Watchdog)
+LAST_SMART_ALERT_TICK: float = 0.0
+
 API_STATUS: dict = {
     "binance_ok": True,
     "binance_last_error": None,
@@ -153,6 +174,14 @@ API_STATUS: dict = {
     "kucoin_last_error": None,
     "last_api_check": None,
 }
+
+# ==============================
+#  إعدادات نظام التنبيه الذكى
+# ==============================
+# أقل وأقصى فترة بين فحوصات Smart Alert (بالثوانى)
+# سيتم استخدامهما داخل اللوب التكيفى (Adaptive) فى services.py
+SMART_ALERT_MIN_INTERVAL: float = 1.0   # عند التقلب الشديد / الهبوط العنيف
+SMART_ALERT_MAX_INTERVAL: float = 5.0   # عندما يكون السوق هادئًا نسبيًا
 
 # ==============================
 #  Telegram Helpers (+ Silent Alert)
