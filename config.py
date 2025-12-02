@@ -4,48 +4,25 @@ import logging
 import requests
 from datetime import datetime
 from collections import deque
-from flask import Request
 
 # ==============================
 #        الإعدادات العامة
 # ==============================
 
-# نقرأ من أى واحد من الاتنين حسب اللى موجود فى Koyeb
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("BOT_TOKEN")
-APP_BASE_URL = (
-    os.getenv("APP_BASE_URL")
-    or os.getenv("WEBHOOK_URL")
-    or ""
-).rstrip("/")
-
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+APP_BASE_URL = (os.getenv("APP_BASE_URL") or "").rstrip("/")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "669209875"))
-ADMIN_DASH_PASSWORD = os.getenv("ADMIN_DASH_PASSWORD", "change_me")
 
-# وضع الديبج
+ADMIN_DASH_PASSWORD = os.getenv("ADMIN_DASH_PASSWORD", "change_me")
 BOT_DEBUG = os.getenv("BOT_DEBUG", "0") == "1"
 
 if not TELEGRAM_TOKEN:
-    raise RuntimeError("❌ البيئة لا تحتوى على TELEGRAM_TOKEN أو BOT_TOKEN")
+    raise RuntimeError("البيئة لا تحتوى على TELEGRAM_TOKEN")
 
 if not APP_BASE_URL:
-    raise RuntimeError("❌ البيئة لا تحتوى على APP_BASE_URL أو WEBHOOK_URL")
+    raise RuntimeError("البيئة لا تحتوى على APP_BASE_URL")
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-
-# ==============================
-#        HTTP Session
-# ==============================
-
-HTTP_SESSION = requests.Session()
-
-# ==============================
-#   حالة النظام / الـ Watchdog
-# ==============================
-
-LAST_REALTIME_TICK = 0
-LAST_WEEKLY_TICK = 0
-LAST_WEBHOOK_TICK = 0
-LAST_WATCHDOG_TICK = 0
 
 # حالة آخر تحذير اتبعت تلقائى
 LAST_ALERT_REASON: str | None = None
@@ -57,7 +34,7 @@ LAST_AUTO_ALERT_INFO: dict = {
     "sent": False,
 }
 
-# آخر خطأ فى اللوج
+# آخر خطأ فى اللوج (يتحدث تلقائياً)
 LAST_ERROR_INFO: dict = {
     "time": None,
     "message": None,
@@ -67,10 +44,10 @@ LAST_ERROR_INFO: dict = {
 LAST_WEEKLY_SENT_DATE: str | None = None
 
 # ==============================
-#  إعداد اللوج + Log Buffer
+#  إعداد اللوج + Log Buffer للـ Dashboard
 # ==============================
 
-LOG_BUFFER = deque(maxlen=300)  # آخر 300 سطر لوج
+LOG_BUFFER = deque(maxlen=300)  # آخر 300 سطر لوج (هنا هنطبق cleaner تحت)
 
 class InMemoryLogHandler(logging.Handler):
     def emit(self, record):
@@ -83,6 +60,7 @@ class InMemoryLogHandler(logging.Handler):
                 "message": msg,
             }
 
+# مستوى اللوج
 LOG_LEVEL = logging.DEBUG if BOT_DEBUG else logging.INFO
 
 logging.basicConfig(
@@ -98,74 +76,14 @@ _memory_handler.setFormatter(
 )
 logger.addHandler(_memory_handler)
 
-def log_cleaned_buffer() -> str:
-    """إرجاع اللوج من الـ Buffer لعرضه فى /admin/logs."""
-    return "\n".join(LOG_BUFFER)
-
 # ==============================
-#  الكاش + حالة الـ APIs
+#  تخزين تاريخ التحذيرات للأدمن
 # ==============================
 
-# كاش أسعار العملات (يستخدمه analysis_engine)
-PRICE_CACHE: dict[str, dict] = {}
-CACHE_TTL_SECONDS = 5  # ثوانى لكل سعر
-
-# كاش قراءات السوق العامة للبيتكوين
-MARKET_TTL_SECONDS = 10  # TTL للمقاييس
-REALTIME_TTL_SECONDS = 10  # TTL للكاش العام
-
-MARKET_METRICS_CACHE: dict = {
-    "symbol": None,
-    "price": None,
-    "high": None,
-    "low": None,
-    "volume": None,
-    "change_pct": None,
-    "range_pct": None,
-    "volatility_score": None,
-    "rsi_est": None,
-    "liquidity_pulse": None,
-    "strength_label": None,
-    "support_1": None,
-    "resistance_1": None,
-    "deep_support": None,
-    "breakout_level": None,
-    "ts": 0,
-}
-
-REALTIME_CACHE: dict = {
-    "btc_analysis": None,
-    "market_report": None,
-    "risk_test": None,
-    "alert_text": None,
-    "weekly_report": None,
-    "last_update": None,
-}
-
-API_STATUS: dict = {
-    "binance_ok": True,
-    "kucoin_ok": True,
-    "binance_last_error": None,
-    "kucoin_last_error": None,
-    "last_api_check": None,
-}
-
-# ==============================
-#   متابعة الشاتات
-# ==============================
-
-KNOWN_CHAT_IDS: set[int] = set()
-
-# ==============================
-#   سجل التحذيرات للأدمن
-# ==============================
-
-ALERTS_HISTORY = deque(maxlen=200)
+ALERTS_HISTORY = deque(maxlen=100)
 
 def add_alert_history(
-    source: str, reason: str,
-    price: float | None = None,
-    change: float | None = None,
+    source: str, reason: str, price: float | None = None, change: float | None = None
 ):
     entry = {
         "time": datetime.utcnow().isoformat(timespec="seconds"),
@@ -177,56 +95,141 @@ def add_alert_history(
     ALERTS_HISTORY.append(entry)
     logger.info("Alert history added: %s", entry)
 
+# قائمة بالشاتات
+KNOWN_CHAT_IDS: set[int] = set()
+KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
+
+# HTTP Session
+HTTP_SESSION = requests.Session()
+HTTP_SESSION.headers.update(
+    {
+        "User-Agent": "InCryptoAI-Bot/1.0",
+    }
+)
+
 # ==============================
-#   دوال الإرسال لتليجرام
+#   كاش الأسعار + متركس السوق
 # ==============================
 
-def _clean_text(text: str) -> str:
-    # بس نضمن إنه String
-    return text if isinstance(text, str) else str(text)
+PRICE_CACHE: dict[str, dict] = {}
+CACHE_TTL_SECONDS = 5  # للكروت القصيرة
 
-def send_message(chat_id: int | str, text: str, reply_markup=None):
-    """إرسال رسالة عادية."""
+MARKET_METRICS_CACHE: dict = {
+    "data": None,
+    "time": 0.0,
+}
+MARKET_TTL_SECONDS = 4
+
+# ==============================
+#   Real-Time Cache
+# ==============================
+
+REALTIME_CACHE: dict = {
+    "btc_analysis": None,
+    "market_report": None,
+    "risk_test": None,
+    "weekly_report": None,
+    "alert_text": None,
+    "last_update": None,
+    "weekly_built_at": 0.0,
+    "alert_built_at": 0.0,
+}
+
+REALTIME_TTL_SECONDS = 8
+
+# ==============================
+#   Watchdog / Health Indicators
+# ==============================
+
+LAST_REALTIME_TICK: float = 0.0
+LAST_WEEKLY_TICK: float = 0.0
+LAST_WATCHDOG_TICK: float = 0.0
+LAST_WEBHOOK_TICK: float = 0.0
+
+API_STATUS: dict = {
+    "binance_ok": True,
+    "binance_last_error": None,
+    "kucoin_ok": True,
+    "kucoin_last_error": None,
+    "last_api_check": None,
+}
+
+# ==============================
+#  Telegram Helpers (+ Silent Alert)
+# ==============================
+
+def send_message(
+    chat_id: int,
+    text: str,
+    parse_mode: str = "HTML",
+    silent: bool = False,
+):
+    """إرسال رسالة عادية مع خيار الإشعار الصامت."""
     try:
         url = f"{TELEGRAM_API}/sendMessage"
-        payload = {
+        payload: dict = {
             "chat_id": chat_id,
-            "text": _clean_text(text),
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
+            "text": text,
+            "parse_mode": parse_mode,
         }
-        if reply_markup is not None:
-            payload["reply_markup"] = reply_markup
-        r = HTTP_SESSION.post(url, json=payload, timeout=15)
+        if silent:
+            payload["disable_notification"] = True
+
+        r = HTTP_SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
                 "Telegram sendMessage error: %s - %s",
                 r.status_code,
                 r.text,
             )
-        return r
     except Exception as e:
         logger.exception("Exception while sending message: %s", e)
 
-def send_message_with_keyboard(chat_id: int | str, text: str, keyboard: list[list[dict]]):
+
+def send_message_with_keyboard(
+    chat_id: int,
+    text: str,
+    reply_markup: dict,
+    parse_mode: str = "HTML",
+    silent: bool = False,
+):
     """إرسال رسالة مع كيبورد إنلاين."""
-    reply_markup = {"inline_keyboard": keyboard}
-    return send_message(chat_id, text, reply_markup=reply_markup)
+    try:
+        url = f"{TELEGRAM_API}/sendMessage"
+        payload: dict = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": parse_mode,
+            "reply_markup": reply_markup,
+        }
+        if silent:
+            payload["disable_notification"] = True
+
+        r = HTTP_SESSION.post(url, json=payload, timeout=10)
+        if r.status_code != 200:
+            logger.warning(
+                "Telegram sendMessage_with_keyboard error: %s - %s",
+                r.status_code,
+                r.text,
+            )
+    except Exception as e:
+        logger.exception("Exception while sending message with keyboard: %s", e)
+
 
 def answer_callback_query(
     callback_query_id: str,
     text: str | None = None,
     show_alert: bool = False,
 ):
-    """إيقاف اللودنج لما المستخدم يضغط زر إنلاين."""
+    """الرد على ضغط زر إنلاين عشان يوقف اللودنج."""
     try:
         url = f"{TELEGRAM_API}/answerCallbackQuery"
-        payload = {
+        payload: dict = {
             "callback_query_id": callback_query_id,
             "show_alert": show_alert,
         }
         if text:
-            payload["text"] = _clean_text(text)
+            payload["text"] = text
         r = HTTP_SESSION.post(url, json=payload, timeout=10)
         if r.status_code != 200:
             logger.warning(
@@ -237,22 +240,31 @@ def answer_callback_query(
     except Exception as e:
         logger.exception("Exception while answering callback query: %s", e)
 
-# ==============================
-#   صلاحيات لوحة التحكم
-# ==============================
 
-def check_admin_auth(request: Request) -> bool:
+def log_cleaned_buffer() -> str:
     """
-    تحقق بسيط:
-    - من Query: ?token=XXX أو ?password=XXX
-    - أو Header: X-Admin-Token: XXX
-    لازم يطابق ADMIN_DASH_PASSWORD
+    ضغط اللوج:
+    - يشيل التكرار المتتالى
+    - اللوج أصلاً INFO+ فقط من الهاندلر
     """
-    token = (
-        request.args.get("token")
-        or request.args.get("password")
-        or request.headers.get("X-Admin-Token")
-    )
-    if not ADMIN_DASH_PASSWORD:
-        return False
-    return token == ADMIN_DASH_PASSWORD
+    lines = list(LOG_BUFFER)
+    if not lines:
+        return ""
+    out: list[str] = []
+    last = None
+    for line in lines:
+        if line != last:
+            out.append(line)
+            last = line
+    return "\n".join(out)
+
+
+def check_admin_auth(req) -> bool:
+    """
+    ممكن تضيف Basic Auth أو توكن أو مقارنة HEADER بالـ ADMIN_DASH_PASSWORD.
+    دلوقتى راجع True (مفتوح).
+    """
+    # مثال سريع لو حبيت فى المستقبل:
+    # pwd = req.headers.get("X-Admin-Password")
+    # return pwd == ADMIN_DASH_PASSWORD
+    return True
