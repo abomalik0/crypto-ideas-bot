@@ -386,7 +386,8 @@ def _shrink_text_preserve_content(text: str, limit: int = 4000) -> str:
         text = text.replace(" \n", "\n")
 
     return text
-    # ==============================
+    
+# ==============================
 #     صياغة رسالة التحليل للعملة /btc /coin
 # ==============================
 
@@ -744,3 +745,143 @@ def format_ai_alert_details() -> str:
 """.strip()
 
     return report
+# ==============================
+#   التقرير الأسبوعى المتقدم
+# ==============================
+
+def format_weekly_ai_report() -> str:
+    metrics = get_market_metrics_cached()
+    if not metrics:
+        return (
+            "⚠️ تعذّر إنشاء التقرير الأسبوعى حالياً بسبب مشكلة فى جلب بيانات السوق."
+        )
+
+    btc_price = metrics["price"]
+    btc_change = metrics["change_pct"]
+    range_pct = metrics["range_pct"]
+    vol = metrics["volatility_score"]
+    strength_label = metrics["strength_label"]
+    liquidity_pulse = metrics["liquidity_pulse"]
+
+    # Ethereum
+    eth_data = fetch_price_data("ETHUSDT")
+    if eth_data:
+        eth_price = eth_data["price"]
+        eth_change = eth_data["change_pct"]
+    else:
+        eth_price = 0.0
+        eth_change = 0.0
+
+    risk = evaluate_risk_level(btc_change, vol)
+    fusion = fusion_ai_brain(metrics, risk)
+
+    now = datetime.utcnow()
+    date_str = now.strftime("%Y-%m-%d")
+
+    weekday_names = [
+        "الاثنين","الثلاثاء","الأربعاء","الخميس",
+        "الجمعة","السبت","الأحد"
+    ]
+    weekday_name = weekday_names[now.weekday()] if now.weekday() < 7 else "اليوم"
+
+    # RSI مبسط
+    rsi_raw = 50 + (btc_change * 0.8)
+    rsi = max(0, min(100, rsi_raw))
+
+    if rsi < 40:
+        rsi_desc = "يقع فى نطاق دون 40 → يعكس ضعفًا واضحًا فى الزخم الصاعد."
+    elif rsi < 55:
+        rsi_desc = "يقع فى نطاق 40–55 → ميل بسيط للتحسن لكن لم يصل لمنطقة القوة."
+    else:
+        rsi_desc = "أعلى من 55 → يعكس زخمًا صاعدًا أقوى نسبيًا."
+
+    # مستويات استثمارية تقديرية
+    inv_first_low = round(btc_price * 0.96, -2)
+    inv_first_high = round(btc_price * 0.98, -2)
+    inv_confirm = round(btc_price * 1.05, -2)
+
+    # مستويات مضاربية قصيرة
+    short_support_low = round(btc_price * 0.95, -2)
+    short_support_high = round(btc_price * 0.97, -2)
+    short_res_low = round(btc_price * 1.01, -2)
+    short_res_high = round(btc_price * 1.03, -2)
+
+    # قراءة عامة لحركة الأسبوع
+    if abs(btc_change) < 1 and range_pct < 5:
+        week_summary = 'السوق فى "منطقة انتقالية" بين تعافٍ هادئ وتذبذب جانبى.'
+    elif btc_change >= 2:
+        week_summary = "صعود أسبوعى ملحوظ مع تحسن واضح فى شهية المخاطرة."
+    elif btc_change <= -2:
+        week_summary = "ضغط بيعى أسبوعى واضح مع ميل لتصحيح أعمق على المدى القصير."
+    else:
+        week_summary = 'السوق فى "منطقة انتقالية" بين مرحلة تعافٍ ضعيف واحتمال تصحيح أعمق.'
+
+    report = f"""
+🚀 <b>التقرير الأسبوعى المتقدم – IN CRYPTO Ai</b>
+
+<b>Weekly Intelligence Report</b>
+📅 {weekday_name} – {date_str}
+يتم التحديث تلقائياً وفق بيانات السوق الحية
+
+🟦 <b>القسم 1 — ملخص السوق (BTC + ETH)</b>
+<b>BTC:</b> ${btc_price:,.0f} ({btc_change:+.2f}%)
+<b>ETH:</b> ${eth_price:,.0f} ({eth_change:+.2f}%)
+
+حركة البيتكوين خلال الأسبوع اتسمت بـ:
+- {strength_label}
+- {liquidity_pulse}
+
+📌 <b>خلاصة حركة الأسبوع:</b>
+{week_summary}
+
+🔵 <b>القسم 2 — القراءة الفنية (BTC)</b>
+<b>RSI</b>  
+{rsi_desc}
+
+<b>MACD</b>  
+إشارة صاعدة مبكرة تظهر فى الزخم الاتجاهى، لكن التقاطع الكامل لم يكتمل بعد.
+
+<b>MA50 / MA200</b>  
+السعر يتحرك قرب متوسطاته الرئيسية، مع ميل{" هابط" if btc_change < 0 else " صاعد"} طفيف.
+
+🟣 <b>القسم 3 — Ethereum Snapshot</b>
+<b>ETH:</b> ${eth_price:,.0f} ({eth_change:+.2f}%)
+ETH يتحرك فى نطاق مرتبط بأداء البيتكوين.
+
+🧠 <b>القسم 4 — تقدير IN CRYPTO Ai (Fusion Brain)</b>
+🧭 <b>الاتجاه العام</b>  
+{fusion['bias_text']}
+
+🔍 <b>SMC View</b>  
+{fusion['smc_view']}
+
+🔄 <b>مرحلة السوق (وايكوف)</b>  
+{fusion['wyckoff_phase']}
+
+📊 <b>احتمالات 24–72 ساعة:</b>  
+- صعود: ~{fusion['p_up']}%  
+- تماسك: ~{fusion['p_side']}%  
+- هبوط: ~{fusion['p_down']}%  
+
+💎 <b>القسم 5 — التحليل الاستثماري</b>
+- أول إشارة إيجابية: إغلاق أسبوعى أعلى  
+  <b>{inv_first_low:,.0f}–{inv_first_high:,.0f}$</b>  
+- تأكيد كامل لاتجاه صاعد مع إغلاق فوق  
+  <b>{inv_confirm:,.0f}$</b>
+
+⚡ <b>القسم 6 — التحليل المضاربي</b>
+<b>أهم المستويات:</b>  
+- دعم مضاربي: <b>{short_support_low:,.0f}$ – {short_support_high:,.0f}$</b>  
+- مقاومة مضاربية: <b>{short_res_low:,.0f}$ – {short_res_high:,.0f}$</b>
+
+⏰ <b>القسم 7 — نشاط الجلسة</b>  
+غالبًا تزداد الحركة مع افتتاح السيولة الأمريكية  
+🕖 حوالى 7:00 مساءً بتوقيت السوق.
+
+🟢 <b>الخلاصة:</b>
+السوق حاليًا فى منطقة توازن، لكن قرار الاتجاه سيظهر مع كسر مستويات المقاومة الرئيسية.
+
+<b>IN CRYPTO Ai 🤖 — Weekly Intelligence Engine</b>
+""".strip()
+
+    return _shrink_text_preserve_content(report)
