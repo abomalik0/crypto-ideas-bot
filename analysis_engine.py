@@ -343,17 +343,13 @@ def fusion_ai_brain(metrics: dict, risk: dict) -> dict:
         smc_view = "لا توجد علامة حاسمة على تجميع أو توزيع، الحركة أقرب لتوازن مؤقت."
 
     # -------- مرحلة وايكوف تقريبية (Wyckoff Phase) --------
-    # نستخدم مزيج من: الاتجاه + التقلب + مدى اليوم + حجم الحركة
     abs_change = abs(change)
 
     if vol < 20 and abs_change < 1 and range_pct < 3:
-        # حركة ضيقة وهادية → أقرب لتجميع أو إعادة تجميع
         wyckoff_phase = "مرحلة تجميع / إعادة تجميع فى نطاق جانبى (Accumulation / Re-Accumulation)."
     elif vol >= 60 and abs_change >= 3 and range_pct >= 6:
-        # حركة حادة + تقلب عالى → اندفاع / Shakeout
         wyckoff_phase = "مرحلة اندفاع عالية التقلب (Impulse / Shakeout) مع حركات حادة فى الاتجاه."
     elif bias.startswith("strong_bullish") or (bias.startswith("bullish") and change >= 2):
-        # اتجاه صاعد واضح
         wyckoff_phase = "Phase صاعد (Mark-Up) مع غلبة واضحة للمشترين."
     elif bias.startswith("bullish"):
         wyckoff_phase = "انتقال صاعد / بداية Mark-Up بعد فترة تجميع."
@@ -822,6 +818,7 @@ def compute_smart_market_snapshot() -> dict | None:
 
     zones = compute_potential_zones(metrics, pulse, risk)
     interval = compute_adaptive_interval(metrics, pulse, risk)
+    fusion = fusion_ai_brain(metrics, risk)
 
     reason_text = None
     if alert_level["level"] is not None:
@@ -843,9 +840,197 @@ def compute_smart_market_snapshot() -> dict | None:
         "zones": zones,
         "adaptive_interval": interval,
         "reason": reason_text,
+        "fusion": fusion,
     }
 
     return snapshot
+
+# ==============================
+#   تنسيق رسالة التنبيه الاحترافية الجديدة (لجميع المستخدمين)
+# ==============================
+
+def _trend_word_from_bias(bias: str) -> str:
+    if bias.startswith("strong_bullish"):
+        return "صعود قوى"
+    if bias.startswith("bullish"):
+        return "ميل صاعد"
+    if bias.startswith("strong_bearish"):
+        return "هبوط حاد"
+    if bias.startswith("bearish"):
+        return "ميل هابط"
+    if bias.startswith("neutral"):
+        return "تذبذب جانبى"
+    return "غير واضح"
+
+
+def format_ultra_smart_alert(snapshot: dict, mode: str = "early") -> str:
+    """
+    الرسالة الرسمية للمستخدمين:
+    🚨 تنبيه فورى — حركة قوية تتشكل الآن
+    مع اتجاه واضح + أهداف هبوط وصعود + نسب احتمالات
+    """
+    metrics = snapshot.get("metrics") or {}
+    risk = snapshot.get("risk") or {}
+    pulse = snapshot.get("pulse") or {}
+    events = snapshot.get("events") or {}
+    alert_level = snapshot.get("alert_level") or {}
+    zones = snapshot.get("zones") or {}
+    fusion = snapshot.get("fusion")
+
+    # فى حالة أى نقص، نحاول نكمل من جديد
+    if metrics and risk and fusion is None:
+        fusion = fusion_ai_brain(metrics, risk)
+
+    price = float(metrics.get("price", 0.0) or 0.0)
+    change = float(metrics.get("change_pct", 0.0) or 0.0)
+    range_pct = float(metrics.get("range_pct", 0.0) or 0.0)
+    volatility = float(metrics.get("volatility_score", 0.0) or 0.0)
+    strength_label = metrics.get("strength_label", "")
+    liquidity_pulse = metrics.get("liquidity_pulse", "")
+
+    speed_index = float(pulse.get("speed_index", 0.0) or 0.0)
+    accel_index = float(pulse.get("accel_index", 0.0) or 0.0)
+    direction_conf = float(pulse.get("direction_confidence", 0.0) or 0.0)
+
+    shock_score = float(alert_level.get("shock_score", 0.0) or 0.0)
+    level = alert_level.get("level") or "low"
+
+    dz1_low, dz1_high = zones.get("downside_zone_1", (0.0, 0.0))
+    dz2_low, dz2_high = zones.get("downside_zone_2", (0.0, 0.0))
+    uz1_low, uz1_high = zones.get("upside_zone_1", (0.0, 0.0))
+    uz2_low, uz2_high = zones.get("upside_zone_2", (0.0, 0.0))
+
+    # ضغط السيولة رقمى 0–100 (تقدير)
+    liquidity_pressure = abs(change) * 2.0 + range_pct * 1.0 + speed_index * 0.4
+    liquidity_pressure = max(0.0, min(100.0, liquidity_pressure))
+
+    # احتمالات الحركة من Fusion إن وجد
+    if fusion:
+        p_up = int(fusion.get("p_up", 0))
+        p_side = int(fusion.get("p_side", 0))
+        p_down = int(fusion.get("p_down", 0))
+        bias = fusion.get("bias", "neutral")
+        trend_word = _trend_word_from_bias(bias)
+        trend_sentence = fusion.get("bias_text", "")
+        liquidity_note = fusion.get("smc_view", liquidity_pulse)
+    else:
+        # fallback بسيط
+        if change > 1.0:
+            trend_word = "صعود"
+        elif change < -1.0:
+            trend_word = "هبوط"
+        else:
+            trend_word = "تذبذب"
+        trend_sentence = strength_label or "لا يوجد اتجاه واضح مكتمل حاليًا."
+        liquidity_note = liquidity_pulse or "السيولة متوازنة نسبيًا."
+        p_up = 35
+        p_side = 40
+        p_down = 25
+        bias = "neutral"
+
+    # تحديد الاتجاه الأقوى
+    if p_down >= p_up and p_down >= p_side:
+        expected_direction_strong = "السيناريو الأقرب حاليًا هو هبوط تدريجى قد يتحول لهبوط قوى إذا تم كسر مناطق الدعم."
+    elif p_up >= p_side and p_up >= p_down:
+        expected_direction_strong = "السيناريو الأقرب حاليًا هو صعود تدريجى قد يتحول لموجة اندفاع صاعدة إذا تم اختراق المقاومات."
+    else:
+        expected_direction_strong = "السيناريو الأقرب حاليًا هو تماسك جانبى مع ترقب لاختراق قادم."
+
+    # سبب التوقع (مبنى على الزخم + السيولة + التقلب)
+    reasons = []
+    if abs(change) >= 2:
+        reasons.append(f"حركة يومية قوية نسبيًا (%{change:+.2f}) مقارنة بالمعدلات الهادئة.")
+    if volatility >= 50:
+        reasons.append(f"درجة تقلب مرتفعة حوالى {volatility:.1f}/100 تشير لاحتمال اتساع نطاق الحركة.")
+    if speed_index >= 40:
+        reasons.append("زيادة واضحة فى سرعة تغير السعر خلال الفترات الأخيرة.")
+    if liquidity_pressure >= 50:
+        reasons.append("ضغط سيولة ملحوظ يعكس دخول أو خروج قوى لرؤوس الأموال.")
+    if not reasons:
+        reasons.append("تجمع عدة إشارات زخم وسيولة وتقلب تشير إلى احتمال حركة غير عادية.")
+
+    direction_reason_line = " / ".join(reasons)
+
+    # ملاحظات الزخم
+    if speed_index < 15:
+        momentum_note = "الزخم الحالى ضعيف نسبيًا، والحركة تميل لأن تكون هادئة."
+    elif speed_index < 40:
+        momentum_note = "الزخم متوسط وهناك إمكانية لزيادة سرعة الحركة مع أى خبر أو كسر واضح."
+    else:
+        momentum_note = "الزخم قوى وسرعة الحركة أعلى من المعتاد، ما يزيد احتمال حركات حادة."
+
+    # وضوح الاتجاه
+    if direction_conf >= 70:
+        direction_clarity_note = "اتجاه الحركة الحالى واضح ومتماسك وفق قراءات اللحظة."
+    elif direction_conf >= 45:
+        direction_clarity_note = "يوجد ميل لاتجاه معين لكن ما زال تحت الاختبار."
+    else:
+        direction_clarity_note = "اتجاه الحركة ما زال متذبذبًا، والسوق يترقب محفز جديد."
+
+    # احتمالات الصعود/الهبوط كنص
+    prob_down = p_down
+    prob_up = p_up
+
+    # ملخص صغير
+    ai_micro_summary = (
+        f"الاتجاه الأقرب حاليًا: {trend_word} / "
+        f"احتمال صعود ~{p_up}% / هبوط ~{p_down}% / تماسك ~{p_side}%."
+    )
+
+    # بناء الرسالة بالنموذج المتفق عليه
+    title_line = "🚨 تنبيه فورى — حركة قوية تتشكل الآن"
+    if mode == "shock":
+        title_line = "🚨 تنبيه فورى — حركة قوية جارية الآن"
+
+    msg = f"""
+{title_line}
+
+💰 السعر الحالى: {price:,.0f}$  
+📉 تغير آخر 24 ساعة: %{change:+.2f}
+
+⚡ ماذا يحدث الآن؟
+الذكاء الاصطناعى يرصد:
+• ارتفاع مفاجئ فى التقلب → {volatility:.1f}/100  
+• تغير سريع فى الزخم اللحظى → {speed_index:.1f}/100  
+• ضغط ملحوظ فى السيولة → {liquidity_pressure:.1f}/100  
+• الاتجاه الأقرب حاليًا: {trend_word}
+
+-----------------------------
+🎯 الاتجاه المتوقع خلال الساعات القادمة
+→ {expected_direction_strong}
+
+🔎 سبب التوقع:
+{direction_reason_line}
+
+-----------------------------
+🎯 الأهداف المتوقعة بدقة عالية
+
+📉 فى حالة الهبوط:
+• الهدف الأول:  {dz1_low:,.0f}$ → {dz1_high:,.0f}$
+• الهدف الثانى: {dz2_low:,.0f}$ → {dz2_high:,.0f}$
+• احتمال سيناريو الهبوط: {prob_down}%  
+
+📈 فى حالة الصعود:
+• الهدف الأول:  {uz1_low:,.0f}$ → {uz1_high:,.0f}$
+• الهدف الثانى: {uz2_low:,.0f}$ → {uz2_high:,.0f}$
+• احتمال سيناريو الصعود: {prob_up}%  
+
+-----------------------------
+🧠 ملخص IN CRYPTO Ai:
+• اتجاه السوق: {trend_sentence}  
+• قوة الزخم: {momentum_note}  
+• حالة السيولة: {liquidity_note}  
+• وضوح الاتجاه: {direction_clarity_note}
+
+-----------------------------
+⚠️ ملاحظة:
+هذه قراءة احترافية لحظية… تساعدك تعرف "رايحين على فين"  
+قبل الحركة الفعلية، وليست توصية مباشرة بالشراء أو البيع.
+
+IN CRYPTO Ai 🤖 — نظام الذكاء الاصطناعى الأعلى دقة فى تحليل الكريبتو
+""".strip()
+
+    return _shrink_text_preserve_content(msg)
 
 # ==============================
 #     صياغة رسالة التحليل /coin
