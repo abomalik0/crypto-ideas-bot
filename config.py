@@ -316,3 +316,32 @@ THREADS_STARTED = False
 
 # ملف السناك شوت (غير مستخدم الآن لكنه مطلوب لتجنب الأخطاء)
 SNAPSHOT_FILE = None
+# ==============================
+#  Required by services.py
+# ==============================
+
+# توكن البوت (نفس TELEGRAM_TOKEN)
+BOT_TOKEN = os.getenv("BOT_TOKEN") or TELEGRAM_TOKEN
+
+# ساعة إرسال التقرير الأسبوعى UTC
+WEEKLY_REPORT_HOUR_UTC = int(os.getenv("WEEKLY_REPORT_HOUR_UTC", "12"))
+
+# آخر مرة تم فيها تشغيل التقرير الأسبوعى
+LAST_WEEKLY_RUN = None
+
+# الفاصل الأساسى للـ Smart Alert
+SMART_ALERT_BASE_INTERVAL = 2.0  # دقايق
+
+# زمن آخر تنبيه
+LAST_SMART_ALERT_TS = 0.0
+LAST_CRITICAL_ALERT_TS = 0.0
+
+# Threshold للإنذار المبكر
+EARLY_WARNING_THRESHOLD = 65.0
+
+# سجل التنبيهات
+ALERT_HISTORY = deque(maxlen=200)
+
+# الكاش الخاص بالردود
+RESPONSE_CACHE = {}
+DEFAULT_RESPONSE_TTL = 10
