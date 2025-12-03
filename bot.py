@@ -652,43 +652,39 @@ def setup_webhook():
         config.logger.exception("Error while setting webhook: %s", e)
 
 
+#  🔥 مهم جداً — Alias علشان الـ main يشتغل بدون خطأ
+def set_webhook_on_startup():
+    setup_webhook()
+
 # =====================================
 # تشغيل البوت — Main Runner
 # =====================================
 
 if __name__ == "__main__":
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+
+    # تحميل السناك شوت (لو متفعّل)
     try:
-        config.logger.info("Loading warm-start snapshot...")
         services.load_snapshot()
     except Exception as e:
-        config.logger.exception("Snapshot load failed on startup: %s", e)
+        logging.exception("Snapshot load failed on startup: %s", e)
 
+    # ضبط الويب هوك
     try:
-        config.logger.info("Setting webhook on startup...")
-        setup_webhook()
+        set_webhook_on_startup()
     except Exception as e:
-        config.logger.exception("Webhook setup failed on startup: %s", e)
+        logging.exception("Failed to set webhook on startup: %s", e)
 
+    # هنا التعديل المهم: تشغيل كل الثريدات من دالة واحدة
     try:
-        services.start_weekly_scheduler_thread()
+        services.start_background_threads()
     except Exception as e:
-        config.logger.exception("Failed to start weekly scheduler thread: %s", e)
+        logging.exception("Failed to start background threads: %s", e)
 
-    try:
-        services.start_realtime_thread()
-    except Exception as e:
-        config.logger.exception("Failed to start realtime engine thread: %s", e)
-
-    # ✅ جديد: تشغيل Smart Alert Loop تلقائياً
-    try:
-        services.start_smart_alert_thread()
-    except Exception as e:
-        config.logger.exception("Failed to start smart alert thread: %s", e)
-
-    try:
-        services.start_watchdog_thread()
-    except Exception as e:
-        config.logger.exception("Failed to start watchdog thread: %s", e)
-
-    config.logger.info("Starting Flask server...")
+    # تشغيل Flask
     app.run(host="0.0.0.0", port=8080)
