@@ -13,6 +13,9 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 APP_BASE_URL = (os.getenv("APP_BASE_URL") or "").rstrip("/")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "669209875"))
 
+# الجروب / القناة اللى هتستقبل التحذيرات للمستخدمين
+ALERT_TARGET_CHAT_ID = int(os.getenv("ALERT_TARGET_CHAT_ID", str(ADMIN_CHAT_ID)))
+
 ADMIN_DASH_PASSWORD = os.getenv("ADMIN_DASH_PASSWORD", "change_me")
 BOT_DEBUG = os.getenv("BOT_DEBUG", "0") == "1"
 
@@ -23,6 +26,10 @@ if not APP_BASE_URL:
     raise RuntimeError("البيئة لا تحتوى على APP_BASE_URL")
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+
+# ==============================
+#  حالة التحذيرات / الأسبوعى
+# ==============================
 
 # حالة آخر تحذير اتبعت تلقائى (النظام القديم /auto_alert)
 LAST_ALERT_REASON: str | None = None
@@ -35,7 +42,6 @@ LAST_AUTO_ALERT_INFO: dict = {
 }
 
 # آخر حالة للتحذير الذكى (Smart Trigger المتطور)
-# يتم تحديثها من اللوب الجديد فى services.smart_alert_loop
 LAST_SMART_ALERT_INFO: dict = {
     "time": None,
     "reason": None,       # وصف السبب (منطق الأحداث الذكية)
@@ -54,11 +60,14 @@ LAST_ERROR_INFO: dict = {
 # 🔁 آخر مرة تبعت فيها التقرير الأسبوعى أوتوماتيك (YYYY-MM-DD)
 LAST_WEEKLY_SENT_DATE: str | None = None
 
+# آخر مرة اتنفّذ فيها الـ weekly scheduler (كائن datetime فى services)
+LAST_WEEKLY_RUN = None
+
 # ==============================
 #  إعداد اللوج + Log Buffer للـ Dashboard
 # ==============================
 
-LOG_BUFFER = deque(maxlen=300)  # آخر 300 سطر لوج (هنا هنطبق cleaner تحت)
+LOG_BUFFER = deque(maxlen=300)  # آخر 300 سطر لوج
 
 class InMemoryLogHandler(logging.Handler):
     def emit(self, record):
@@ -71,7 +80,6 @@ class InMemoryLogHandler(logging.Handler):
                 "message": msg,
             }
 
-# مستوى اللوج
 LOG_LEVEL = logging.DEBUG if BOT_DEBUG else logging.INFO
 
 logging.basicConfig(
@@ -134,8 +142,6 @@ MARKET_TTL_SECONDS = 4
 # ------------------------------
 #   Pulse History (Smart Engine)
 # ------------------------------
-# يحتفظ بآخر N قراءات من نبض السوق (السعر، التغير، التقلب، المدى، إلخ)
-# علشان نقدر نقيس السرعة والتسارع واتجاه الحركة بدون تخزين بيانات ضخمة.
 PULSE_HISTORY = deque(maxlen=30)
 
 # ==============================
@@ -152,7 +158,6 @@ REALTIME_CACHE: dict = {
     "weekly_built_at": 0.0,
     "alert_built_at": 0.0,
 }
-
 REALTIME_TTL_SECONDS = 8
 
 # ==============================
@@ -163,8 +168,6 @@ LAST_REALTIME_TICK: float = 0.0
 LAST_WEEKLY_TICK: float = 0.0
 LAST_WATCHDOG_TICK: float = 0.0
 LAST_WEBHOOK_TICK: float = 0.0
-
-# آخر نشاط للـ Smart Alert Loop (يراقبه الـ Watchdog)
 LAST_SMART_ALERT_TICK: float = 0.0
 
 API_STATUS: dict = {
@@ -178,10 +181,29 @@ API_STATUS: dict = {
 # ==============================
 #  إعدادات نظام التنبيه الذكى
 # ==============================
-# أقل وأقصى فترة بين فحوصات Smart Alert (بالثوانى)
-# سيتم استخدامهما داخل اللوب التكيفى (Adaptive) فى services.py
-SMART_ALERT_MIN_INTERVAL: float = 1.0   # عند التقلب الشديد / الهبوط العنيف
-SMART_ALERT_MAX_INTERVAL: float = 5.0   # عندما يكون السوق هادئًا نسبيًا
+
+SMART_ALERT_MIN_INTERVAL: float = 1.0   # ثانية (للاندفاع الحاد)
+SMART_ALERT_MAX_INTERVAL: float = 5.0   # ثانية (للسوق الهادئ)
+
+# الفاصل الأساسى للـ Smart Alert (بالدقائق)
+SMART_ALERT_BASE_INTERVAL: float = 2.0
+
+# زمن آخر تنبيه من الذكى
+LAST_SMART_ALERT_TS: float = 0.0
+LAST_CRITICAL_ALERT_TS: float = 0.0
+
+# Threshold للإنذار المبكر
+EARLY_WARNING_THRESHOLD: float = 65.0
+
+# سجل تنبيهات الذكى
+ALERT_HISTORY = deque(maxlen=200)
+
+# ==============================
+#  كاش الردود النصية العامة
+# ==============================
+
+RESPONSE_CACHE: dict = {}
+DEFAULT_RESPONSE_TTL: float = 10.0
 
 # ==============================
 #  Telegram Helpers (+ Silent Alert)
@@ -274,7 +296,6 @@ def log_cleaned_buffer() -> str:
     """
     ضغط اللوج:
     - يشيل التكرار المتتالى
-    - اللوج أصلاً INFO+ فقط من الهاندلر
     """
     lines = list(LOG_BUFFER)
     if not lines:
@@ -293,55 +314,36 @@ def check_admin_auth(req) -> bool:
     ممكن تضيف Basic Auth أو توكن أو مقارنة HEADER بالـ ADMIN_DASH_PASSWORD.
     دلوقتى راجع True (مفتوح).
     """
-    # مثال سريع لو حبيت فى المستقبل:
+    # مثال لو حبيت:
     # pwd = req.headers.get("X-Admin-Password")
     # return pwd == ADMIN_DASH_PASSWORD
     return True
+
 # ==============================
 #  Fix missing variables for services.py
 # ==============================
 
 # يوم إرسال التقرير الأسبوعي (0 = الاثنين … 6 = الأحد)
-WEEKLY_REPORT_WEEKDAY = 6        # مثال: الأحد
+WEEKLY_REPORT_WEEKDAY = int(os.getenv("WEEKLY_REPORT_WEEKDAY", "6"))  # الافتراض: الأحد
+
+# ساعة إرسال التقرير الأسبوعى UTC
+WEEKLY_REPORT_HOUR_UTC = int(os.getenv("WEEKLY_REPORT_HOUR_UTC", "12"))
 
 # البوت الأساسي (يتم إنشاؤه في services._ensure_bot)
 BOT = None
 
 # فترات عمل اللوops
-WATCHDOG_INTERVAL = 5.0          # كل 5 ثواني مراقبة النظام
-REALTIME_ENGINE_INTERVAL = 3.0   # كل 3 ثواني تحديث التحليلات
+WATCHDOG_INTERVAL = float(os.getenv("WATCHDOG_INTERVAL", "5.0"))        # ثوانى
+REALTIME_ENGINE_INTERVAL = float(os.getenv("REALTIME_ENGINE_INTERVAL", "3.0"))  # ثوانى
 
 # لإيقاف تشغيل الـ threads مرة واحدة فقط
 THREADS_STARTED = False
 
-# ملف السناك شوت (غير مستخدم الآن لكنه مطلوب لتجنب الأخطاء)
-SNAPSHOT_FILE = None
-# ==============================
-#  Required by services.py
-# ==============================
+# ملف السناك شوت (اختيارى)
+SNAPSHOT_FILE = os.getenv("SNAPSHOT_FILE")  # لو فاضى هيتجهل
 
-# توكن البوت (نفس TELEGRAM_TOKEN)
+# توكن البوت (نفس TELEGRAM_TOKEN أو متغير منفصل)
 BOT_TOKEN = os.getenv("BOT_TOKEN") or TELEGRAM_TOKEN
 
-# ساعة إرسال التقرير الأسبوعى UTC
-WEEKLY_REPORT_HOUR_UTC = int(os.getenv("WEEKLY_REPORT_HOUR_UTC", "12"))
-
-# آخر مرة تم فيها تشغيل التقرير الأسبوعى
-LAST_WEEKLY_RUN = None
-
-# الفاصل الأساسى للـ Smart Alert
-SMART_ALERT_BASE_INTERVAL = 2.0  # دقايق
-
-# زمن آخر تنبيه
-LAST_SMART_ALERT_TS = 0.0
-LAST_CRITICAL_ALERT_TS = 0.0
-
-# Threshold للإنذار المبكر
-EARLY_WARNING_THRESHOLD = 65.0
-
-# سجل التنبيهات
-ALERT_HISTORY = deque(maxlen=200)
-
-# الكاش الخاص بالردود
-RESPONSE_CACHE = {}
-DEFAULT_RESPONSE_TTL = 10
+# TTL للتقرير الأسبوعى فى الكاش (ثانية)
+WEEKLY_REPORT_TTL = 3600
