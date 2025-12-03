@@ -297,3 +297,9 @@ def check_admin_auth(req) -> bool:
     # pwd = req.headers.get("X-Admin-Password")
     # return pwd == ADMIN_DASH_PASSWORD
     return True
+# ==============================
+#   Fix missing variables for bot runtime
+# ==============================
+
+SNAPSHOT_FILE = None          # لمنع خطأ load_snapshot()
+THREADS_STARTED = False       # لمنع خطأ start_background_threads()
