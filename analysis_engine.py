@@ -1740,3 +1740,261 @@ ETH يتحرك فى اتجاه جانبى مرتبط بدرجة كبيرة بح�
 
     report = _shrink_text_preserve_content(report)
     return report
+# ==============================
+#   Hybrid PRO Direction Engine
+#   (Early Direction + Targets + Probabilities)
+# ==============================
+
+def compute_hybrid_pro_core() -> dict | None:
+    """
+    نواة التحليل المؤسسى الاحترافى:
+      - دمج Smart Snapshot + Fusion AI + Pulse Engine + Zones
+      - استخراج اتجاه واضح + أهداف هبوط/صعود + نسب احتمالات
+    """
+    snapshot = compute_smart_market_snapshot()
+    if not snapshot:
+        return None
+
+    metrics = snapshot["metrics"]
+    risk = snapshot["risk"]
+    pulse = snapshot["pulse"]
+    events = snapshot["events"]
+    zones = snapshot["zones"]
+    alert_level = snapshot["alert_level"]
+
+    # نعيد استخدام Fusion AI لرفع مستوى الذكاء
+    fusion = fusion_ai_brain(metrics, risk)
+
+    price = float(metrics["price"])
+    change = float(metrics["change_pct"])
+    range_pct = float(metrics["range_pct"])
+    vol = float(metrics["volatility_score"])
+    strength_label = metrics["strength_label"]
+    liquidity_pulse = metrics["liquidity_pulse"]
+
+    speed_index = float(pulse.get("speed_index", 0.0))
+    accel_index = float(pulse.get("accel_index", 0.0))
+    direction_conf = float(pulse.get("direction_confidence", 0.0))
+
+    level = alert_level.get("level")
+    shock_score = float(alert_level.get("shock_score", 0.0))
+    trend_bias = alert_level.get("trend_bias", "neutral")
+
+    # ---------------------------
+    #   تحويل السيولة لقوة رقمية
+    # ---------------------------
+    liquidity_pressure = 50.0
+    lp = liquidity_pulse + " " + strength_label
+
+    if "خروج" in lp or "هبوط" in lp or "ضغوط بيعية" in lp:
+        liquidity_pressure = 70.0
+    if "تصريف" in lp or "Panic" in lp or "تصفية" in lp:
+        liquidity_pressure = 85.0
+    if "الدخول" in lp or "تجميع" in lp:
+        liquidity_pressure = 65.0
+    if "متوازنة" in lp:
+        liquidity_pressure = 50.0
+
+    # تعديل بسيط حسب اتجاه التغير
+    if change < 0:
+        liquidity_pressure += 5.0
+    elif change > 0:
+        liquidity_pressure -= 3.0
+
+    liquidity_pressure = max(0.0, min(100.0, liquidity_pressure))
+
+    # ---------------------------
+    #   تحديد الاتجاه الأقرب
+    # ---------------------------
+    # نستخدم مزيج من: trend_bias + Fusion + Pulse + change
+    p_up = fusion["p_up"]
+    p_down = fusion["p_down"]
+    p_side = fusion["p_side"]
+
+    if trend_bias == "down_strong" or (change <= -2.0 and p_down >= p_up):
+        trend_word = "هبوط"
+    elif trend_bias == "up_strong" or (change >= 2.0 and p_up >= p_down):
+        trend_word = "صعود"
+    else:
+        trend_word = "تماسك / حركة جانبية"
+
+    # ---------------------------
+    #   صياغة سبب الاتجاه
+    # ---------------------------
+    active_labels = events.get("active_labels", []) or []
+    if active_labels:
+        reason_short = "النظام يلتقط حالياً: " + " / ".join(active_labels)
+    else:
+        # fallback بسيط لو مفيش أحداث خاصة
+        if vol >= 60 and abs(change) >= 3:
+            reason_short = "زيادة قوية فى التقلب مع حركة سعرية حادة."
+        elif liquidity_pressure >= 70:
+            reason_short = "خروج سيولة ملحوظ من السوق مع ضعف المشترين."
+        elif liquidity_pressure <= 40:
+            reason_short = "دخول سيولة ملحوظ يدعم الاتجاه الحالى."
+        else:
+            reason_short = "توازن نسبى فى السيولة مع مراقبة حذرة للاتجاه."
+
+    # ---------------------------
+    #   صياغة قوة الزخم والمومنتوم
+    # ---------------------------
+    if speed_index >= 60 and abs(accel_index) >= 10:
+        momentum_note = "الحركة الحالية سريعة ومُتسارعة بشكل واضح (Momentum عالى)."
+    elif speed_index >= 35:
+        momentum_note = "يوجد زخم نشط فى الحركة لكن ليس عند أقصى درجات السرعة."
+    elif speed_index <= 15:
+        momentum_note = "سرعة الحركة ضعيفة نسبياً والزخم منخفض."
+    else:
+        momentum_note = "سرعة الحركة متوسطة مع زخم قابل للتغير سريعاً."
+
+    # ---------------------------
+    #   تلخيص السيولة بصورة مفهومة
+    # ---------------------------
+    if liquidity_pressure >= 75:
+        liquidity_note = "ضغط سيولة هابط واضح (خروج أموال من السوق)."
+    elif liquidity_pressure >= 60:
+        liquidity_note = "ميل واضح لخروج السيولة أكثر من دخولها."
+    elif liquidity_pressure <= 35:
+        liquidity_note = "ميل واضح لدخول سيولة جديدة تدعم الاتجاه الصاعد."
+    elif liquidity_pressure <= 50:
+        liquidity_note = "السيولة متوازنة نسبياً بين المشترين والبائعين."
+    else:
+        liquidity_note = "لا يوجد حتى الآن انحراف حاد فى سلوك السيولة."
+
+    # ---------------------------
+    #   صياغة اتجاه متوقع لفظياً
+    # ---------------------------
+    if trend_word == "هبوط":
+        expected_direction_strong = (
+            "القراءات الحالية ترجّح سيناريو هبوط قادم أو استمرار للضغط البيعى "
+            "مع احتمالية زيارة مستويات أدنى قبل أى تعافٍ واضح."
+        )
+    elif trend_word == "صعود":
+        expected_direction_strong = (
+            "القراءات الحالية ترجّح سيناريو صعود أو استمرار زخم شرائى "
+            "مع استهداف مستويات أعلى إذا استمر نفس الإيقاع."
+        )
+    else:
+        expected_direction_strong = (
+            "السوق يميل إلى حركة جانبية/تماسك مع غياب اتجاه حاسم، "
+            "وأى كسر واضح لأحد الأطراف قد يفتح حركة قوية فى نفس الاتجاه."
+        )
+
+    # ---------------------------
+    #   استخراج مناطق الأهداف من Zones
+    # ---------------------------
+    dz1_low, dz1_high = zones["downside_zone_1"]
+    dz2_low, dz2_high = zones["downside_zone_2"]
+    uz1_low, uz1_high = zones["upside_zone_1"]
+    uz2_low, uz2_high = zones["upside_zone_2"]
+
+    core = {
+        "price": round(price, 2),
+        "change": round(change, 2),
+        "range_pct": round(range_pct, 2),
+        "volatility_score": round(vol, 1),
+        "shock_score": shock_score,
+        "level": level,
+        "trend_bias": trend_bias,
+        "trend_word": trend_word,
+        "expected_direction_strong": expected_direction_strong,
+        "prob_up": p_up,
+        "prob_down": p_down,
+        "prob_side": p_side,
+        "speed_index": round(speed_index, 1),
+        "accel_index": round(accel_index, 1),
+        "liquidity_pressure": round(liquidity_pressure, 1),
+        "liquidity_note": liquidity_note,
+        "momentum_note": momentum_note,
+        "trend_sentence": fusion["bias_text"],
+        "strength_label": strength_label,
+        "liquidity_pulse": liquidity_pulse,
+        "reason_short": reason_short,
+        "down_zone_1": (dz1_low, dz1_high),
+        "down_zone_2": (dz2_low, dz2_high),
+        "up_zone_1": (uz1_low, uz1_high),
+        "up_zone_2": (uz2_low, uz2_high),
+    }
+
+    return core
+
+
+def format_ultra_pro_alert() -> str:
+    """
+    رسالة التحذير الاحترافية الموحدة للمستخدم العادى:
+      - اتجاه واضح (هبوط/صعود/تماسك)
+      - أهداف هبوط وصعود محددة
+      - نسب احتمالات
+      - سبب بسيط وواضح
+    """
+    core = compute_hybrid_pro_core()
+    if not core:
+        return (
+            "⚠️ تعذّر إنشاء تنبيه احترافى فى هذه اللحظة بسبب نقص بيانات السوق.\n"
+            "حاول مرة أخرى بعد قليل."
+        )
+
+    price = core["price"]
+    change = core["change"]
+    vol = core["volatility_score"]
+    range_pct = core["range_pct"]
+
+    trend_word = core["trend_word"]
+    expected_direction_strong = core["expected_direction_strong"]
+
+    prob_up = core["prob_up"]
+    prob_down = core["prob_down"]
+    prob_side = core["prob_side"]
+
+    speed_index = core["speed_index"]
+    liquidity_pressure = core["liquidity_pressure"]
+
+    d1_low, d1_high = core["down_zone_1"]
+    d2_low, d2_high = core["down_zone_2"]
+    u1_low, u1_high = core["up_zone_1"]
+    u2_low, u2_high = core["up_zone_2"]
+
+    reason_short = core["reason_short"]
+    momentum_note = core["momentum_note"]
+    liquidity_note = core["liquidity_note"]
+    trend_sentence = core["trend_sentence"]
+
+    msg = f"""
+🚨 <b>تنبيه فورى — حركة قوية تتشكل الآن</b>
+
+💰 <b>السعر الحالى:</b> {price:,.0f}$  
+📉 <b>تغير آخر 24 ساعة:</b> %{change:+.2f}
+📊 <b>مدى حركة اليوم:</b> ≈ {range_pct:.2f}%  
+🌪 <b>درجة التقلب:</b> {vol:.1f} / 100
+
+🧭 <b>الاتجاه الأقرب الآن:</b> <b>{trend_word}</b>
+⬇️ <b>احتمال سيناريو الهبوط:</b> ~{prob_down}%  
+⬆️ <b>احتمال سيناريو الصعود:</b> ~{prob_up}%  
+🔁 <b>احتمال التماسك الجانبى:</b> ~{prob_side}%
+
+-----------------------------
+🎯 <b>أهداف الهبوط المحتملة (فى حالة استمرار الضغط البيعى):</b>
+• الهدف الأول:  <b>{d1_low:,.0f}$ → {d1_high:,.0f}$</b>
+• الهدف الثانى: <b>{d2_low:,.0f}$ → {d2_high:,.0f}$</b>
+
+🎯 <b>أهداف الصعود المحتملة (لو تحول الزخم لصالح المشترين):</b>
+• الهدف الأول:  <b>{u1_low:,.0f}$ → {u1_high:,.0f}$</b>
+• الهدف الثانى: <b>{u2_low:,.0f}$ → {u2_high:,.0f}$</b>
+
+-----------------------------
+🧠 <b>رؤية IN CRYPTO Ai:</b>
+• <b>اتجاه السوق:</b> {trend_sentence}  
+• <b>قوة الزخم:</b> {momentum_note}  
+• <b>حالة السيولة:</b> {liquidity_note}  
+• <b>لماذا ظهر هذا التحذير؟</b> {reason_short}
+
+-----------------------------
+⚠️ <b>تنبيه مهم:</b>
+هذه قراءة احترافية لحظية تساعدك تفهم "رايحين على فين" بالأرقام،  
+وليست توصية مباشرة بالشراء أو البيع. إدارة رأس المال مسئوليتك دائماً.
+
+<b>IN CRYPTO Ai 🤖 — نظام تحذير ذكى بمستوى مؤسسى</b>
+""".strip()
+
+    # نتأكد أن الرسالة لا تتجاوز حدود تيليجرام
+    return _shrink_text_preserve_content(msg, limit=3800)
