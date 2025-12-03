@@ -298,8 +298,21 @@ def check_admin_auth(req) -> bool:
     # return pwd == ADMIN_DASH_PASSWORD
     return True
 # ==============================
-#   Fix missing variables for bot runtime
+#  Fix missing variables for services.py
 # ==============================
 
-SNAPSHOT_FILE = None          # لمنع خطأ load_snapshot()
-THREADS_STARTED = False       # لمنع خطأ start_background_threads()
+# يوم إرسال التقرير الأسبوعي (0 = الاثنين … 6 = الأحد)
+WEEKLY_REPORT_WEEKDAY = 6        # مثال: الأحد
+
+# البوت الأساسي (يتم إنشاؤه في services._ensure_bot)
+BOT = None
+
+# فترات عمل اللوops
+WATCHDOG_INTERVAL = 5.0          # كل 5 ثواني مراقبة النظام
+REALTIME_ENGINE_INTERVAL = 3.0   # كل 3 ثواني تحديث التحليلات
+
+# لإيقاف تشغيل الـ threads مرة واحدة فقط
+THREADS_STARTED = False
+
+# ملف السناك شوت (غير مستخدم الآن لكنه مطلوب لتجنب الأخطاء)
+SNAPSHOT_FILE = None
