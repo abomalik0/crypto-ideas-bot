@@ -2,7 +2,6 @@ import time
 from datetime import datetime
 
 from flask import Flask, request, jsonify, Response
-import threading
 
 import config
 from config import (
@@ -25,7 +24,8 @@ from analysis_engine import (
     get_market_metrics_cached,
     evaluate_risk_level,
     detect_alert_condition,
-    compute_smart_market_snapshot,  # Snapshot لـ Smart Alert
+    compute_smart_market_snapshot,
+    format_ultra_pro_alert,
 )
 import services
 
@@ -77,8 +77,7 @@ def _fmt_secs(v):
 
 def _format_smart_snapshot(snapshot: dict, title: str) -> str:
     """
-    تنسيق Snapshot الذكى فى رسالة قصيرة للأدمن.
-    ما بيغيرش أى حاجة فى المنطق، كله قراءة من dict فقط.
+    تنسيق Snapshot الذكى فى رسالة قصيرة للأدمن (لأمر /test_smart).
     """
     metrics = snapshot.get("metrics") or {}
     risk = snapshot.get("risk") or {}
@@ -113,7 +112,6 @@ def _format_smart_snapshot(snapshot: dict, title: str) -> str:
 
     active_labels = events.get("active_labels") or []
 
-    scenario = zones.get("dominant_scenario")
     downside_1 = zones.get("downside_zone_1")
     downside_2 = zones.get("downside_zone_2")
     upside_1 = zones.get("upside_zone_1")
@@ -164,7 +162,6 @@ def _format_smart_snapshot(snapshot: dict, title: str) -> str:
     if interval is not None:
         lines.append(f"• الفحص التالى المقترح بعد: {_fmt_secs(interval)}")
 
-    # مناطق تقديرية "نازلين لفين / طالعين لفين"
     if any([downside_1, downside_2, upside_1, upside_2]):
         lines.append("")
         lines.append("• مناطق حركة تقديرية (تعليمية فقط):")
@@ -181,12 +178,13 @@ def _format_smart_snapshot(snapshot: dict, title: str) -> str:
             except Exception:
                 return None
 
-        z1 = _zone_line("منطقة هبوط 1", downside_1)
-        z2 = _zone_line("منطقة هبوط 2", downside_2)
-        u1 = _zone_line("منطقة صعود 1", upside_1)
-        u2 = _zone_line("منطقة صعود 2", upside_2)
-
-        for ln in (z1, z2, u1, u2):
+        for label, zone in [
+            ("منطقة هبوط 1", downside_1),
+            ("منطقة هبوط 2", downside_2),
+            ("منطقة صعود 1", upside_1),
+            ("منطقة صعود 2", upside_2),
+        ]:
+            ln = _zone_line(label, zone)
             if ln:
                 lines.append(ln)
 
@@ -269,8 +267,8 @@ def webhook():
             "تحليل السوق:\n"
             "• <code>/market</code> — نظرة عامة\n"
             "• <code>/risk_test</code> — اختبار مخاطر\n"
-            "• <code>/alert</code> — تحذير كامل (للأدمن فقط)\n"
-            "• <code>/weekly_now</code> — تقرير أسبوعى فورى (للأدمن فقط)\n\n"
+            "• <code>/alert</code> — تحذير Ultra PRO (للأدمن فقط)\n"
+            "• <code>/alert_pro</code> — إرسال Ultra PRO Alert للمستخدمين (للأدمن فقط)\n\n"
             "النظام يجلب البيانات أولاً من Binance ثم KuCoin تلقائيًا."
         )
         send_message(chat_id, welcome)
@@ -298,12 +296,18 @@ def webhook():
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
+    # ===== أمر /alert الرسمى (Ultra PRO) =====
     if lower_text == "/alert":
         if chat_id != config.ADMIN_CHAT_ID:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
-        alert_text = services.get_cached_response("alert_text", format_ai_alert)
+        # أولاً نحاول Ultra PRO
+        alert_text = format_ultra_pro_alert()
+        if not alert_text:
+            # fallback للنسخة القديمة لو حصل أى مشكلة
+            alert_text = services.get_cached_response("alert_text", format_ai_alert)
+
         keyboard = {
             "inline_keyboard": [
                 [
@@ -315,17 +319,16 @@ def webhook():
             ]
         }
         send_message_with_keyboard(chat_id, alert_text, keyboard)
-        add_alert_history("manual", "Manual /alert command")
+        add_alert_history("manual_ultra", "Manual /alert (Ultra PRO)")
         return jsonify(ok=True)
 
-    # ===== /weekly_now — تقرير أسبوعى فورى (للأدمن فقط) =====
-    if lower_text == "/weekly_now":
+    # ===== أمر /alert_pro: إرسال Ultra PRO للمستخدمين =====
+    if lower_text == "/alert_pro":
         if chat_id != config.ADMIN_CHAT_ID:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
-        report = services.get_cached_response("weekly_report", format_weekly_ai_report)
-        send_message(chat_id, report)
+        services.handle_admin_alert_pro_broadcast(chat_id)
         return jsonify(ok=True)
 
     # ==============================
@@ -354,10 +357,7 @@ def webhook():
             )
             return jsonify(ok=True)
 
-        msg_mock = _format_smart_snapshot(snapshot, "Smart Alert — MOCK / DEBUG")
         msg_real = _format_smart_snapshot(snapshot, "Smart Alert — LIVE SNAPSHOT")
-
-        send_message(chat_id, msg_mock)
         send_message(chat_id, msg_real)
 
         metrics = snapshot.get("metrics") or {}
@@ -412,20 +412,33 @@ def webhook():
 
 • عدد الشاتات المسجلة: {len(config.KNOWN_CHAT_IDS)}
 • آخر تقرير أسبوعى مبعوت: {config.LAST_WEEKLY_SENT_DATE}
-• آخر Auto Alert: {config.LAST_AUTO_ALERT_INFO.get("time")} ({config.LAST_AUTO_ALERT_INFO.get("reason")})
+• آخر Auto Alert (قديم): {config.LAST_AUTO_ALERT_INFO.get("time")} ({config.LAST_AUTO_ALERT_INFO.get("reason")})
 """.strip()
         send_message(chat_id, msg_status)
+        return jsonify(ok=True)
+
+    # أمر اختبار /weekly_now للأدمن (من خلال الخدمات الجديدة)
+    if lower_text == "/weekly_now":
+        if chat_id != config.ADMIN_CHAT_ID:
+            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
+            return jsonify(ok=True)
+
+        services.handle_admin_weekly_now_command(chat_id)
         return jsonify(ok=True)
 
     return jsonify(ok=True)
 
 
 # ==============================
-#   /auto_alert Endpoint (النظام القديم للأدمن فقط – باقى كما هو)
+#   /auto_alert Endpoint (النظام القديم)
 # ==============================
 
 @app.route("/auto_alert", methods=["GET"])
 def auto_alert():
+    """
+    نظام التحذير القديم المعتمد على detect_alert_condition.
+    ما زال موجود للتوافق الخلفى / dashboards قديمة.
+    """
     metrics = get_market_metrics_cached()
     if not metrics:
         config.logger.warning("auto_alert: metrics is None")
@@ -488,7 +501,7 @@ def test_alert():
             "تم إرسال هذا التنبيه لاختبار النظام.\n"
             "كل شيء شغال بنجاح 👍"
         )
-        send_message(config.ADMIN_CHAT_ID, alert_message)
+        send_message(config.ADMIN_CHAT_ID, alert_message, parse_mode="Markdown")
         return {"ok": True, "sent": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -529,6 +542,7 @@ def dashboard_api():
         last_weekly_tick=config.LAST_WEEKLY_TICK,
         last_webhook_tick=config.LAST_WEBHOOK_TICK,
         last_watchdog_tick=config.LAST_WATCHDOG_TICK,
+        last_smart_alert_tick=config.LAST_SMART_ALERT_TICK,
     )
 
 
@@ -580,7 +594,7 @@ def admin_force_alert():
     if not check_admin_auth(request):
         return jsonify(ok=False, error="unauthorized"), 401
 
-    text = format_ai_alert()
+    text = format_ultra_pro_alert() or format_ai_alert()
     send_message(config.ADMIN_CHAT_ID, text)
     add_alert_history("force", "Force alert from admin dashboard")
     config.logger.info("Admin forced alert from dashboard.")
@@ -603,12 +617,8 @@ def admin_test_alert():
 
 @app.route("/weekly_ai_report", methods=["GET"])
 def weekly_ai_report():
-    """
-    Endpoint قديم، هنخليه يستخدم النظام الجديد الذى يرسل التقرير
-    إلى الجروب/القناة الهدف.
-    """
-    services.run_weekly_ai_report()
-    return jsonify(ok=True)
+    sent_to = services.send_weekly_report_to_all_chats()
+    return jsonify(ok=True, sent_to=sent_to)
 
 
 @app.route("/admin/weekly_ai_test", methods=["GET"])
@@ -642,6 +652,7 @@ def status_api():
         weekly_last_tick=config.LAST_WEEKLY_TICK,
         webhook_last_tick=config.LAST_WEBHOOK_TICK,
         watchdog_last_tick=config.LAST_WATCHDOG_TICK,
+        smart_alert_last_tick=config.LAST_SMART_ALERT_TICK,
         cache_last_update=config.REALTIME_CACHE.get("last_update"),
         last_auto_alert=config.LAST_AUTO_ALERT_INFO,
         last_weekly_sent=config.LAST_WEEKLY_SENT_DATE,
@@ -667,7 +678,6 @@ def setup_webhook():
         config.logger.exception("Error while setting webhook: %s", e)
 
 
-#  🔥 مهم جداً — Alias علشان الـ main يشتغل بدون خطأ
 def set_webhook_on_startup():
     setup_webhook()
 
