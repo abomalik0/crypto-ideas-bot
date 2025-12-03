@@ -269,7 +269,8 @@ def webhook():
             "تحليل السوق:\n"
             "• <code>/market</code> — نظرة عامة\n"
             "• <code>/risk_test</code> — اختبار مخاطر\n"
-            "• <code>/alert</code> — تحذير كامل (للأدمن فقط)\n\n"
+            "• <code>/alert</code> — تحذير كامل (للأدمن فقط)\n"
+            "• <code>/weekly_now</code> — تقرير أسبوعى فورى (للأدمن فقط)\n\n"
             "النظام يجلب البيانات أولاً من Binance ثم KuCoin تلقائيًا."
         )
         send_message(chat_id, welcome)
@@ -315,6 +316,16 @@ def webhook():
         }
         send_message_with_keyboard(chat_id, alert_text, keyboard)
         add_alert_history("manual", "Manual /alert command")
+        return jsonify(ok=True)
+
+    # ===== /weekly_now — تقرير أسبوعى فورى (للأدمن فقط) =====
+    if lower_text == "/weekly_now":
+        if chat_id != config.ADMIN_CHAT_ID:
+            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
+            return jsonify(ok=True)
+
+        report = services.get_cached_response("weekly_report", format_weekly_ai_report)
+        send_message(chat_id, report)
         return jsonify(ok=True)
 
     # ==============================
@@ -410,7 +421,7 @@ def webhook():
 
 
 # ==============================
-#   /auto_alert Endpoint
+#   /auto_alert Endpoint (النظام القديم للأدمن فقط – باقى كما هو)
 # ==============================
 
 @app.route("/auto_alert", methods=["GET"])
@@ -592,8 +603,12 @@ def admin_test_alert():
 
 @app.route("/weekly_ai_report", methods=["GET"])
 def weekly_ai_report():
-    sent_to = services.send_weekly_report_to_all_chats()
-    return jsonify(ok=True, sent_to=sent_to)
+    """
+    Endpoint قديم، هنخليه يستخدم النظام الجديد الذى يرسل التقرير
+    إلى الجروب/القناة الهدف.
+    """
+    services.run_weekly_ai_report()
+    return jsonify(ok=True)
 
 
 @app.route("/admin/weekly_ai_test", methods=["GET"])
@@ -652,7 +667,7 @@ def setup_webhook():
         config.logger.exception("Error while setting webhook: %s", e)
 
 
-# 🔥 مهم جداً — Alias علشان الـ main يشتغل بدون خطأ
+#  🔥 مهم جداً — Alias علشان الـ main يشتغل بدون خطأ
 def set_webhook_on_startup():
     setup_webhook()
 
@@ -681,7 +696,7 @@ if __name__ == "__main__":
     except Exception as e:
         logging.exception("Failed to set webhook on startup: %s", e)
 
-    # هنا التعديل المهم: تشغيل كل الثريدات من دالة واحدة
+    # تشغيل كل الثريدات من services
     try:
         services.start_background_threads()
     except Exception as e:
