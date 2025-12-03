@@ -705,8 +705,125 @@ def compute_potential_zones(metrics: dict, pulse: dict, risk: dict) -> dict:
         "downside_zone_2": (round(down_zone_2_low, 2), round(down_zone_2_high, 2)),
         "upside_zone_1": (round(up_zone_1_low, 2), round(up_zone_1_high, 2)),
         "upside_zone_2": (round(up_zone_2_low, 2), round(up_zone_2_high, 2)),
+        # mid-points لسهولة إرسال أهداف واضحة للمستخدم
+        "downside_mid_1": round((down_zone_1_low + down_zone_1_high) / 2, 2),
+        "downside_mid_2": round((down_zone_2_low + down_zone_2_high) / 2, 2),
+        "upside_mid_1": round((up_zone_1_low + up_zone_1_high) / 2, 2),
+        "upside_mid_2": round((up_zone_2_low + up_zone_2_high) / 2, 2),
     }
 
+# ==============================
+#   Early Movement Detector (UEWS Lite)
+# ==============================
+
+def detect_early_movement_signal(
+    metrics: dict,
+    pulse: dict,
+    events: dict,
+    risk: dict,
+) -> dict | None:
+    """
+    رصد مبكر لحركة قوية محتملة (هبوط / صعود) قبل اكتمال الانفجار الكامل.
+    يعتمد على:
+      - سرعة التغير فى العائدات (speed_index)
+      - تسارع الحركة (accel_index)
+      - التقلب اليومى
+      - أحداث مؤسسية مثل Panic Drop / Liquidity Shock
+    """
+    change = metrics["change_pct"]
+    vol = metrics["volatility_score"]
+    range_pct = metrics["range_pct"]
+    risk_level = risk["level"]
+
+    speed = pulse["speed_index"]
+    accel = pulse["accel_index"]
+    regime = pulse["regime"]
+    direction_conf = pulse.get("direction_confidence", 0.0)
+
+    score = 0.0
+    direction = None
+    reasons: list[str] = []
+
+    # سرعة الحركة
+    if speed >= 40:
+        score += 25.0
+        reasons.append("تسارع سريع فى الحركة اللحظية.")
+    elif speed >= 25:
+        score += 15.0
+        reasons.append("زيادة ملحوظة فى سرعة الحركة.")
+
+    # التقلب والمدى
+    if vol >= 60 or range_pct >= 7:
+        score += 20.0
+        reasons.append("تقلب مرتفع يشير لاحتمال انفجار سعرى.")
+    elif vol >= 45:
+        score += 10.0
+        reasons.append("تقلب فوق المتوسط يدعم حركة قوية.")
+
+    # التسارع عبر الزمن
+    if accel > 0 and abs(change) >= 1.0:
+        score += 15.0
+        reasons.append("تسارع فى التغير اليومى مقارنة بالقراءات السابقة.")
+
+    # الأحداث المؤسسية
+    if events.get("panic_drop"):
+        score += 25.0
+        direction = "down"
+        reasons.append("إشارات تشبه Panic Drop مبكر.")
+    if events.get("liquidity_shock"):
+        score += 15.0
+        reasons.append("صدمة سيولة محتملة.")
+    if events.get("momentum_spike_down"):
+        score += 15.0
+        direction = "down"
+        reasons.append("هبوط لحظى سريع (Momentum Spike Down).")
+    if events.get("momentum_spike_up"):
+        score += 15.0
+        if direction is None:
+            direction = "up"
+        reasons.append("اندفاع صاعد سريع (Momentum Spike Up).")
+
+    # اتجاه مبنى على التغير العام لو لسه مش محدد
+    if direction is None:
+        if change <= -1.5 and direction_conf >= 55:
+            direction = "down"
+        elif change >= 1.5 and direction_conf >= 55:
+            direction = "up"
+
+    # تعديل حسب مستوى المخاطر
+    if risk_level == "high":
+        score += 10.0
+    elif risk_level == "medium":
+        score += 5.0
+
+    score = max(0.0, min(100.0, score))
+
+    # لو الإشارة ضعيفة أو الاتجاه مش واضح → لا نعتبرها Early Warning
+    if score < 45.0 or direction is None:
+        return None
+
+    if score >= 75:
+        window_minutes = 5
+    elif score >= 60:
+        window_minutes = 10
+    else:
+        window_minutes = 15
+
+    confidence = min(100.0, score + (direction_conf * 0.2))
+    reason_text = " ".join(reasons) if reasons else "إشارة مبكرة لحركة قوية محتملة."
+
+    return {
+        "active": True,
+        "direction": direction,
+        "score": round(score, 1),
+        "confidence": round(confidence, 1),
+        "window_minutes": window_minutes,
+        "reason": reason_text,
+    }
+
+# ==============================
+#   بناء النص التقليدى للتحذير (Smart Alert v1)
+# ==============================
 
 def build_smart_alert_reason(
     metrics: dict,
@@ -818,7 +935,6 @@ def compute_smart_market_snapshot() -> dict | None:
 
     zones = compute_potential_zones(metrics, pulse, risk)
     interval = compute_adaptive_interval(metrics, pulse, risk)
-    fusion = fusion_ai_brain(metrics, risk)
 
     reason_text = None
     if alert_level["level"] is not None:
@@ -840,194 +956,166 @@ def compute_smart_market_snapshot() -> dict | None:
         "zones": zones,
         "adaptive_interval": interval,
         "reason": reason_text,
-        "fusion": fusion,
     }
 
     return snapshot
 
 # ==============================
-#   تنسيق رسالة التنبيه الاحترافية الجديدة (لجميع المستخدمين)
+#   Ultra Smart Snapshot + Message
 # ==============================
 
-def _trend_word_from_bias(bias: str) -> str:
-    if bias.startswith("strong_bullish"):
-        return "صعود قوى"
-    if bias.startswith("bullish"):
-        return "ميل صاعد"
-    if bias.startswith("strong_bearish"):
-        return "هبوط حاد"
-    if bias.startswith("bearish"):
-        return "ميل هابط"
-    if bias.startswith("neutral"):
-        return "تذبذب جانبى"
-    return "غير واضح"
-
-
-def format_ultra_smart_alert(snapshot: dict, mode: str = "early") -> str:
+def compute_ultra_smart_market_snapshot() -> dict | None:
     """
-    الرسالة الرسمية للمستخدمين:
-    🚨 تنبيه فورى — حركة قوية تتشكل الآن
-    مع اتجاه واضح + أهداف هبوط وصعود + نسب احتمالات
+    نسخة موسعة من snapshot تشمل:
+      - early_signal
+      - fusion
+      - نفس باقى العناصر
+    لا تستبدل النسخة القديمة، بل تشتغل جنبًا إلى جنب.
     """
-    metrics = snapshot.get("metrics") or {}
-    risk = snapshot.get("risk") or {}
-    pulse = snapshot.get("pulse") or {}
-    events = snapshot.get("events") or {}
-    alert_level = snapshot.get("alert_level") or {}
-    zones = snapshot.get("zones") or {}
-    fusion = snapshot.get("fusion")
+    metrics = get_market_metrics_cached()
+    if not metrics:
+        return None
 
-    # فى حالة أى نقص، نحاول نكمل من جديد
-    if metrics and risk and fusion is None:
-        fusion = fusion_ai_brain(metrics, risk)
+    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
+    pulse = update_market_pulse(metrics)
+    events = detect_institutional_events(pulse, metrics, risk)
+    alert_level = classify_alert_level(metrics, risk, pulse, events)
+    zones = compute_potential_zones(metrics, pulse, risk)
+    interval = compute_adaptive_interval(metrics, pulse, risk)
+    early_signal = detect_early_movement_signal(metrics, pulse, events, risk)
+    fusion = fusion_ai_brain(metrics, risk)
 
-    price = float(metrics.get("price", 0.0) or 0.0)
-    change = float(metrics.get("change_pct", 0.0) or 0.0)
-    range_pct = float(metrics.get("range_pct", 0.0) or 0.0)
-    volatility = float(metrics.get("volatility_score", 0.0) or 0.0)
-    strength_label = metrics.get("strength_label", "")
-    liquidity_pulse = metrics.get("liquidity_pulse", "")
+    return {
+        "metrics": metrics,
+        "risk": risk,
+        "pulse": pulse,
+        "events": events,
+        "alert_level": alert_level,
+        "zones": zones,
+        "adaptive_interval": interval,
+        "early_signal": early_signal,
+        "fusion": fusion,
+    }
 
-    speed_index = float(pulse.get("speed_index", 0.0) or 0.0)
-    accel_index = float(pulse.get("accel_index", 0.0) or 0.0)
-    direction_conf = float(pulse.get("direction_confidence", 0.0) or 0.0)
 
-    shock_score = float(alert_level.get("shock_score", 0.0) or 0.0)
-    level = alert_level.get("level") or "low"
+def format_ultra_smart_alert_from_snapshot(snapshot: dict) -> str:
+    """
+    صياغة رسالة التنبيه الاحترافية الواضحة للمستخدم العادى،
+    مع التركيز على:
+      - الاتجاه الأقوى الآن
+      - الأهداف القادمة (هبوط/صعود) بأرقام مباشرة
+      - درجة الاحتمال
+      - ملخص بسيط للزخم والسيولة
+    """
+    metrics = snapshot.get("metrics", {})
+    risk = snapshot.get("risk", {})
+    pulse = snapshot.get("pulse", {})
+    zones = snapshot.get("zones", {})
+    fusion = snapshot.get("fusion") or fusion_ai_brain(metrics, risk)
+    early = snapshot.get("early_signal")
 
-    dz1_low, dz1_high = zones.get("downside_zone_1", (0.0, 0.0))
-    dz2_low, dz2_high = zones.get("downside_zone_2", (0.0, 0.0))
-    uz1_low, uz1_high = zones.get("upside_zone_1", (0.0, 0.0))
-    uz2_low, uz2_high = zones.get("upside_zone_2", (0.0, 0.0))
+    price = metrics.get("price", 0.0)
+    change = metrics.get("change_pct", 0.0)
+    volatility = metrics.get("volatility_score", 0.0)
 
-    # ضغط السيولة رقمى 0–100 (تقدير)
-    liquidity_pressure = abs(change) * 2.0 + range_pct * 1.0 + speed_index * 0.4
-    liquidity_pressure = max(0.0, min(100.0, liquidity_pressure))
+    speed_index = pulse.get("speed_index", 0.0)
+    liquidity_text = metrics.get("liquidity_pulse", "")
 
-    # احتمالات الحركة من Fusion إن وجد
-    if fusion:
-        p_up = int(fusion.get("p_up", 0))
-        p_side = int(fusion.get("p_side", 0))
-        p_down = int(fusion.get("p_down", 0))
-        bias = fusion.get("bias", "neutral")
-        trend_word = _trend_word_from_bias(bias)
-        trend_sentence = fusion.get("bias_text", "")
-        liquidity_note = fusion.get("smc_view", liquidity_pulse)
+    if "خروج" in liquidity_text or "تصريف" in liquidity_text:
+        liquidity_pressure = 75.0
+    elif "الدخول" in liquidity_text or "تجميع" in liquidity_text:
+        liquidity_pressure = 60.0
+    elif "متوازنة" in liquidity_text:
+        liquidity_pressure = 40.0
     else:
-        # fallback بسيط
-        if change > 1.0:
-            trend_word = "صعود"
-        elif change < -1.0:
-            trend_word = "هبوط"
-        else:
-            trend_word = "تذبذب"
-        trend_sentence = strength_label or "لا يوجد اتجاه واضح مكتمل حاليًا."
-        liquidity_note = liquidity_pulse or "السيولة متوازنة نسبيًا."
-        p_up = 35
-        p_side = 40
-        p_down = 25
-        bias = "neutral"
+        liquidity_pressure = 50.0
 
-    # تحديد الاتجاه الأقوى
-    if p_down >= p_up and p_down >= p_side:
-        expected_direction_strong = "السيناريو الأقرب حاليًا هو هبوط تدريجى قد يتحول لهبوط قوى إذا تم كسر مناطق الدعم."
-    elif p_up >= p_side and p_up >= p_down:
-        expected_direction_strong = "السيناريو الأقرب حاليًا هو صعود تدريجى قد يتحول لموجة اندفاع صاعدة إذا تم اختراق المقاومات."
-    else:
-        expected_direction_strong = "السيناريو الأقرب حاليًا هو تماسك جانبى مع ترقب لاختراق قادم."
+    dz1_low, dz1_high = zones.get("downside_zone_1", (price * 0.97, price * 0.99))
+    dz2_low, dz2_high = zones.get("downside_zone_2", (price * 0.94, price * 0.97))
+    uz1_low, uz1_high = zones.get("upside_zone_1", (price * 1.01, price * 1.03))
+    uz2_low, uz2_high = zones.get("upside_zone_2", (price * 1.03, price * 1.06))
 
-    # سبب التوقع (مبنى على الزخم + السيولة + التقلب)
-    reasons = []
-    if abs(change) >= 2:
-        reasons.append(f"حركة يومية قوية نسبيًا (%{change:+.2f}) مقارنة بالمعدلات الهادئة.")
-    if volatility >= 50:
-        reasons.append(f"درجة تقلب مرتفعة حوالى {volatility:.1f}/100 تشير لاحتمال اتساع نطاق الحركة.")
-    if speed_index >= 40:
-        reasons.append("زيادة واضحة فى سرعة تغير السعر خلال الفترات الأخيرة.")
-    if liquidity_pressure >= 50:
-        reasons.append("ضغط سيولة ملحوظ يعكس دخول أو خروج قوى لرؤوس الأموال.")
-    if not reasons:
-        reasons.append("تجمع عدة إشارات زخم وسيولة وتقلب تشير إلى احتمال حركة غير عادية.")
+    d1_mid = zones.get("downside_mid_1") or round((dz1_low + dz1_high) / 2, 2)
+    d2_mid = zones.get("downside_mid_2") or round((dz2_low + dz2_high) / 2, 2)
+    u1_mid = zones.get("upside_mid_1") or round((uz1_low + uz1_high) / 2, 2)
+    u2_mid = zones.get("upside_mid_2") or round((uz2_low + uz2_high) / 2, 2)
 
-    direction_reason_line = " / ".join(reasons)
+    prob_up = fusion.get("p_up", 0)
+    prob_down = fusion.get("p_down", 0)
+    prob_side = fusion.get("p_side", 0)
 
-    # ملاحظات الزخم
-    if speed_index < 15:
-        momentum_note = "الزخم الحالى ضعيف نسبيًا، والحركة تميل لأن تكون هادئة."
-    elif speed_index < 40:
-        momentum_note = "الزخم متوسط وهناك إمكانية لزيادة سرعة الحركة مع أى خبر أو كسر واضح."
-    else:
-        momentum_note = "الزخم قوى وسرعة الحركة أعلى من المعتاد، ما يزيد احتمال حركات حادة."
+    direction_final = "تذبذب / حركة جانبية"
+    expected_direction_strong = "السوق يميل إلى حركة جانبية مع احتمالات خداع فى الاتجاهين."
+    dominant_prob = max(prob_up, prob_down, prob_side)
 
-    # وضوح الاتجاه
-    if direction_conf >= 70:
-        direction_clarity_note = "اتجاه الحركة الحالى واضح ومتماسك وفق قراءات اللحظة."
-    elif direction_conf >= 45:
-        direction_clarity_note = "يوجد ميل لاتجاه معين لكن ما زال تحت الاختبار."
-    else:
-        direction_clarity_note = "اتجاه الحركة ما زال متذبذبًا، والسوق يترقب محفز جديد."
+    if prob_down >= prob_up + 10 and prob_down >= prob_side:
+        direction_final = "هبوط"
+        expected_direction_strong = "السوق يميل بوضوح إلى سيناريو هابط إذا استمر نفس الزخم."
+        dominant_prob = prob_down
+    elif prob_up >= prob_down + 10 and prob_up >= prob_side:
+        direction_final = "صعود"
+        expected_direction_strong = "السوق يميل إلى سيناريو صاعد مع تحسن ملحوظ فى الزخم."
+        dominant_prob = prob_up
 
-    # احتمالات الصعود/الهبوط كنص
-    prob_down = p_down
-    prob_up = p_up
+    direction_reason_line = fusion.get("bias_text", "")
 
-    # ملخص صغير
-    ai_micro_summary = (
-        f"الاتجاه الأقرب حاليًا: {trend_word} / "
-        f"احتمال صعود ~{p_up}% / هبوط ~{p_down}% / تماسك ~{p_side}%."
-    )
+    if early and early.get("active"):
+        dir_ar = "هابط" if early["direction"] == "down" else "صاعد"
+        direction_reason_line = (
+            f"نظام التحذير المبكر يلتقط إشارة {dir_ar} بدرجة ثقة تقارب "
+            f"{early['confidence']:.0f}/100 خلال {early['window_minutes']} دقيقة قادمة. "
+            f"{early['reason']}"
+        )
+        if early["direction"] == "down" and direction_final != "صعود":
+            direction_final = "هبوط"
+            dominant_prob = max(dominant_prob, prob_down, 70)
+        elif early["direction"] == "up" and direction_final != "هبوط":
+            direction_final = "صعود"
+            dominant_prob = max(dominant_prob, prob_up, 70)
 
-    # بناء الرسالة بالنموذج المتفق عليه
-    title_line = "🚨 تنبيه فورى — حركة قوية تتشكل الآن"
-    if mode == "shock":
-        title_line = "🚨 تنبيه فورى — حركة قوية جارية الآن"
+    momentum_note = metrics.get("strength_label", "")
+    liquidity_note = liquidity_text
+    trend_sentence = fusion.get("bias_text", "")
+
+    prob_up_int = int(round(prob_up))
+    prob_down_int = int(round(prob_down))
+    dominant_prob_int = int(round(dominant_prob))
 
     msg = f"""
-{title_line}
+🚨 <b>تنبيه فورى — اتجاه واضح يتكوّن الآن</b>
 
-💰 السعر الحالى: {price:,.0f}$  
-📉 تغير آخر 24 ساعة: %{change:+.2f}
+💰 <b>السعر الحالى:</b> {price:,.0f}$
+📉 <b>تغير 24 ساعة:</b> %{change:+.2f}
+⚡ <b>قوة التقلب:</b> {volatility:.1f} / 100
+🏃 <b>سرعة الزخم:</b> {speed_index:.1f} / 100
+💧 <b>ضغط السيولة (تقديرى):</b> {liquidity_pressure:.1f} / 100
 
-⚡ ماذا يحدث الآن؟
-الذكاء الاصطناعى يرصد:
-• ارتفاع مفاجئ فى التقلب → {volatility:.1f}/100  
-• تغير سريع فى الزخم اللحظى → {speed_index:.1f}/100  
-• ضغط ملحوظ فى السيولة → {liquidity_pressure:.1f}/100  
-• الاتجاه الأقرب حاليًا: {trend_word}
+🎯 <b>الخلاصة المباشرة — السوق رايح على فين؟</b>
+• الاتجاه الأقوى الآن: <b>{direction_final}</b>
+• السبب الرئيسى: {direction_reason_line}
+• قوة هذا السيناريو حاليًا: <b>~{dominant_prob_int}%</b>
 
------------------------------
-🎯 الاتجاه المتوقع خلال الساعات القادمة
-→ {expected_direction_strong}
+📉 <b>لو السوق كمل هبوط:</b>
+• الهدف الأول: <b>{d1_mid:,.0f}$</b>
+• الهدف الثانى: <b>{d2_mid:,.0f}$</b>
+• احتمال سيناريو الهبوط: <b>~{prob_down_int}%</b>
 
-🔎 سبب التوقع:
-{direction_reason_line}
+📈 <b>لو حصل انعكاس وصعود:</b>
+• الهدف الأول: <b>{u1_mid:,.0f}$</b>
+• الهدف الثانى: <b>{u2_mid:,.0f}$</b>
+• احتمال سيناريو الصعود: <b>~{prob_up_int}%</b>
 
------------------------------
-🎯 الأهداف المتوقعة بدقة عالية
+🧠 <b>ملخص IN CRYPTO Ai:</b>
+• الاتجاه العام: {trend_sentence}
+• قوة الحركة اللحظية: {momentum_note}
+• وضع السيولة: {liquidity_note}
+• حركة 1–3 ساعات القادمة (تقديرية): {expected_direction_strong}
 
-📉 فى حالة الهبوط:
-• الهدف الأول:  {dz1_low:,.0f}$ → {dz1_high:,.0f}$
-• الهدف الثانى: {dz2_low:,.0f}$ → {dz2_high:,.0f}$
-• احتمال سيناريو الهبوط: {prob_down}%  
+⚠️ <b>تنويه:</b>
+هذا تنبيه ذكاء اصطناعى لحظى يوضح السيناريو الأقوى والأهداف المتوقعة بشكل مباشر،
+وليس توصية صريحة بالشراء أو البيع.
 
-📈 فى حالة الصعود:
-• الهدف الأول:  {uz1_low:,.0f}$ → {uz1_high:,.0f}$
-• الهدف الثانى: {uz2_low:,.0f}$ → {uz2_high:,.0f}$
-• احتمال سيناريو الصعود: {prob_up}%  
-
------------------------------
-🧠 ملخص IN CRYPTO Ai:
-• اتجاه السوق: {trend_sentence}  
-• قوة الزخم: {momentum_note}  
-• حالة السيولة: {liquidity_note}  
-• وضوح الاتجاه: {direction_clarity_note}
-
------------------------------
-⚠️ ملاحظة:
-هذه قراءة احترافية لحظية… تساعدك تعرف "رايحين على فين"  
-قبل الحركة الفعلية، وليست توصية مباشرة بالشراء أو البيع.
-
-IN CRYPTO Ai 🤖 — نظام الذكاء الاصطناعى الأعلى دقة فى تحليل الكريبتو
+<b>IN CRYPTO Ai 🤖 — Ultra Smart Alert Engine</b>
 """.strip()
 
     return _shrink_text_preserve_content(msg)
