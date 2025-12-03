@@ -652,9 +652,10 @@ def setup_webhook():
         config.logger.exception("Error while setting webhook: %s", e)
 
 
-#  🔥 مهم جداً — Alias علشان الـ main يشتغل بدون خطأ
+# 🔥 مهم جداً — Alias علشان الـ main يشتغل بدون خطأ
 def set_webhook_on_startup():
     setup_webhook()
+
 
 # =====================================
 # تشغيل البوت — Main Runner
