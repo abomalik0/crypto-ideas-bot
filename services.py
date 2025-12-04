@@ -177,7 +177,7 @@ def run_weekly_ai_report():
     text = get_cached_response(
         "weekly_report",
         format_weekly_ai_report,
-        ttl=3600,  # نص التقرير يتحدث كل ساعة كحد أقصى
+        ttl=config.WEEKLY_REPORT_TTL,
     )
     if not text:
         logger.warning("No weekly report text generated.")
@@ -316,7 +316,7 @@ def realtime_engine_loop():
 
 
 # =====================================================
-#   Smart Alert Engine (Ultra Early Mode)
+#   Smart Alert Engine (Auto Ultra PRO)
 # =====================================================
 
 
@@ -349,22 +349,24 @@ def _append_alert_history(price, change, level, shock_score, immediate: bool):
 
 def smart_alert_loop():
     """
-    لوب التحذير الذكى (Ultra PRO Auto — Ultra Early Mode):
-
+    لوب التحذير الذكى (Ultra PRO Auto) — MILITARY MODE v2.5:
       - يقرأ snapshot من compute_smart_market_snapshot
-      - يعتمد على:
-          * مستوى التحذير (level)
-          * Shock Score
-          * Early Signal قبل الحركة
-          * سرعة الزخم + التسارع + ثقة الاتجاه
-      - بيرسل تنبيه واحد قوى قبل الحركة بدقائق قدر الإمكان
-      - بيستخدم فجوات زمنية ذكية لتقليل السبام مع الحفاظ على الحساسية العالية
+      - يبنى شروط متعددة:
+          * super_critical
+          * immediate
+          * early (من detect_early_movement_signal)
+          * momentum
+      - يقرر إمتى يرسل تنبيه واحد قوى وواضح قبل الحركة بدقائق
+      - يمنع التكرار والسبام بفواصل زمنية ذكية
     """
     logger.info("Smart alert loop started.")
-    _ = _ensure_bot()  # بس علشان نتأكد إن الـ Bot جاهز
+    _ = _ensure_bot()  # نتأكد إن البوت جاهز
 
     while True:
         try:
+            # علامة نبض للـ Watchdog والـ /status
+            config.LAST_SMART_ALERT_TICK = time.time()
+
             snapshot = compute_smart_market_snapshot()
             if not snapshot:
                 logger.warning("No smart snapshot available, skip alert cycle.")
@@ -383,11 +385,13 @@ def smart_alert_loop():
             vol = metrics["volatility_score"]
 
             level = alert_level["level"]       # none / low / medium / high / critical
-            shock_score = alert_level.get("shock_score") or 0.0
+            shock_score = float(alert_level.get("shock_score") or 0.0)
 
-            speed_idx = pulse.get("speed_index", 0.0)
-            accel_idx = pulse.get("accel_index", 0.0)
-            direction_conf = pulse.get("direction_confidence", 0.0)
+            speed_idx = float(pulse.get("speed_index", 0.0))
+            accel_idx = float(pulse.get("accel_index", 0.0))
+            direction_conf = float(pulse.get("direction_confidence", 0.0))
+
+            risk_score = float(risk.get("score") or 0.0)
 
             # نحاول نجيب early_signal لو الدالة موجودة
             early_signal = None
@@ -405,7 +409,7 @@ def smart_alert_loop():
 
             logger.info(
                 "SmartAlert snapshot: price=%s chg=%.3f range=%.2f vol=%.1f "
-                "level=%s shock=%.1f speed=%.1f accel=%.2f conf=%.1f",
+                "level=%s shock=%.1f speed=%.1f accel=%.2f conf=%.1f risk_score=%.1f",
                 price,
                 change,
                 range_pct,
@@ -415,87 +419,108 @@ def smart_alert_loop():
                 speed_idx,
                 accel_idx,
                 direction_conf,
+                risk_score,
             )
 
             # -----------------------------
-            #   منطق اتخاذ القرار (Ultra Early)
+            #   منطق اتخاذ القرار (قوى لكن منظم)
             # -----------------------------
             now_ts = time.time()
             last_alert_ts = getattr(config, "LAST_SMART_ALERT_TS", 0.0) or 0.0
             last_critical_ts = getattr(config, "LAST_CRITICAL_ALERT_TS", 0.0) or 0.0
 
-            base_interval_min = max(1.0, config.SMART_ALERT_BASE_INTERVAL)  # بالدقايق
-            adaptive_interval_min = snapshot.get("adaptive_interval", base_interval_min)
+            base_interval_min = max(1.0, float(config.SMART_ALERT_BASE_INTERVAL))  # بالدقايق
+            adaptive_interval_min = float(
+                snapshot.get("adaptive_interval", base_interval_min)
+            )
+            adaptive_interval_min = max(0.5, adaptive_interval_min)
 
-            # 1) حالة حرجة واضحة (level + shock)
-            immediate_condition = False
-            if level in ("critical", "high") and shock_score >= 55:
-                immediate_condition = True
+            # مؤشر مركب لشدة الحركة
+            composite_intensity = (
+                0.4 * shock_score
+                + 0.3 * speed_idx
+                + 0.3 * abs(accel_idx) * 100.0 / 3.0  # نطبع التسارع لمقياس قريب
+            )
 
-            # 2) Early warning قبل الحركة بدقائق (Ultra Early)
+            # 1) super_critical: حالة انهيار/اندفاع عنيف جدًا
+            super_critical = (
+                level in ("high", "critical")
+                and shock_score >= 85
+                and speed_idx >= 70
+                and abs(accel_idx) >= 0.9
+            )
+
+            # 2) حالة حرجة قوية لكن ليست قصوى
+            immediate_condition = (
+                level in ("high", "critical")
+                and composite_intensity >= 70
+            ) or (
+                risk_score >= 75
+                and shock_score >= 60
+                and speed_idx >= 60
+            )
+
+            # 3) Early warning قوى قبل الحركة بدقائق
             early_condition = False
-            if early_signal and early_signal.get("active"):
-                score = float(early_signal.get("score", 0.0))
-                conf = float(early_signal.get("confidence", 0.0))
-                window = float(early_signal.get("window_minutes", 0.0))
+            if (
+                early_signal
+                and early_signal.get("active")
+                and float(early_signal.get("score", 0.0)) >= config.EARLY_WARNING_THRESHOLD
+            ):
+                early_condition = True
 
-                # Ultra Early: نخفض العتبة شوية عن الافتراضى لكن نحافظ على حد أدنى
-                effective_threshold = max(50.0, config.EARLY_WARNING_THRESHOLD - 10.0)
-
-                if (
-                    score >= effective_threshold
-                    and conf >= 55.0
-                    and window <= 30.0
-                ):
-                    early_condition = True
-                    logger.info(
-                        "EarlyWarning active: score=%.1f conf=%.1f window=%.1f",
-                        score,
-                        conf,
-                        window,
-                    )
-
-            # 3) زخم حركة عنيف (حتى لو level لسه medium)
+            # 4) نبض حركة عنيفة حتى لو level لسه medium
             momentum_condition = False
-            if level in ("medium", "high", "critical"):
-                if (
-                    abs(change) >= 1.8      # حركة يومية بداية عنف
-                    and speed_idx >= 72   # سرعة زخم عالية نسبياً
-                    and abs(accel_idx) >= 0.85
-                    and direction_conf >= 52.0
-                ):
-                    momentum_condition = True
+            if (
+                level in ("medium", "high", "critical")
+                and abs(change) >= 1.2
+                and speed_idx >= 55
+                and abs(accel_idx) >= 0.6
+                and vol >= 3.0
+            ):
+                momentum_condition = True
 
             # -----------------------------
-            #   تحديد نوع التنبيه + الفجوات الزمنية
+            #   تحديد نوع التنبيه + الفجوة الزمنية
             # -----------------------------
             send_immediate = False
             send_normal = False
 
-            # فجوة الحالات الحرجة / المبكرة (أقصر) — بحيث نقدر نلتقط أكتر من حركة فى اليوم
-            critical_gap = max(180.0, adaptive_interval_min * 60 * 0.4)  # ~3 دقائق أو أكثر
-            # فجوة الحالات العادية (أطول) — علشان نقلل السبام
-            normal_gap = max(900.0, adaptive_interval_min * 60 * 0.8)    # ~15 دقيقة أو أكثر
+            # الفاصل الزمني للحالات الحرجة (أقصر)
+            critical_gap = max(240.0, adaptive_interval_min * 60 * 0.4)  # ~4 دقائق كحد أدنى
+            # الفاصل الزمني للحالات العادية (أطول)
+            normal_gap = max(1200.0, adaptive_interval_min * 60 * 0.8)  # ~20 دقيقة كحد أدنى
 
-            if immediate_condition or early_condition or momentum_condition:
-                # تنبيه قوي/مبكر
-                if (now_ts - last_critical_ts) >= critical_gap:
+            # super_critical يغلب على أى شىء
+            if super_critical:
+                if (now_ts - last_critical_ts) >= critical_gap / 2:
                     send_immediate = True
                 else:
                     logger.info(
-                        "Immediate/early condition detected but within critical gap (%.1fs), skip.",
-                        critical_gap,
+                        "Super-critical condition detected but still inside hard gap (%.1fs), skip.",
+                        critical_gap / 2,
                     )
             else:
-                # مفيش conditions قوية لكن المستوى العام medium/high
-                if level in ("medium", "high", "critical") and (
-                    now_ts - last_alert_ts
-                ) >= normal_gap:
-                    send_normal = True
+                if immediate_condition or early_condition or momentum_condition:
+                    if (now_ts - last_critical_ts) >= critical_gap:
+                        send_immediate = True
+                    else:
+                        logger.info(
+                            "Immediate/early/momentum detected but within critical gap (%.1fs), skip.",
+                            critical_gap,
+                        )
+                else:
+                    # مفيش conditions قوية لكن المستوى العام medium/high
+                    if level in ("medium", "high", "critical") and (
+                        now_ts - last_alert_ts
+                    ) >= normal_gap:
+                        send_normal = True
 
             # -----------------------------
             #   إرسال التنبيه (Ultra PRO Alert)
             # -----------------------------
+            reason_text = None
+
             if send_immediate or send_normal:
                 text = format_ultra_pro_alert()
                 if text:
@@ -505,23 +530,46 @@ def smart_alert_loop():
                     if send_immediate:
                         config.LAST_CRITICAL_ALERT_TS = now_ts
 
+                    if super_critical:
+                        reason_text = "super_critical"
+                    elif immediate_condition:
+                        reason_text = "immediate_condition"
+                    elif early_condition:
+                        reason_text = "early_condition"
+                    elif momentum_condition:
+                        reason_text = "momentum_condition"
+                    else:
+                        reason_text = "normal_level_broadcast"
+
                     _append_alert_history(
                         price=price,
                         change=change,
                         level=level,
                         shock_score=shock_score,
-                        immediate=send_immediate,
+                        immediate=send_immediate or super_critical,
                     )
+
+                    # تحديث حالة LAST_SMART_ALERT_INFO للـ dashboard
+                    try:
+                        config.LAST_SMART_ALERT_INFO = {
+                            "time": datetime.utcnow().isoformat(timespec="seconds"),
+                            "reason": reason_text,
+                            "level": level,
+                            "shock_score": shock_score,
+                            "risk_level": risk.get("level"),
+                            "sent_to": getattr(config, "ALERT_TARGET_CHAT_ID", 0),
+                        }
+                    except Exception:
+                        pass
 
             # -----------------------------
             #   نوم تكيفى بين الدورات
             # -----------------------------
-            if immediate_condition or early_condition or momentum_condition:
-                # السوق بيتحرك → نبقى ملزوقين فيه أكتر
-                sleep_seconds = max(30.0, adaptive_interval_min * 60 * 0.3)
+            # نخلى النوم قصير لو السوق متوتر / في حركة
+            if super_critical or immediate_condition or early_condition or momentum_condition:
+                sleep_seconds = max(20.0, adaptive_interval_min * 60 * 0.3)
             else:
-                # السوق أهدى → نطول شوية
-                sleep_seconds = max(60.0, adaptive_interval_min * 60 * 0.9)
+                sleep_seconds = max(60.0, adaptive_interval_min * 60 * 0.7)
 
             logger.debug("Smart alert loop sleep: %.1fs", sleep_seconds)
             time.sleep(sleep_seconds)
@@ -589,9 +637,7 @@ def handle_admin_alert_command(chat_id: int):
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
-    from config import add_alert_history as _add_alert_history
-
-    _add_alert_history(
+    config.add_alert_history(
         "manual_ultra",
         "Manual /alert (Ultra PRO)",
         price=None,
@@ -633,13 +679,12 @@ def handle_admin_alert_pro_broadcast(admin_chat_id: int):
     تنفيذ أمر /alert_pro:
     يبنى Ultra PRO Alert ويرسله للجروب المحدد.
     """
-    from config import ALERT_TARGET_CHAT_ID, send_message
-    from analysis_engine import format_ultra_pro_alert
+    from config import ALERT_TARGET_CHAT_ID, send_message as _send
 
     # بناء Ultra PRO
     text = format_ultra_pro_alert()
     if not text:
-        send_message(
+        _send(
             admin_chat_id,
             "⚠️ لا توجد حركة قوية كافية حالياً لإرسال Ultra PRO Alert.\n"
             "جرّب لاحقاً عند ظهور زخم واضح."
@@ -647,10 +692,10 @@ def handle_admin_alert_pro_broadcast(admin_chat_id: int):
         return
 
     # إرسال للجروب
-    send_message(ALERT_TARGET_CHAT_ID, text)
+    _send(ALERT_TARGET_CHAT_ID, text)
 
     # تأكيد للأدمن
-    send_message(
+    _send(
         admin_chat_id,
         "✅ تم إرسال Ultra PRO Alert للمستخدمين بنجاح.\n\n"
         "📌 تم الإرسال إلى:\n"
@@ -658,8 +703,7 @@ def handle_admin_alert_pro_broadcast(admin_chat_id: int):
     )
 
     # تسجيل فى السجل
-    from config import add_alert_history
-    add_alert_history("broadcast_ultra", "Ultra PRO broadcast via /alert_pro")
+    config.add_alert_history("broadcast_ultra", "Ultra PRO broadcast via /alert_pro")
 
 
 # =====================================================
