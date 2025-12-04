@@ -441,9 +441,9 @@ def smart_alert_loop():
             momentum_condition = False
             if (
                 level in ("medium", "high", "critical")
-                and abs(change) >= 1.5
-                and speed_idx >= 60
-                and abs(accel_idx) >= 0.7
+                and abs(change) >= 1.8
+                and speed_idx >= 72
+                and abs(accel_idx) >= 0.85
             ):
                 momentum_condition = True
 
