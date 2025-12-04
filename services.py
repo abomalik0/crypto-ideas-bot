@@ -20,14 +20,17 @@ from analysis_engine import (
 
 logger = logging.getLogger(__name__)
 
-
-# ==============================
+# =====================================================
 #   Helpers: Telegram + HTTP
-# ==============================
+# =====================================================
 
 
 def _ensure_bot() -> Bot:
-    if config.BOT is None:
+    """
+    إنشاء / إعادة استخدام إنستانس Bot واحد فقط.
+    يستخدم BOT_TOKEN من config (اللى بيساوى TELEGRAM_TOKEN).
+    """
+    if getattr(config, "BOT", None) is None:
         config.BOT = Bot(token=config.BOT_TOKEN)
     return config.BOT
 
@@ -41,16 +44,16 @@ def http_get(url: str, timeout: int = 10, **kwargs):
         return None
 
 
-# ==============================
-#   Snapshot Save/Load
-# ==============================
+# =====================================================
+#   Snapshot Save/Load (اختياري وخفيف)
+# =====================================================
 
 
 def save_snapshot():
     """
-    حفظ حالة خفيفة من الكاش والنبض (اختيارى)
+    حفظ حالة خفيفة من الكاش (اختياري). مبني على SNAPSHOT_FILE فى config.
     """
-    if not config.SNAPSHOT_FILE:
+    if not getattr(config, "SNAPSHOT_FILE", None):
         logger.info("No SNAPSHOT_FILE configured, skip save.")
         return
     try:
@@ -68,11 +71,12 @@ def save_snapshot():
 
 def load_snapshot():
     """
-    تحميل حالة خفيفة من الكاش والنبض (اختيارى)
+    تحميل حالة خفيفة من الكاش (اختياري).
     """
-    if not config.SNAPSHOT_FILE:
+    if not getattr(config, "SNAPSHOT_FILE", None):
         logger.info("No SNAPSHOT_FILE configured, skipping load.")
         return
+
     import os
     import json
 
@@ -91,9 +95,9 @@ def load_snapshot():
         logger.exception("Error loading snapshot: %s", e)
 
 
-# ==============================
-#   Cached Response Layer
-# ==============================
+# =====================================================
+#   Cached Response Layer (للنصوص التقيلة)
+# =====================================================
 
 
 def _get_cached_response(key: str):
@@ -121,9 +125,9 @@ def get_cached_response(key: str, builder_func, ttl: float | None = None) -> str
     كاش بسيط لنصوص التقارير:
       - /market
       - /risk_test
-      - /alert
-      - التقارير الأسبوعية
-      - ... إلخ
+      - /alert (Ultra PRO)
+      - /weekly_report
+      - إلخ
     """
     cached = _get_cached_response(key)
     if cached:
@@ -135,19 +139,18 @@ def get_cached_response(key: str, builder_func, ttl: float | None = None) -> str
     return text
 
 
-# ==============================
+# =====================================================
 #   Broadcast Helper
-# ==============================
+# =====================================================
 
 
 def broadcast_message_to_group(text: str):
     """
-    إرسال رسالة إلى جروب أو قناة محددة من الإعدادات.
+    إرسال رسالة إلى جروب/قناة التحذيرات.
+    يعتمد على ALERT_TARGET_CHAT_ID فى config.
+    لو مش موجودة، يستخدم ADMIN_CHAT_ID كـ fallback.
     """
-    chat_id = config.ALERT_TARGET_CHAT_ID
-    if not chat_id:
-        logger.warning("No ALERT_TARGET_CHAT_ID configured, skipping broadcast.")
-        return
+    chat_id = getattr(config, "ALERT_TARGET_CHAT_ID", None) or config.ADMIN_CHAT_ID
 
     bot = _ensure_bot()
     try:
@@ -162,50 +165,19 @@ def broadcast_message_to_group(text: str):
         logger.exception("Error broadcasting message: %s", e)
 
 
-def send_weekly_report_to_all_chats():
-    """
-    يبعث التقرير الأسبوعى لكل الشاتات المعروفة (KNOWN_CHAT_IDS)
-    – للأوامر الإدارية من لوحة التحكم.
-    """
-    text = get_cached_response(
-        "weekly_report",
-        format_weekly_ai_report,
-        ttl=config.WEEKLY_REPORT_TTL,
-    )
-    if not text:
-        logger.warning("No weekly report text generated.")
-        return []
-
-    bot = _ensure_bot()
-    sent_to = []
-    for chat_id in list(config.KNOWN_CHAT_IDS):
-        try:
-            bot.send_message(
-                chat_id=chat_id,
-                text=text,
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=True,
-            )
-            sent_to.append(chat_id)
-        except Exception as e:
-            logger.exception("Error sending weekly report to %s: %s", chat_id, e)
-    logger.info("Weekly report sent to %s chats.", len(sent_to))
-    return sent_to
-
-
-# ==============================
-#   Weekly Scheduler (/weekly)
-# ==============================
+# =====================================================
+#   Weekly Scheduler (تقرير أسبوعى أوتو)
+# =====================================================
 
 
 def run_weekly_ai_report():
     """
-    إرسال تقرير أسبوعى إلى الجروب/القناة المحددة (Broadcast).
+    إرسال تقرير أسبوعى إلى الجروب/القناة المحددة.
     """
     text = get_cached_response(
         "weekly_report",
         format_weekly_ai_report,
-        ttl=config.WEEKLY_REPORT_TTL,
+        ttl=3600,  # نص التقرير يتحدث كل ساعة كحد أقصى
     )
     if not text:
         logger.warning("No weekly report text generated.")
@@ -217,6 +189,8 @@ def run_weekly_ai_report():
 def weekly_scheduler_loop():
     """
     لوب بسيط يشغّل التقرير الأسبوعى فى وقت محدد كل أسبوع.
+    - يستخدم WEEKLY_REPORT_WEEKDAY + WEEKLY_REPORT_HOUR_UTC من config.
+    - يتأكد إن التقرير ميتبعتش أكتر من مرة فى نفس اليوم.
     """
     logger.info("Weekly scheduler loop started.")
     while True:
@@ -233,11 +207,15 @@ def weekly_scheduler_loop():
                     config.LAST_WEEKLY_RUN = now
                 else:
                     delta = now - config.LAST_WEEKLY_RUN
+                    # لو عدى على آخر تشغيل حوالى يوم
                     if delta.total_seconds() > 23 * 3600:
-                        logger.info("Running weekly report (more than 23h since last).")
+                        logger.info(
+                            "Running weekly report (more than 23h since last)."
+                        )
                         run_weekly_ai_report()
                         config.LAST_WEEKLY_RUN = now
             else:
+                # خارج نافذة الساعة المستهدفة: نسمح بتشغيل جديد فى الأسبوع الجاى
                 config.LAST_WEEKLY_RUN = None
 
         except Exception as e:
@@ -246,14 +224,15 @@ def weekly_scheduler_loop():
         time.sleep(60)
 
 
-# ==============================
-#   Realtime Engine (light) /watch
-# ==============================
+# =====================================================
+#   Realtime Engine (خفيف) /watch
+# =====================================================
 
 
 def get_realtime_snapshot() -> str:
     """
-    Snapshot ذكى لحالة السوق، تقدر تربطه بأمر /watch لو حبيت.
+    نص بسيط يعرض Snapshot الحالى للسوق من محرك الذكاء الاصطناعى.
+    يستخدم مع أوامر زى /status لو حبيت.
     """
     snapshot = compute_smart_market_snapshot()
     if not snapshot:
@@ -312,7 +291,9 @@ def get_realtime_snapshot() -> str:
 
 def realtime_engine_loop():
     """
-    لوب خفيف يحافظ على تحديث MARKET_METRICS_CACHE (من analysis_engine).
+    لوب خفيف يحافظ على تحديث MARKET_METRICS_CACHE كل شوية.
+    - ما بيبعّتش رسائل للمستخدم.
+    - بس يخلى الكاش دايمًا طازة علشان الأنظمة التانية تعتمد عليه.
     """
     logger.info("Realtime engine loop started.")
     while True:
@@ -334,28 +315,51 @@ def realtime_engine_loop():
         time.sleep(config.REALTIME_ENGINE_INTERVAL)
 
 
-# ==============================
-#   Smart Alert Engine (Auto Alert)
-# ==============================
+# =====================================================
+#   Smart Alert Engine (Auto Ultra PRO)
+# =====================================================
+
+
+def _append_alert_history(price, change, level, shock_score, immediate: bool):
+    """
+    يسجّل أى تنبيه تم إرساله فى ALERT_HISTORY + config.ALERTS_HISTORY (بتاعة البوت القديم).
+    """
+    entry = {
+        "time": datetime.utcnow().isoformat(timespec="seconds"),
+        "price": price,
+        "change": change,
+        "level": level,
+        "shock_score": shock_score,
+        "immediate": immediate,
+        "source": "smart",
+    }
+    config.ALERT_HISTORY.append(entry)
+    # كمان نضيفه على ALERTS_HISTORY القديم كـ log بسيط
+    config.ALERTS_HISTORY.append(
+        {
+            "time": entry["time"],
+            "source": "smart_auto",
+            "reason": f"level={level} shock={shock_score}",
+            "price": price,
+            "change_pct": change,
+        }
+    )
+    logger.info("Smart alert history appended: %s", entry)
 
 
 def smart_alert_loop():
     """
-    لوب التحذير الذكى:
-      - يراقب السوق
-      - يقرر هل يرسل تنبيه أم لا
-      - يستخدم Ultra PRO Alert للمستخدمين عند تحقق الشروط
+    لوب التحذير الذكى (Ultra PRO Auto):
+      - يقرأ snapshot من compute_smart_market_snapshot
+      - يستخدم early_signal + مستوى التحذير + shock_score
+      - يقرر إمتى يرسل تنبيه واحد قوي وواضح قبل الحركة بدقائق
+      - يمنع التكرار والسبام عن طريق فجوات زمنية ذكية
     """
     logger.info("Smart alert loop started.")
-    _ = _ensure_bot()  # للتأكد أنه اتبنى مرة واحدة
+    _ = _ensure_bot()  # بس علشان نتأكد إن الـ Bot جاهز
 
     while True:
         try:
-            from analysis_engine import (
-                compute_smart_market_snapshot,
-                evaluate_risk_level,
-            )
-
             snapshot = compute_smart_market_snapshot()
             if not snapshot:
                 logger.warning("No smart snapshot available, skip alert cycle.")
@@ -366,16 +370,22 @@ def smart_alert_loop():
             risk = snapshot["risk"]
             alert_level = snapshot["alert_level"]
             pulse = snapshot["pulse"]
+            events = snapshot.get("events") or {}
 
             price = metrics["price"]
             change = metrics["change_pct"]
             range_pct = metrics["range_pct"]
             vol = metrics["volatility_score"]
 
-            level = alert_level["level"]
-            shock_score = alert_level["shock_score"]
+            level = alert_level["level"]       # none / low / medium / high / critical
+            shock_score = alert_level["shock_score"] or 0.0
 
-            events = snapshot["events"]
+            speed_idx = pulse.get("speed_index", 0.0)
+            accel_idx = pulse.get("accel_index", 0.0)
+            direction_conf = pulse.get("direction_confidence", 0.0)
+
+            # نحاول نجيب early_signal لو الدالة موجودة
+            early_signal = None
             try:
                 from analysis_engine import detect_early_movement_signal
 
@@ -389,107 +399,122 @@ def smart_alert_loop():
                 early_signal = None
 
             logger.info(
-                "SmartAlert snapshot: price=%s chg=%.2f range=%.2f vol=%.1f level=%s shock=%.1f",
+                "SmartAlert snapshot: price=%s chg=%.2f range=%.2f vol=%.1f "
+                "level=%s shock=%.1f speed=%.1f accel=%.2f conf=%.1f",
                 price,
                 change,
                 range_pct,
                 vol,
                 level,
                 shock_score,
+                speed_idx,
+                accel_idx,
+                direction_conf,
             )
 
+            # -----------------------------
+            #   منطق اتخاذ القرار (قوى لكن منظم)
+            # -----------------------------
             now_ts = time.time()
-            last_alert_ts = config.LAST_SMART_ALERT_TS or 0.0
-            last_critical_ts = config.LAST_CRITICAL_ALERT_TS or 0.0
+            last_alert_ts = getattr(config, "LAST_SMART_ALERT_TS", 0.0) or 0.0
+            last_critical_ts = getattr(config, "LAST_CRITICAL_ALERT_TS", 0.0) or 0.0
 
-            immediate_or_early = False
+            base_interval_min = max(1.0, config.SMART_ALERT_BASE_INTERVAL)  # بالدقايق
+            adaptive_interval_min = snapshot.get("adaptive_interval", base_interval_min)
 
-            # مستوى تحذير عالى / حرج
-            if level in ("critical", "high"):
-                immediate_or_early = True
-                logger.info(
-                    "SmartAlert condition (level=%s shock=%.1f) triggers immediate check.",
-                    level,
-                    shock_score,
-                )
+            # 1) هل فى حالة حرجة فورية؟
+            immediate_condition = False
 
-            # إنذار مبكر من المحرك
-            if not immediate_or_early and early_signal and early_signal.get("active"):
-                score = early_signal.get("score", 0.0)
-                if score >= config.EARLY_WARNING_THRESHOLD:
-                    immediate_or_early = True
-                    logger.info(
-                        "EarlyWarning active: dir=%s score=%.1f conf=%.1f window=%s",
-                        early_signal.get("direction"),
-                        score,
-                        early_signal.get("confidence"),
-                        early_signal.get("window_minutes"),
-                    )
+            if level in ("critical", "high") and shock_score >= 70:
+                immediate_condition = True
 
-            interval = snapshot.get("adaptive_interval", config.SMART_ALERT_BASE_INTERVAL)
+            # 2) Early warning قوى قبل الحركة بدقائق
+            early_condition = False
+            if (
+                early_signal
+                and early_signal.get("active")
+                and early_signal.get("score", 0.0) >= config.EARLY_WARNING_THRESHOLD
+            ):
+                early_condition = True
 
-            if immediate_or_early:
-                # Gap بين التحذيرات الحرجة (ثوانى)
-                min_gap = max(300.0, interval * 60 * 0.6)
-                if (now_ts - last_critical_ts) < min_gap:
-                    logger.info(
-                        "SmartAlert immediate condition but within critical gap (%.1fs), skip.",
-                        min_gap,
-                    )
+            # 3) نبض حركة عنيف حتى لو level لسه medium
+            momentum_condition = False
+            if (
+                level in ("medium", "high", "critical")
+                and abs(change) >= 1.5
+                and speed_idx >= 60
+                and abs(accel_idx) >= 0.7
+            ):
+                momentum_condition = True
+
+            # -----------------------------
+            #   تحديد نوع التنبيه + الفجوة الزمنية
+            # -----------------------------
+            send_immediate = False
+            send_normal = False
+
+            # الفاصل الزمني للحالات الحرجة (أقصر)
+            critical_gap = max(300.0, adaptive_interval_min * 60 * 0.5)  # 5 دقايق تقريبًا
+            # الفاصل الزمني للحالات العادية (أطول)
+            normal_gap = max(1800.0, adaptive_interval_min * 60 * 0.9)  # حوالى نص ساعة
+
+            if immediate_condition or early_condition or momentum_condition:
+                # تنبيه قوي (ممكن يبقى قبل الحركة بدقائق)
+                if (now_ts - last_critical_ts) >= critical_gap:
+                    send_immediate = True
                 else:
-                    text = format_ultra_pro_alert()
-                    if text:
-                        broadcast_message_to_group(text)
-                        config.LAST_SMART_ALERT_TS = now_ts
-                        config.LAST_CRITICAL_ALERT_TS = now_ts
-                        config.ALERT_HISTORY.append(
-                            {
-                                "time": datetime.utcnow().isoformat(timespec="seconds"),
-                                "price": price,
-                                "change": change,
-                                "level": level,
-                                "shock_score": shock_score,
-                                "immediate": True,
-                                "source": "smart",
-                            }
-                        )
+                    logger.info(
+                        "Immediate/early condition detected but within critical gap (%.1fs), skip.",
+                        critical_gap,
+                    )
             else:
-                # Gap للتحذيرات المتوسطة / العالية بدون إنذار مبكر
-                min_gap = max(1800.0, interval * 60 * 0.9)
-                if (now_ts - last_alert_ts) >= min_gap and level in (
-                    "medium",
-                    "high",
-                    "critical",
-                ):
-                    text = format_ultra_pro_alert()
-                    if text:
-                        broadcast_message_to_group(text)
-                        config.LAST_SMART_ALERT_TS = now_ts
-                        config.ALERT_HISTORY.append(
-                            {
-                                "time": datetime.utcnow().isoformat(timespec="seconds"),
-                                "price": price,
-                                "change": change,
-                                "level": level,
-                                "shock_score": shock_score,
-                                "immediate": False,
-                                "source": "smart",
-                            }
-                        )
+                # مفيش conditions قوية لكن المستوى العام medium/high
+                if level in ("medium", "high", "critical") and (
+                    now_ts - last_alert_ts
+                ) >= normal_gap:
+                    send_normal = True
 
-            sleep_seconds = interval * 60
+            # -----------------------------
+            #   إرسال التنبيه (Ultra PRO Alert)
+            # -----------------------------
+            if send_immediate or send_normal:
+                text = format_ultra_pro_alert()
+                if text:
+                    broadcast_message_to_group(text)
+
+                    config.LAST_SMART_ALERT_TS = now_ts
+                    if send_immediate:
+                        config.LAST_CRITICAL_ALERT_TS = now_ts
+
+                    _append_alert_history(
+                        price=price,
+                        change=change,
+                        level=level,
+                        shock_score=shock_score,
+                        immediate=send_immediate,
+                    )
+
+            # -----------------------------
+            #   نوم تكيفى بين الدورات
+            # -----------------------------
+            # نخلى النوم قصير لو السوق متوتر / في حركة
+            if immediate_condition or early_condition or momentum_condition:
+                sleep_seconds = max(30.0, adaptive_interval_min * 60 * 0.4)
+            else:
+                sleep_seconds = max(60.0, adaptive_interval_min * 60 * 0.8)
+
             logger.debug("Smart alert loop sleep: %.1fs", sleep_seconds)
-            config.LAST_SMART_ALERT_TICK = time.time()
             time.sleep(sleep_seconds)
 
         except Exception as e:
             logger.exception("Error in smart_alert_loop: %s", e)
+            # فى حالة خطأ، نريح شوية وبعدين نرجع نحاول
             time.sleep(60)
 
 
-# ==============================
-#   Risk / Market Public Helpers
-# ==============================
+# =====================================================
+#   Public Command Helpers (/market, /risk_test, /coin)
+# =====================================================
 
 
 def handle_market_command(chat_id: int):
@@ -525,35 +550,34 @@ def handle_coin_command(chat_id: int, symbol: str):
     )
 
 
-# ==============================
-#   Admin /alert, /alert_details, /weekly_now
-# ==============================
+# =====================================================
+#   Admin Helpers (/alert, /alert_details, /weekly_now)
+# =====================================================
 
 
 def handle_admin_alert_command(chat_id: int):
     """
-    أمر /alert الرسمى للأدمن فقط:
-      - يستخدم Ultra PRO Alert الجديد
-      - لو فشل يرجع للنسخة الكلاسيك format_ai_alert
+    أمر /alert الرسمى للأدمن:
+      - يستخدم Ultra PRO Alert بدل القديم.
+      - يبنى الرسالة فورًا بدون كاش طويل.
     """
     bot = _ensure_bot()
-
     text = format_ultra_pro_alert()
-    if not text:
-        text = get_cached_response("alert_text", format_ai_alert, ttl=120)
-
     bot.send_message(
         chat_id=chat_id,
         text=text,
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
+    config.add_alert_history(
+        "manual_ultra",
+        "Manual /alert (Ultra PRO)",
+        price=None,
+        change=None,
+    )
 
 
 def handle_admin_alert_details_command(chat_id: int):
-    """
-    تفاصيل التحذير (ممكن تفضل على النظام القديم).
-    """
     bot = _ensure_bot()
     text = get_cached_response(
         "alert_details",
@@ -570,7 +594,7 @@ def handle_admin_alert_details_command(chat_id: int):
 
 def handle_admin_weekly_now_command(chat_id: int):
     """
-    يسمح للأدمن بإرسال التقرير الأسبوعى فوراً لنفسه (اختبار).
+    يسمح للأدمن بإرسال التقرير الأسبوعى فوراً (نسخة اختبار / طوارئ).
     """
     bot = _ensure_bot()
     text = format_weekly_ai_report()
@@ -582,38 +606,15 @@ def handle_admin_weekly_now_command(chat_id: int):
     )
 
 
-def handle_admin_alert_pro_broadcast(chat_id: int):
-    """
-    أمر /alert_pro: يرسل تحذير Ultra PRO للمستخدمين (الجروب/القناة)
-    ويبلغ الأدمن بالنجاح.
-    """
-    bot = _ensure_bot()
-    text = format_ultra_pro_alert()
-    if not text:
-        bot.send_message(
-            chat_id=chat_id,
-            text="⚠️ تعذّر بناء Ultra PRO Alert حاليًا.",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    broadcast_message_to_group(text)
-    bot.send_message(
-        chat_id=chat_id,
-        text="✅ تم إرسال Ultra PRO Alert إلى الجروب/القناة المحددة.",
-        parse_mode=ParseMode.HTML,
-    )
-
-
-# ==============================
+# =====================================================
 #   Watchdog / Health Check
-# ==============================
+# =====================================================
 
 
 def watchdog_loop():
     """
     لوب بسيط يراقب الصحة العامة:
-      - يحاول يتأكد أن البوت شغال
+      - يتأكد أن البوت قادر يتواصل مع Telegram API
     """
     logger.info("Watchdog loop started.")
     while True:
@@ -621,29 +622,29 @@ def watchdog_loop():
             bot = _ensure_bot()
             me = bot.get_me()
             logger.debug("Bot is alive as @%s", me.username)
-            config.LAST_WATCHDOG_TICK = time.time()
         except Exception as e:
             logger.exception("Watchdog error: %s", e)
         time.sleep(config.WATCHDOG_INTERVAL)
 
 
-# ==============================
+# =====================================================
 #   Threads Starter
-# ==============================
+# =====================================================
 
 
 def start_background_threads():
     """
-    يشغّل كل اللوپس الخلفية:
+    تشغيل كل اللوپس الخلفية:
       - Weekly Scheduler
       - Realtime Engine
       - Smart Alert
       - Watchdog
     """
-    if config.THREADS_STARTED:
+    if getattr(config, "THREADS_STARTED", False):
         logger.info("Background threads already started, skipping.")
         return
 
+    # تحميل snapshot بسيط لو متوفر
     load_snapshot()
 
     weekly_thread = threading.Thread(
