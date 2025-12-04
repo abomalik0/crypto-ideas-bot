@@ -316,7 +316,7 @@ def realtime_engine_loop():
 
 
 # =====================================================
-#   Smart Alert Engine (Auto Ultra PRO)
+#   Smart Alert Engine (Ultra Early Mode)
 # =====================================================
 
 
@@ -349,11 +349,16 @@ def _append_alert_history(price, change, level, shock_score, immediate: bool):
 
 def smart_alert_loop():
     """
-    لوب التحذير الذكى (Ultra PRO Auto):
+    لوب التحذير الذكى (Ultra PRO Auto — Ultra Early Mode):
+
       - يقرأ snapshot من compute_smart_market_snapshot
-      - يستخدم early_signal + مستوى التحذير + shock_score
-      - يقرر إمتى يرسل تنبيه واحد قوي وواضح قبل الحركة بدقائق
-      - يمنع التكرار والسبام عن طريق فجوات زمنية ذكية
+      - يعتمد على:
+          * مستوى التحذير (level)
+          * Shock Score
+          * Early Signal قبل الحركة
+          * سرعة الزخم + التسارع + ثقة الاتجاه
+      - بيرسل تنبيه واحد قوى قبل الحركة بدقائق قدر الإمكان
+      - بيستخدم فجوات زمنية ذكية لتقليل السبام مع الحفاظ على الحساسية العالية
     """
     logger.info("Smart alert loop started.")
     _ = _ensure_bot()  # بس علشان نتأكد إن الـ Bot جاهز
@@ -378,7 +383,7 @@ def smart_alert_loop():
             vol = metrics["volatility_score"]
 
             level = alert_level["level"]       # none / low / medium / high / critical
-            shock_score = alert_level["shock_score"] or 0.0
+            shock_score = alert_level.get("shock_score") or 0.0
 
             speed_idx = pulse.get("speed_index", 0.0)
             accel_idx = pulse.get("accel_index", 0.0)
@@ -399,7 +404,7 @@ def smart_alert_loop():
                 early_signal = None
 
             logger.info(
-                "SmartAlert snapshot: price=%s chg=%.2f range=%.2f vol=%.1f "
+                "SmartAlert snapshot: price=%s chg=%.3f range=%.2f vol=%.1f "
                 "level=%s shock=%.1f speed=%.1f accel=%.2f conf=%.1f",
                 price,
                 change,
@@ -413,7 +418,7 @@ def smart_alert_loop():
             )
 
             # -----------------------------
-            #   منطق اتخاذ القرار (قوى لكن منظم)
+            #   منطق اتخاذ القرار (Ultra Early)
             # -----------------------------
             now_ts = time.time()
             last_alert_ts = getattr(config, "LAST_SMART_ALERT_TS", 0.0) or 0.0
@@ -422,44 +427,58 @@ def smart_alert_loop():
             base_interval_min = max(1.0, config.SMART_ALERT_BASE_INTERVAL)  # بالدقايق
             adaptive_interval_min = snapshot.get("adaptive_interval", base_interval_min)
 
-            # 1) هل فى حالة حرجة فورية؟
+            # 1) حالة حرجة واضحة (level + shock)
             immediate_condition = False
-
-            if level in ("critical", "high") and shock_score >= 70:
+            if level in ("critical", "high") and shock_score >= 55:
                 immediate_condition = True
 
-            # 2) Early warning قوى قبل الحركة بدقائق
+            # 2) Early warning قبل الحركة بدقائق (Ultra Early)
             early_condition = False
-            if (
-                early_signal
-                and early_signal.get("active")
-                and early_signal.get("score", 0.0) >= config.EARLY_WARNING_THRESHOLD
-            ):
-                early_condition = True
+            if early_signal and early_signal.get("active"):
+                score = float(early_signal.get("score", 0.0))
+                conf = float(early_signal.get("confidence", 0.0))
+                window = float(early_signal.get("window_minutes", 0.0))
 
-            # 3) نبض حركة عنيف حتى لو level لسه medium
+                # Ultra Early: نخفض العتبة شوية عن الافتراضى لكن نحافظ على حد أدنى
+                effective_threshold = max(50.0, config.EARLY_WARNING_THRESHOLD - 10.0)
+
+                if (
+                    score >= effective_threshold
+                    and conf >= 55.0
+                    and window <= 30.0
+                ):
+                    early_condition = True
+                    logger.info(
+                        "EarlyWarning active: score=%.1f conf=%.1f window=%.1f",
+                        score,
+                        conf,
+                        window,
+                    )
+
+            # 3) زخم حركة عنيف (حتى لو level لسه medium)
             momentum_condition = False
-            if (
-                level in ("medium", "high", "critical")
-                and abs(change) >= 1.8
-                and speed_idx >= 72
-                and abs(accel_idx) >= 0.85
-            ):
-                momentum_condition = True
+            if level in ("medium", "high", "critical"):
+                if (
+                    abs(change) >= 0.6      # حركة يومية بداية عنف
+                    and speed_idx >= 45.0   # سرعة زخم عالية نسبياً
+                    and abs(accel_idx) >= 0.4
+                    and direction_conf >= 55.0
+                ):
+                    momentum_condition = True
 
             # -----------------------------
-            #   تحديد نوع التنبيه + الفجوة الزمنية
+            #   تحديد نوع التنبيه + الفجوات الزمنية
             # -----------------------------
             send_immediate = False
             send_normal = False
 
-            # الفاصل الزمني للحالات الحرجة (أقصر)
-            critical_gap = max(300.0, adaptive_interval_min * 60 * 0.5)  # 5 دقايق تقريبًا
-            # الفاصل الزمني للحالات العادية (أطول)
-            normal_gap = max(1800.0, adaptive_interval_min * 60 * 0.9)  # حوالى نص ساعة
+            # فجوة الحالات الحرجة / المبكرة (أقصر) — بحيث نقدر نلتقط أكتر من حركة فى اليوم
+            critical_gap = max(180.0, adaptive_interval_min * 60 * 0.4)  # ~3 دقائق أو أكثر
+            # فجوة الحالات العادية (أطول) — علشان نقلل السبام
+            normal_gap = max(900.0, adaptive_interval_min * 60 * 0.8)    # ~15 دقيقة أو أكثر
 
             if immediate_condition or early_condition or momentum_condition:
-                # تنبيه قوي (ممكن يبقى قبل الحركة بدقائق)
+                # تنبيه قوي/مبكر
                 if (now_ts - last_critical_ts) >= critical_gap:
                     send_immediate = True
                 else:
@@ -497,11 +516,12 @@ def smart_alert_loop():
             # -----------------------------
             #   نوم تكيفى بين الدورات
             # -----------------------------
-            # نخلى النوم قصير لو السوق متوتر / في حركة
             if immediate_condition or early_condition or momentum_condition:
-                sleep_seconds = max(30.0, adaptive_interval_min * 60 * 0.4)
+                # السوق بيتحرك → نبقى ملزوقين فيه أكتر
+                sleep_seconds = max(30.0, adaptive_interval_min * 60 * 0.3)
             else:
-                sleep_seconds = max(60.0, adaptive_interval_min * 60 * 0.8)
+                # السوق أهدى → نطول شوية
+                sleep_seconds = max(60.0, adaptive_interval_min * 60 * 0.9)
 
             logger.debug("Smart alert loop sleep: %.1fs", sleep_seconds)
             time.sleep(sleep_seconds)
@@ -551,7 +571,7 @@ def handle_coin_command(chat_id: int, symbol: str):
 
 
 # =====================================================
-#   Admin Helpers (/alert, /alert_details, /weekly_now)
+#   Admin Helpers (/alert, /alert_details, /weekly_now, /alert_pro)
 # =====================================================
 
 
@@ -569,7 +589,9 @@ def handle_admin_alert_command(chat_id: int):
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
-    config.add_alert_history(
+    from config import add_alert_history as _add_alert_history
+
+    _add_alert_history(
         "manual_ultra",
         "Manual /alert (Ultra PRO)",
         price=None,
@@ -605,6 +627,7 @@ def handle_admin_weekly_now_command(chat_id: int):
         disable_web_page_preview=True,
     )
 
+
 def handle_admin_alert_pro_broadcast(admin_chat_id: int):
     """
     تنفيذ أمر /alert_pro:
@@ -637,6 +660,8 @@ def handle_admin_alert_pro_broadcast(admin_chat_id: int):
     # تسجيل فى السجل
     from config import add_alert_history
     add_alert_history("broadcast_ultra", "Ultra PRO broadcast via /alert_pro")
+
+
 # =====================================================
 #   Watchdog / Health Check
 # =====================================================
