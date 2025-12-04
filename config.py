@@ -193,7 +193,7 @@ LAST_SMART_ALERT_TS: float = 0.0
 LAST_CRITICAL_ALERT_TS: float = 0.0
 
 # Threshold للإنذار المبكر
-EARLY_WARNING_THRESHOLD: float = 65.0
+EARLY_WARNING_THRESHOLD: float = 78.0
 
 # سجل تنبيهات الذكى
 ALERT_HISTORY = deque(maxlen=200)
