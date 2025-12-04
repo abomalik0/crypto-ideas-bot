@@ -605,7 +605,38 @@ def handle_admin_weekly_now_command(chat_id: int):
         disable_web_page_preview=True,
     )
 
+def handle_admin_alert_pro_broadcast(admin_chat_id: int):
+    """
+    تنفيذ أمر /alert_pro:
+    يبنى Ultra PRO Alert ويرسله للجروب المحدد.
+    """
+    from config import ALERT_TARGET_CHAT_ID, send_message
+    from analysis_engine import format_ultra_pro_alert
 
+    # بناء Ultra PRO
+    text = format_ultra_pro_alert()
+    if not text:
+        send_message(
+            admin_chat_id,
+            "⚠️ لا توجد حركة قوية كافية حالياً لإرسال Ultra PRO Alert.\n"
+            "جرّب لاحقاً عند ظهور زخم واضح."
+        )
+        return
+
+    # إرسال للجروب
+    send_message(ALERT_TARGET_CHAT_ID, text)
+
+    # تأكيد للأدمن
+    send_message(
+        admin_chat_id,
+        "✅ تم إرسال Ultra PRO Alert للمستخدمين بنجاح.\n\n"
+        "📌 تم الإرسال إلى:\n"
+        f"<code>{ALERT_TARGET_CHAT_ID}</code>"
+    )
+
+    # تسجيل فى السجل
+    from config import add_alert_history
+    add_alert_history("broadcast_ultra", "Ultra PRO broadcast via /alert_pro")
 # =====================================================
 #   Watchdog / Health Check
 # =====================================================
