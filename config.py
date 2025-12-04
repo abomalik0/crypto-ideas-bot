@@ -183,7 +183,7 @@ API_STATUS: dict = {
 # ==============================
 
 SMART_ALERT_MIN_INTERVAL: float = 1.0   # ثانية (للاندفاع الحاد)
-SMART_ALERT_MAX_INTERVAL: float = 5.0   # ثانية (للسوق الهادئ)
+SMART_ALERT_MAX_INTERVAL: float = 4.0   # ثانية (للسوق الهادئ)
 
 # الفاصل الأساسى للـ Smart Alert (بالدقائق)
 SMART_ALERT_BASE_INTERVAL: float = 1.0
@@ -193,7 +193,7 @@ LAST_SMART_ALERT_TS: float = 0.0
 LAST_CRITICAL_ALERT_TS: float = 0.0
 
 # Threshold للإنذار المبكر
-EARLY_WARNING_THRESHOLD: float = 55.0
+EARLY_WARNING_THRESHOLD: float = 70.00
 
 # سجل تنبيهات الذكى
 ALERT_HISTORY = deque(maxlen=200)
