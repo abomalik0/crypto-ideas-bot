@@ -186,14 +186,14 @@ SMART_ALERT_MIN_INTERVAL: float = 1.0   # ثانية (للاندفاع الحا�
 SMART_ALERT_MAX_INTERVAL: float = 5.0   # ثانية (للسوق الهادئ)
 
 # الفاصل الأساسى للـ Smart Alert (بالدقائق)
-SMART_ALERT_BASE_INTERVAL: float = 2.0
+SMART_ALERT_BASE_INTERVAL: float = 1.0
 
 # زمن آخر تنبيه من الذكى
 LAST_SMART_ALERT_TS: float = 0.0
 LAST_CRITICAL_ALERT_TS: float = 0.0
 
 # Threshold للإنذار المبكر
-EARLY_WARNING_THRESHOLD: float = 78.0
+EARLY_WARNING_THRESHOLD: float = 55.0
 
 # سجل تنبيهات الذكى
 ALERT_HISTORY = deque(maxlen=200)
