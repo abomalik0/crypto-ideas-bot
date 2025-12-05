@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8" />
-    <title>IN CRYPTO Ai — WAR ROOM v3</title>
+    <title>IN CRYPTO Ai — WAR ROOM</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <style>
@@ -11,12 +11,12 @@
         :root {
             --bg-main: #02040a;
             --bg-main-grad: radial-gradient(circle at top, #111827 0, #02040a 55%);
-            --bg-card: rgba(8, 11, 20, 0.96);
-            --bg-card-soft: rgba(8, 11, 20, 0.86);
+            --bg-card: rgba(8, 11, 20, 0.9);
+            --bg-card-soft: rgba(8, 11, 20, 0.82);
             --border-soft: rgba(148, 163, 184, 0.32);
-            --border-strong: rgba(248, 250, 252, 0.04);
+            --border-strong: rgba(248, 250, 252, 0.02);
             --accent-gold: #fbbf24;
-            --accent-gold-soft: rgba(251, 191, 36, 0.2);
+            --accent-gold-soft: rgba(251, 191, 36, 0.18);
             --accent-red: #fb7185;
             --accent-green: #22c55e;
             --accent-blue: #38bdf8;
@@ -122,7 +122,7 @@
 
         /* ===== HEADER ===== */
         .header {
-            padding: 12px 18px 4px;
+            padding: 12px 18px 2px;
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
@@ -132,7 +132,7 @@
         .header-main {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
         }
 
         .header-title {
@@ -160,71 +160,15 @@
             padding: 3px 8px;
             border-radius: 999px;
             border: 1px solid rgba(148, 163, 184, 0.4);
-            background: rgba(15, 23, 42, 0.92);
+            background: rgba(15, 23, 42, 0.9);
             color: var(--text-muted);
         }
 
         .header-badge strong { color: #fef3c7; }
 
-        /* ===== GLOBAL STATUS STRIP (جديد) ===== */
-        .global-strip {
-            padding: 0 18px 4px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .global-chip {
-            flex: 1 1 180px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 6px 10px;
-            border-radius: 999px;
-            background: rgba(15, 23, 42, 0.96);
-            border: 1px solid rgba(148, 163, 184, 0.4);
-            font-size: 11px;
-        }
-
-        .chip-label {
-            color: var(--text-muted);
-        }
-
-        .chip-value {
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .chip-pill {
-            padding: 2px 7px;
-            border-radius: 999px;
-            border: 1px solid rgba(148, 163, 184, 0.5);
-            font-size: 10px;
-        }
-
-        .chip-good {
-            border-color: rgba(34, 197, 94, 0.8);
-            background: rgba(22, 163, 74, 0.15);
-            color: #bbf7d0;
-        }
-
-        .chip-warn {
-            border-color: rgba(234, 179, 8, 0.85);
-            background: rgba(202, 138, 4, 0.18);
-            color: #fef9c3;
-        }
-
-        .chip-bad {
-            border-color: rgba(248, 113, 113, 0.9);
-            background: rgba(248, 113, 113, 0.18);
-            color: #fee2e2;
-        }
-
         /* ===== GRID LAYOUT ===== */
         .grid {
-            padding: 8px 18px 18px;
+            padding: 10px 18px 18px;
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px;
@@ -237,13 +181,14 @@
             .grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
-            .span-3 { grid-column: span 2; }
+            .span-3 {
+                grid-column: span 2;
+            }
         }
 
         @media (max-width: 768px) {
-            .header { padding: 10px 10px 4px; }
+            .header { padding: 10px 10px 2px; }
             .btc-bar { padding: 10px 10px; }
-            .global-strip { padding: 0 10px 4px; }
             .grid {
                 grid-template-columns: minmax(0, 1fr);
                 padding: 8px 10px 16px;
@@ -277,7 +222,7 @@
             position: absolute;
             inset: -40%;
             background:
-                radial-gradient(circle at top left, rgba(251, 191, 36, 0.12), transparent 60%),
+                radial-gradient(circle at top left, rgba(251, 191, 36, 0.15), transparent 60%),
                 radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.12), transparent 55%);
             opacity: 0;
             transition: opacity 0.22s ease-out;
@@ -288,8 +233,8 @@
             transform: translateY(-2px);
             box-shadow:
                 0 26px 50px rgba(0, 0, 0, 0.95),
-                0 0 0 1px rgba(248, 250, 252, 0.06);
-            border-color: rgba(251, 191, 36, 0.6);
+                0 0 0 1px rgba(248, 250, 252, 0.05);
+            border-color: rgba(251, 191, 36, 0.55);
         }
 
         .card:hover::before { opacity: 1; }
@@ -430,18 +375,14 @@
 
         @keyframes flashAnim {
             from {
-                box-shadow: 0 0 18px rgba(251, 191, 36, 0.45);
+                box-shadow: 0 0 18px rgba(251, 191, 36, 0.4);
                 border-color: rgba(251, 191, 36, 0.9);
             }
             to {
-                box-shadow: 0 0 26px rgba(248, 113, 113, 0.95);
+                box-shadow: 0 0 26px rgba(248, 113, 113, 0.9);
                 border-color: rgba(248, 113, 113, 0.95);
             }
         }
-
-        .card.gold   { border-color: rgba(251, 191, 36, 0.55); }
-        .card.green  { border-color: rgba(34, 197, 94, 0.55); }
-        .card.red    { border-color: rgba(248, 113, 113, 0.7); }
 
         /* ===== BUTTONS ===== */
         .btn-row {
@@ -624,7 +565,7 @@
             <div class="header-main">
                 <div class="header-title">IN CRYPTO — WAR ROOM</div>
                 <div class="header-sub">
-                    غرفة عمليات مركزية لمراقبة حركة البيتكوين، السيولة، المخاطر، الضغط اللحظى، وصحة النظام فى الوقت الفعلى بدقة عالية.
+                    لوحة تحكم حية لقوة السوق، السيولة، المخاطر، الضوضاء، تدفق الأوامر، ونظام تحذير ذكّى مبنى بالكامل على حركة البيتكوين فقط.
                 </div>
             </div>
             <div class="header-badge-row">
@@ -632,39 +573,11 @@
                     وضع التشغيل: <strong id="badgeMode">NORMAL</strong>
                 </div>
                 <div class="header-badge">
-                    آخر نبضة Real-Time: <strong id="badgeRealtime">---</strong>
+                    آخر تحديث Real-Time: <strong id="badgeRealtime">---</strong>
                 </div>
                 <div class="header-badge">
                     سجل الشاتات: <strong id="badgeChats">0</strong>
                 </div>
-            </div>
-        </div>
-
-        <!-- ========== GLOBAL STATUS STRIP ========== -->
-        <div class="global-strip">
-            <div class="global-chip">
-                <span class="chip-label">حالة السوق العامة</span>
-                <span class="chip-value" id="chipMode">
-                    <span class="chip-pill chip-good">ACTIVE</span>
-                </span>
-            </div>
-            <div class="global-chip">
-                <span class="chip-label">مستوى المخاطر</span>
-                <span class="chip-value" id="chipRisk">
-                    <span class="chip-pill chip-good">منخفض</span>
-                </span>
-            </div>
-            <div class="global-chip">
-                <span class="chip-label">مزاج السوق (Sentiment)</span>
-                <span class="chip-value" id="chipSentiment">
-                    <span class="chip-pill chip-warn">جارى الحساب...</span>
-                </span>
-            </div>
-            <div class="global-chip">
-                <span class="chip-label">حالة المحرك اللحظى</span>
-                <span class="chip-value" id="chipEngine">
-                    <span class="chip-pill chip-good">Ready</span>
-                </span>
             </div>
         </div>
 
@@ -679,7 +592,7 @@
                 </div>
                 <div class="card-main" id="strengthValue">...</div>
                 <div class="subtext">
-                    قراءة مدمجة لاتجاه البيتكوين ومدى الحركة اليومية اعتمادًا على بيانات Binance / KuCoin فقط، بدون أى مزود خارجى.
+                    قراءة مدمجة لاتجاه البيتكوين ومدى الحركة اليومية بناءً على بيانات Binance / KuCoin فقط، بدون أى مزود خارجى.
                 </div>
                 <div class="kpi-row">
                     <div class="kpi-pill">
@@ -735,7 +648,7 @@
                 </div>
                 <div class="card-main" id="liquidityValue">...</div>
                 <div class="subtext">
-                    قراءة مبسطة لتوازن السيولة اعتمادًا على اتجاه BTCUSDT، لتوضيح من يسيطر على السوق حاليًا.
+                    قراءة مبسطة لتوازن السيولة اعتمادًا على اتجاه BTCUSDT، مع تحويل الحركة اليومية لصورة أوضح عن من يسيطر على السوق حاليًا.
                 </div>
                 <div class="kpi-row">
                     <div class="kpi-pill">
@@ -760,7 +673,7 @@
                     <span class="small">/ 100</span>
                 </div>
                 <div class="subtext">
-                    كلما اقترب المؤشر من 100 كان السوق أكثر عدوانية ويحتاج إدارة مخاطر صارمة، وكلما اقترب من الصفر كان السوق أكثر هدوءًا.
+                    كلما اقترب المؤشر من 100 كان السوق أكثر عدوانية وتحتاج إدارة مخاطر صارمة، وكلما اقترب من الصفر كان السوق أكثر هدوءًا.
                 </div>
                 <div class="kpi-row">
                     <div class="kpi-pill">
@@ -830,10 +743,10 @@
             <div class="card span-1">
                 <div class="card-header">
                     <div class="card-title">Crypto Market Heatmap (تقدير)</div>
-                    <div class="card-tag">BTC-led Buckets</div>
+                    <div class="card-tag">BTC-led Derivatives</div>
                 </div>
                 <div class="subtext">
-                    خريطة مصغرة لحركة بعض “السلال” الافتراضية للعملات (Majors / DeFi / Meme / AI) كمؤشر سريع لانتقال الزخم خارج البيتكوين.
+                    خريطة مصغرة لحركة بعض “السلال” الافتراضية للعملات (Majors / DeFi / Meme / AI) كمؤشر بصرى سريع لانتقال الزخم خارج البيتكوين.
                 </div>
                 <div class="heatmap-grid" id="heatmapGrid"></div>
             </div>
@@ -1003,58 +916,7 @@
                 <pre id="logsSnapshot">جارى تحميل اللوج...</pre>
             </div>
 
-            <!-- بطاقة مراقبة المحركات وواجهات الـ API -->
-            <div class="card span-3" id="enginesCard">
-                <div class="card-header">
-                    <div class="card-title">مراقبة المحركات وواجهات API</div>
-                    <div class="card-tag">Engines & API Monitor</div>
-                </div>
-                <div class="subtext" id="enginesSummary">
-                    يتم متابعة آخر نشاط لمحركات التحديث (Real-Time / Smart Alert / Weekly / Webhook / Watchdog / Keep-Alive) بالإضافة لحالة واجهات Binance و KuCoin.
-                </div>
-                <div class="kpi-row">
-                    <div class="kpi-pill">
-                        <span class="kpi-label">Real-Time:</span>
-                        <span class="kpi-val" id="engRealtime">...</span>
-                    </div>
-                    <div class="kpi-pill">
-                        <span class="kpi-label">Smart Alert:</span>
-                        <span class="kpi-val" id="engSmart">...</span>
-                    </div>
-                    <div class="kpi-pill">
-                        <span class="kpi-label">Weekly:</span>
-                        <span class="kpi-val" id="engWeekly">...</span>
-                    </div>
-                    <div class="kpi-pill">
-                        <span class="kpi-label">Webhook:</span>
-                        <span class="kpi-val" id="engWebhook">...</span>
-                    </div>
-                    <div class="kpi-pill">
-                        <span class="kpi-label">Watchdog:</span>
-                        <span class="kpi-val" id="engWatchdog">...</span>
-                    </div>
-                    <div class="kpi-pill">
-                        <span class="kpi-label">Keep-Alive:</span>
-                        <span class="kpi-val" id="engKeepAlive">...</span>
-                    </div>
-                </div>
-                <div class="kpi-row">
-                    <div class="kpi-pill">
-                        <span class="kpi-label">Binance API:</span>
-                        <span class="kpi-val" id="apiBinance">...</span>
-                    </div>
-                    <div class="kpi-pill">
-                        <span class="kpi-label">KuCoin API:</span>
-                        <span class="kpi-val" id="apiKucoin">...</span>
-                    </div>
-                    <div class="kpi-pill">
-                        <span class="kpi-label">آخر تقرير أسبوعى:</span>
-                        <span class="kpi-val" id="engLastWeekly">...</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- سجل التحذيرات -->
+            <!-- سجل التحذيرات (عرض كامل لتفريغ الفراغ تحت) -->
             <div class="card span-3">
                 <div class="card-header">
                     <div class="card-title">سجل التحذيرات</div>
@@ -1084,399 +946,617 @@
 
         <!-- ========== FOOTER ========== -->
         <div class="footer">
-            IN CRYPTO Ai — <span>Live Market · Risk · Alert Monitor</span> مبنى بالكامل على بيانات البيتكوين الفعلية.
+            IN CRYPTO Ai — <span>Live Market, Risk & Alert Monitor</span> مبنى بالكامل على بيانات البيتكوين الفعلية.
         </div>
     </div>
 
+    <!-- ========== JAVASCRIPT ========== -->
     <script>
+        function getPassParam() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get("pass") || params.get("password") || "";
+        }
 
-//
-// =========================
-//  WAR ROOM ENGINE — v3.0
-// =========================
-//  كل الحسابات معتمدة على بيانات Binance فقط (مجانية 100%)
-//  وتم تحسين الدقة لأقصى مستوى ممكن بدون اشتراكات.
-//
+        function apiUrl(path) {
+            const pass = getPassParam();
+            return pass ? path + "?pass=" + encodeURIComponent(pass) : path;
+        }
 
+        function computeHeatScore(changePct, volatilityScore, rangePct) {
+            let score = Math.abs(changePct) * 1.2 + volatilityScore * 0.7 + rangePct * 0.4;
+            if (score > 100) score = 100;
+            if (score < 0) score = 0;
+            return score;
+        }
 
-const API_URL = "/dashboard_api";     // اللينك اللى بيسحب منه الباك إند
-const ALERTS_URL = "/alerts_history";
-const ADMIN_URL = "/admin_cmd";
-
-let lastData = null;
-let alertFlashState = false;
-
-
-
-// ==============================
-//     🔥 وظائف عامة مساعدة
-// ==============================
-
-function fmt(n) {
-    if (n === null || n === undefined) return "---";
-    if (typeof n === "number") {
-        if (Math.abs(n) >= 1) return n.toFixed(2);
-        return n.toFixed(4);
-    }
-    return n;
-}
-
-function pct(n) {
-    if (n === null || n === undefined) return "---";
-    return n.toFixed(2) + "%";
-}
-
-function clamp(x, a, b) {
-    return Math.min(Math.max(x, a), b);
-}
-
-
-
-// ==============================
-//     🔥 تحديث الـ Heatbar
-// ==============================
-
-function updateHeatBar(score) {
-    const dot = document.getElementById("heatDot");
-    if (!dot) return;
-
-    // score (0 → 100)
-    const pos = clamp(score, 0, 100);
-
-    dot.style.left = pos + "%";
-}
-
-
-
-// ==============================
-//     🔥 تحديث مؤشر الـ Sentiment
-// ==============================
-
-function updateSentiment(sentiment) {
-    const idx = document.getElementById("sentimentIndex");
-    const label = document.getElementById("sentimentLabel");
-    const badge = document.getElementById("sentimentBadge");
-    const pointer = document.getElementById("sentimentPointer");
-
-    if (!sentiment) return;
-
-    idx.textContent = `${fmt(sentiment.score)} / 100`;
-    pointer.style.left = sentiment.score + "%";
-
-    let text = "";
-    let color = "";
-
-    if (sentiment.score < 25) {
-        text = "خوف شديد";
-        color = "red";
-    } else if (sentiment.score < 45) {
-        text = "حذر";
-        color = "gold";
-    } else if (sentiment.score < 70) {
-        text = "طبيعى";
-        color = "green";
-    } else {
-        text = "جشع";
-        color = "gold";
-    }
-
-    label.textContent = text;
-
-    badge.style.borderColor =
-        color === "green" ? "#22c55e"
-        : color === "red" ? "#ef4444"
-        : "#fbbf24";
-}
-
-
-
-// ==============================
-// 🔥 HEATMAP (عملات تقديرية)
-// ==============================
-
-function updateHeatmap(buckets) {
-    const grid = document.getElementById("heatmapGrid");
-    if (!grid) return;
-
-    grid.innerHTML = "";
-
-    buckets.forEach(cell => {
-        const div = document.createElement("div");
-        div.className = "heatmap-cell";
-
-        div.innerHTML = `
-            <div class="heatmap-symbol">${cell.name}</div>
-            <div class="heatmap-change" style="color:${
-                cell.change > 0 ? "#22c55e" :
-                cell.change < 0 ? "#ef4444" : "#e5e7eb"
-            }">
-                ${fmt(cell.change)}%
-            </div>
-        `;
-
-        grid.appendChild(div);
-    });
-}
-
-
-
-// ==============================
-// 🔥 نظام التحذير — Flash
-// ==============================
-
-function updateAlertFlash(active) {
-    const card = document.getElementById("alertFlashCard");
-    if (!card) return;
-
-    if (active) card.classList.add("flash");
-    else card.classList.remove("flash");
-}
-
-
-
-// ==============================
-// 🔥 طلبات تحكم من لوحة الإدارة
-// ==============================
-
-function callAdmin(cmd) {
-    fetch(`${ADMIN_URL}?cmd=${cmd}`)
-        .then(r => r.text())
-        .then(t => {
-            alert("تم إرسال الأمر:\n" + cmd + "\n\n" + t);
-        })
-        .catch(() => alert("خطأ أثناء إرسال الأمر"));
-}
-
-
-
-// ==============================
-// 🔥 سجل التحذيرات
-// ==============================
-
-function reloadAlerts() {
-    fetch(ALERTS_URL)
-        .then(r => r.json())
-        .then(alerts => {
-            const area = document.getElementById("alertsList");
-            if (!area) return;
-
-            if (!alerts || alerts.length === 0) {
-                area.textContent = "لا يوجد تحذيرات مسجلة.";
-                return;
+        function classifyMarketMode(change, volScore, rangePct) {
+            if (Math.abs(change) < 0.7 && volScore < 25 && rangePct < 3) {
+                return { mode: "NORMAL", label: "حركة هادئة" };
             }
-
-            area.innerHTML = alerts.map(a => `
-                <div class="alert-item">
-                    <strong>⟹ ${a.time}</strong><br>
-                    ${a.msg}
-                </div>
-            `).join("");
-        });
-}
-
-function clearAlerts() {
-    fetch(`${ALERTS_URL}?clear=1`)
-        .then(r => r.text())
-        .then(() => reloadAlerts());
-}
-
-
-
-// ==============================
-//     🔥 تحديث الـ BTC BAR أعلى الصفحة
-// ==============================
-
-function updateTopBar(data) {
-    document.getElementById("barPrice").textContent = fmt(data.price);
-    document.getElementById("barChange").textContent =
-        data.change >= 0 ? "+" + fmt(data.change) + "%" : fmt(data.change) + "%";
-
-    document.getElementById("barChange").className =
-        "btc-val " + (data.change >= 0 ? "btc-green" : "btc-red");
-
-    document.getElementById("barRange").textContent = fmt(data.range) + "%";
-
-    document.getElementById("marketModeChip").textContent =
-        data.change < -3 ? "ALERT MODE" :
-        data.change > 3  ? "ACTIVE MODE" :
-                           "NORMAL MODE";
-
-    document.getElementById("badgeMode").textContent =
-        document.getElementById("marketModeChip").textContent;
-}
-
-
-
-// ==============================
-//     🔥 المحرك الأساسى — تحديث كامل
-// ==============================
-
-function updateDashboard(data) {
-
-    lastData = data;
-
-    // --------------------- بطاقة قوة السوق ---------------------
-    document.getElementById("strengthValue").textContent =
-        `${fmt(data.strength.score)} / 100`;
-
-    document.getElementById("kpiChange").textContent = pct(data.change);
-    document.getElementById("kpiRange").textContent = pct(data.range);
-    document.getElementById("kpiHeat").textContent = fmt(data.heat);
-
-    updateHeatBar(data.heat);
-
-
-
-    // --------------------- بطاقة المخاطر ---------------------
-    document.getElementById("riskValue").textContent = fmt(data.risk.score);
-    document.getElementById("riskNote").textContent = data.risk.note;
-    document.getElementById("kpiVol").textContent = fmt(data.volatility);
-    document.getElementById("kpiMode").textContent = data.market_mode;
-
-
-
-    // --------------------- سيولة السوق ---------------------
-    document.getElementById("liquidityValue").textContent = fmt(data.liquidity.score);
-    document.getElementById("liqLabel").textContent = data.liquidity.label;
-    document.getElementById("signalPulse").textContent = data.liquidity.signal;
-
-
-
-    // --------------------- التقلب اليومى ---------------------
-    document.getElementById("volatilityValue").textContent = fmt(data.volatility_score);
-    document.getElementById("rangeDetail").textContent = pct(data.range);
-    document.getElementById("volatilityLabel").textContent = data.volatility_label;
-
-
-
-    // --------------------- نظام التحذير ---------------------
-    document.getElementById("alertReason").textContent = data.alert.reason;
-    document.getElementById("alertTime").textContent = data.alert.time;
-    document.getElementById("alertSent").textContent = data.alert.sent ? "نعم" : "لا";
-
-    updateAlertFlash(data.alert.active);
-
-
-
-    // --------------------- Sentiment ---------------------
-    updateSentiment(data.sentiment);
-
-
-
-    // --------------------- HEATMAP ---------------------
-    updateHeatmap(data.heatmap);
-
-
-
-    // --------------------- Order Flow ---------------------
-    document.getElementById("orderFlowValue").textContent = data.orderflow.label;
-    document.getElementById("orderFlowText").textContent = data.orderflow.text;
-    document.getElementById("buyersShare").textContent = pct(data.orderflow.buyers);
-    document.getElementById("sellersShare").textContent = pct(data.orderflow.sellers);
-
-
-
-    // --------------------- Real-Time Engine ---------------------
-    document.getElementById("rtMomentumValue").textContent = fmt(data.rt.momentum.value);
-    document.getElementById("rtMomentumText").textContent = data.rt.momentum.text;
-
-    document.getElementById("rtMomentumLabel").textContent = data.rt.momentum.label;
-    document.getElementById("rtPressureLabel").textContent = data.rt.pressure.label;
-    document.getElementById("rtShockLabel").textContent = data.rt.shock.label;
-
-    document.getElementById("rtMomentumBar").style.width = data.rt.momentum.value + "%";
-    document.getElementById("rtShockBar").style.width = data.rt.shock.level + "%";
-
-
-
-    // --------------------- Short Term Bias ---------------------
-    document.getElementById("shortTermBias").textContent = data.shortterm.label;
-    document.getElementById("shortTermText").textContent = data.shortterm.text;
-    document.getElementById("upProb").textContent = pct(data.shortterm.up);
-    document.getElementById("downProb").textContent = pct(data.shortterm.down);
-
-
-
-    // --------------------- Noise Filter ---------------------
-    document.getElementById("noiseValue").textContent = data.noise.label;
-    document.getElementById("noiseText").textContent = data.noise.text;
-    document.getElementById("noiseScore").textContent = fmt(data.noise.score);
-
-
-
-    // --------------------- Scalper Mode ---------------------
-    document.getElementById("scalpSuitability").textContent = data.scalp.label;
-    document.getElementById("scalpText").textContent = data.scalp.text;
-
-
-
-    // --------------------- Dominance ---------------------
-    document.getElementById("dominanceValue").textContent = fmt(data.dominance.score);
-    document.getElementById("dominanceText").textContent = data.dominance.text;
-
-
-
-    // --------------------- Trend Temperature ---------------------
-    document.getElementById("trendTempValue").textContent = fmt(data.trend_temp.score);
-    document.getElementById("trendTempText").textContent = data.trend_temp.text;
-
-
-
-    // --------------------- System Health ---------------------
-    document.getElementById("systemHealthValue").textContent = data.health.status;
-    document.getElementById("systemLastError").textContent = data.health.last_error;
-    document.getElementById("systemLastAlert").textContent = data.health.last_alert;
-
-
-
-    // --------------------- Logs ---------------------
-    document.getElementById("lastErrorTitle").textContent = data.log.last_error_title;
-    document.getElementById("logsSnapshot").textContent = data.log.snapshot;
-
-
-
-    // --------------------- Engines & API ---------------------
-    document.getElementById("engRealtime").textContent = data.engines.realtime;
-    document.getElementById("engSmart").textContent = data.engines.smart;
-    document.getElementById("engWeekly").textContent = data.engines.weekly;
-    document.getElementById("engWebhook").textContent = data.engines.webhook;
-    document.getElementById("engWatchdog").textContent = data.engines.watchdog;
-    document.getElementById("engKeepAlive").textContent = data.engines.keepalive;
-
-    document.getElementById("apiBinance").textContent = data.api.binance_ok ? "شغال ✔️" : "❌ مشكلة";
-    document.getElementById("apiKucoin").textContent = data.api.kucoin_ok ? "شغال ✔️" : "❌ مشكلة";
-
-    document.getElementById("engLastWeekly").textContent = data.engines.last_weekly;
-
-
-
-    // --------------------- AI COMMENT ---------------------
-    document.getElementById("aiComment").textContent = data.ai.comment;
-
-
-
-    // --------------------- تحديث شريط أعلى الصفحة ---------------------
-    updateTopBar(data);
-}
-
-
-
-// ==============================
-//     🔥 حلقة التحديث كل 1 ثانية
-// ==============================
-
-function mainLoop() {
-    fetch(API_URL)
-        .then(r => r.json())
-        .then(data => {
-            updateDashboard(data);
-        })
-        .catch(err => {
-            console.log("Dashboard fetch error:", err);
-        });
-}
-
-setInterval(mainLoop, 1000);
-mainLoop();
-
-</script>
+            if (Math.abs(change) < 2 && volScore < 45) {
+                return { mode: "ACTIVE", label: "سوق نشط" };
+            }
+            if (volScore > 70 || rangePct > 8) {
+                if (change <= -3) return { mode: "PANIC", label: "ضغط بيعى عالى" };
+                return { mode: "VOLATILE", label: "تقلب مرتفع" };
+            }
+            return { mode: "ACTIVE", label: "سوق نشط" };
+        }
+
+        function classifyVolatility(volScore) {
+            if (volScore < 20) return "منخفض";
+            if (volScore < 45) return "متوسط";
+            if (volScore < 70) return "مرتفع";
+            return "حاد جدًا";
+        }
+
+        function buildSignalPulse(change, volScore) {
+            if (Math.abs(change) < 0.5 && volScore > 55) {
+                return "⚠️ ضغط عالى بدون حركة واضحة → احتمال انفجار سعرى قريب.";
+            }
+            if (change > 2.5 && volScore > 50) {
+                return "⬆️ حركة صعود قوية مع زخم واضح لصالح المشترين.";
+            }
+            if (change < -2.5 && volScore > 50) {
+                return "⬇️ حركة هبوط قوية مع ضغط بيعى واضح.";
+            }
+            if (volScore < 20) {
+                return "😴 سوق هادئ نسبيًا بدون حركة كبيرة.";
+            }
+            return "🔁 تذبذب طبيعى مع سيولة متوازنة تقريبًا.";
+        }
+
+        function estimateOrderFlow(change, volScore, liquidityLabel) {
+            let base = 50;
+            base += change * 2;
+            base += (liquidityLabel.includes("المشترين") ? 5 : 0);
+            base -= (liquidityLabel.includes("البائعين") ? 5 : 0);
+            base = Math.max(0, Math.min(100, base));
+
+            const buyers = base;
+            const sellers = 100 - base;
+
+            let label;
+            if (buyers > 60) label = "هيمنة واضحة للمشترين";
+            else if (sellers > 60) label = "هيمنة واضحة للبائعين";
+            else label = "توازن نسبى بين المشترين والبائعين";
+
+            return { buyers, sellers, label };
+        }
+
+        function estimateShortTermBias(change, volScore, strengthLabel) {
+            const absChange = Math.abs(change);
+            let up = 50, down = 50;
+            if (change > 0) {
+                up += absChange * 3;
+                if (strengthLabel.includes("صعود") || strengthLabel.includes("إيجابى")) up += 7;
+            } else if (change < 0) {
+                down += absChange * 3;
+                if (strengthLabel.includes("هبوط") || strengthLabel.includes("سلبى")) down += 7;
+            }
+            if (volScore > 65) {
+                up = up * 1.05;
+                down = down * 1.05;
+            }
+            const sum = up + down;
+            up = Math.round((up / sum) * 100);
+            down = 100 - up;
+
+            let biasText;
+            if (up - down > 15) biasText = "ميل قصير المدى لصالح الصعود";
+            else if (down - up > 15) biasText = "ميل قصير المدى لصالح الهبوط";
+            else biasText = "تذبذب قصير المدى بدون انحياز واضح";
+
+            return { up, down, biasText };
+        }
+
+        function estimateNoise(change, volScore, rangePct) {
+            const absChange = Math.abs(change);
+            let noise = volScore * 0.6 + rangePct * 0.5 - absChange * 1.2;
+            if (noise < 0) noise = 0;
+            if (noise > 100) noise = 100;
+
+            let label;
+            if (noise < 25) label = "الضوضاء منخفضة؛ الحركة واضحة نسبيًا.";
+            else if (noise < 55) label = "ضوضاء متوسطة؛ يفضل انتظار تأكيد قبل الدخول.";
+            else label = "ضوضاء عالية جدًا؛ الأفضل تجنب المطاردة والالتزام بالمناطق القوية فقط.";
+
+            return { noise: Math.round(noise), label };
+        }
+
+        function estimateScalperSuitability(volScore, noiseScore, rangePct) {
+            let score = volScore * 0.7 + rangePct * 2 - noiseScore * 0.5;
+            if (score < 0) score = 0;
+            if (score > 100) score = 100;
+
+            let label;
+            if (score < 35) label = "😴 غير مناسب للسكالبينج — السوق هادئ أو ضوضائى أكثر من اللازم.";
+            else if (score < 70) label = "⚖️ مناسب جزئيًا للسكالبينج مع انتقاء الفرص، ويفضل الالتزام بمناطق واضحة.";
+            else label = "⚡ بيئة نشطة جدًا — مناسبة للسكالبينج مع انضباط قوى فى إدارة المخاطر.";
+
+            return { score: Math.round(score), label };
+        }
+
+        function estimateDominance(change, liquidityLabel) {
+            let label, text;
+            if (Math.abs(change) < 0.8) {
+                label = "Mixed Market / سوق مختلط";
+                text = "الحركة الحالية لا تُظهر هيمنة حادة للبيتكوين؛ السوق يميل لأن يكون مختلطًا بين البيتكوين والعملات البديلة.";
+            } else if (change > 0 && liquidityLabel.includes("المشترين")) {
+                label = "BTC-Led / هيمنة للبيتكوين";
+                text = "صعود البيتكوين مع ميل السيولة لصالح المشترين يشير إلى أن البيتكوين يقود المشهد الحالى على حساب أغلب العملات.";
+            } else if (change < 0 && liquidityLabel.includes("البائعين")) {
+                label = "BTC Risk-Off / خروج من المخاطر";
+                text = "ضغط بيعى على البيتكوين مع ميل السيولة لصالح البائعين؛ عادةً ما يكون هذا نمط خروج عام من المخاطر.";
+            } else {
+                label = "Alt-Friendly / بيئة تميل للعملات البديلة";
+                text = "حركة البيتكوين أقل حدة نسبيًا، ما يفتح المجال لفرص متفرقة فى بعض العملات البديلة (مع بقاء إدارة المخاطر أساسية).";
+            }
+            return { label, text };
+        }
+
+        function estimateTrendTemp(change, volScore) {
+            const absChange = Math.abs(change);
+            let temp = absChange * 6 + volScore * 0.8;
+            if (temp > 100) temp = 100;
+
+            let label;
+            if (temp < 25) label = "❄️ اتجاه بارد — السوق يتحرك ببطء بدون زخم واضح.";
+            else if (temp < 55) label = "🌤 اتجاه معتدل — حركة معقولة مع زخم قابل للمتابعة.";
+            else if (temp < 80) label = "🔥 اتجاه ساخن — حركة قوية تستحق المتابعة مع إدارة مخاطر مشددة.";
+            else label = "☄️ اتجاه مشتعِل — زخم عالى جدًا واحتمال حركات عنيفة فى أى لحظة.";
+
+            return { temp: Math.round(temp), label };
+        }
+
+        function computeSentimentIndex(change, volScore, rangePct) {
+            let base = 50;
+            base += change * 4;
+            base += (rangePct - 3) * 1.2;
+            base -= (volScore - 50) * 0.4;
+            if (base < 0) base = 0;
+            if (base > 100) base = 100;
+
+            let label, zone;
+            if (base < 20) { label = "😱 خوف شديد"; zone = "Extreme Fear"; }
+            else if (base < 40) { label = "😓 حذر ميل للخوف"; zone = "Fear"; }
+            else if (base < 60) { label = "😐 حالة طبيعية"; zone = "Neutral"; }
+            else if (base < 80) { label = "😏 جشع متصاعد"; zone = "Greed"; }
+            else { label = "🤯 جشع عالى جدًا"; zone = "Extreme Greed"; }
+
+            return { index: Math.round(base), label, zone };
+        }
+
+        function computeSystemHealth(lastErr, aa, riskLevel) {
+            const hasError = lastErr && lastErr.message;
+            const hasAlert =
+                aa && aa.reason && aa.reason !== "no_alert" && aa.reason !== "duplicate";
+
+            let status, text;
+            if (!hasError && !hasAlert && riskLevel && riskLevel.includes("منخفض")) {
+                status = "🟢 Stable — النظام يعمل بشكل طبيعى";
+                text = "لا توجد أخطاء مسجلة مؤخرًا، ولا تحذيرات آلية نشطة، ومستوى المخاطر فى المنطقة الآمنة.";
+            } else if (!hasError && !hasAlert) {
+                status = "🟢 Stable (مع مراقبة)";
+                text = "النظام يعمل بشكل طبيعى، لكن يوصى بالاستمرار فى متابعة حالة السوق خصوصًا مع التغيرات الأخيرة.";
+            } else if (hasError && !hasAlert) {
+                status = "🟡 Degraded — النظام يعمل لكن يوجد أخطاء بسيطة";
+                text = "تم تسجيل خطأ واحد أو أكثر فى الخلفية، لكن المحرك ما زال يعمل. يفضل مراجعة اللوج والتأكد من عدم تكرار الأخطاء.";
+            } else if (!hasError && hasAlert) {
+                status = "🟠 Alerting — السوق يحتاج انتباه";
+                text = "لا توجد أخطاء تقنية، لكن نظام التحذير الآلى يلتقط أنماط غير مريحة فى السوق. ينصح بتخفيف المخاطر.";
+            } else {
+                status = "🔴 Attention — أخطاء + تحذيرات نشطة";
+                text = "هناك أخطاء تقنية مع تفعيل تحذيرات آلية؛ يوصى بمراجعة النظام فورًا قبل الاعتماد عليه فى قرارات كبيرة.";
+            }
+            return { status, text };
+        }
+
+        // === Real-Time Engine helpers ===
+        function computeRealtimeMomentum(change, volScore, strengthLabel) {
+            const absChange = Math.abs(change);
+            let score = absChange * 5 + volScore * 0.6;
+            if (strengthLabel && (strengthLabel.includes("قوة") || strengthLabel.includes("قوى"))) {
+                score += 8;
+            }
+            if (score > 100) score = 100;
+            if (score < 0) score = 0;
+
+            let label;
+            if (score < 25) label = "زخم ضعيف";
+            else if (score < 55) label = "زخم متوسط";
+            else if (score < 80) label = "زخم قوى";
+            else label = "زخم عنيف";
+
+            return { score: Math.round(score), label };
+        }
+
+        function computeShockScore(change, volScore, rangePct) {
+            const absChange = Math.abs(change);
+            let shock = volScore * 0.7 + rangePct * 0.8 + absChange * 1.5;
+            if (shock > 100) shock = 100;
+            if (shock < 0) shock = 0;
+
+            let label;
+            if (shock < 30) label = "هادئ";
+            else if (shock < 60) label = "متحرك";
+            else if (shock < 80) label = "توتر مرتفع";
+            else label = "صدمة محتملة";
+
+            return { shock: Math.round(shock), label };
+        }
+
+        function buildAIComment(change, volScore, riskMsg, riskLevel, liquidityPulse, strengthLabel, modeInfo) {
+            const dirText =
+                change > 0.7 ? "السوق يميل حاليًا لصالح المشترين مع صعود ملحوظ فى البيتكوين." :
+                change < -0.7 ? "السوق يميل حاليًا لصالح البائعين مع ضغط بيعى واضح على البيتكوين." :
+                "السوق يتحرك بتذبذب محدود نسبيًا بدون اتجاه حاسم حتى الآن.";
+
+            const volText =
+                volScore < 25 ? "درجة التقلب ما زالت هادئة نسبيًا، ما يعطى مساحة أفضل للتخطيط قبل الدخول." :
+                volScore < 55 ? "التقلب فى المنطقة المتوسطة، الحركة ليست عنيفة لكن ليست هادئة تمامًا." :
+                "التقلب مرتفع حاليًا؛ أى قرار دخول بدون خطة صارمة لإدارة المخاطر قد يكون مكلفًا.";
+
+            const riskText = `قراءة Engine المخاطر: ${riskMsg || "لم يتم تحديد رسالة مفصلة."}`;
+
+            const liqText =
+                liquidityPulse && liquidityPulse.indexOf("متوازنة") !== -1
+                    ? "نبض السيولة يشير إلى توازن تقريبى بين المشترين والبائعين."
+                    : `نبض السيولة الحالى: ${liquidityPulse || "غير متوفر"}.`;
+
+            const modeText = `تصنيف نمط السوق الحالى: <b>${modeInfo.mode}</b> — ${modeInfo.label}.`;
+
+            return (
+                dirText + " " +
+                volText + " " +
+                riskText + " " +
+                liqText + " " +
+                modeText +
+                " دائمًا تذكر أن هذه القراءة تعليمية وليست توصية مباشرة بالشراء أو البيع."
+            );
+        }
+
+        function renderHeatmap(change, volScore, rangePct) {
+            const grid = document.getElementById("heatmapGrid");
+            if (!grid) return;
+
+            const base = change;
+            const cells = [
+                { symbol: "MAJORS", name: "Top Caps", mult: 1.1 },
+                { symbol: "DEFI",   name: "DeFi Basket", mult: 1.4 },
+                { symbol: "AI",     name: "AI / Tech", mult: 1.6 },
+                { symbol: "MEME",   name: "High Beta", mult: 2.0 },
+                { symbol: "L1",     name: "L1 Basket", mult: 1.3 },
+                { symbol: "L2",     name: "L2 / Scaling", mult: 1.5 },
+                { symbol: "NFT",    name: "NFT / Metaverse", mult: 1.7 },
+                { symbol: "STBL",   name: "Stable / Yield", mult: 0.3 },
+            ];
+
+            const html = cells.map(c => {
+                let est = base * c.mult;
+                est += (rangePct - 3) * 0.15;
+                est += (volScore - 50) * 0.03;
+                if (est > 12) est = 12;
+                if (est < -12) est = -12;
+                const cls = est >= 0 ? "green" : "red";
+                const sign = est >= 0 ? "+" : "";
+                return `
+                    <div class="heatmap-cell">
+                        <div class="heatmap-symbol">${c.symbol}</div>
+                        <div class="heatmap-change ${cls}">
+                            ${sign}${est.toFixed(1)}٪
+                        </div>
+                    </div>
+                `;
+            }).join("");
+
+            grid.innerHTML = html;
+        }
+
+        async function loadMain() {
+            try {
+                const res = await fetch(apiUrl("/dashboard_api"));
+                const data = await res.json();
+                if (!data.ok) return;
+
+                const price = data.price;
+                const change = data.change_pct;
+                const rangePct = data.range_pct;
+                const volScore = data.volatility_score;
+                const riskLevel = data.risk_level;
+                const riskEmoji = data.risk_emoji;
+                const riskMsg = data.risk_message;
+                const liquidityPulse = data.liquidity_pulse;
+                const strengthLabel = data.strength_label;
+
+                // HEADER BADGES
+                document.getElementById("badgeChats").textContent = data.known_chats ?? 0;
+                document.getElementById("badgeRealtime").textContent = data.last_realtime_tick || "لا يوجد";
+
+                // TOP BTC BAR
+                const barPrice = document.getElementById("barPrice");
+                const barChange = document.getElementById("barChange");
+                const barRange = document.getElementById("barRange");
+                const modeChip = document.getElementById("marketModeChip");
+
+                const changeColorClass = change >= 0 ? "btc-green" : "btc-red";
+
+                barPrice.innerHTML = price.toLocaleString();
+                barChange.innerHTML = `<span class="${changeColorClass}">${change >= 0 ? "+" : ""}${change.toFixed(2)}%</span>`;
+                barRange.textContent = rangePct.toFixed(2) + "%";
+
+                const modeInfo = classifyMarketMode(change, volScore, rangePct);
+                modeChip.textContent = modeInfo.mode + " MODE";
+                document.getElementById("badgeMode").textContent = modeInfo.mode;
+
+                if (modeInfo.mode === "PANIC") {
+                    modeChip.style.background = "radial-gradient(circle at top, #ef4444, #7f1d1d)";
+                } else if (modeInfo.mode === "VOLATILE") {
+                    modeChip.style.background = "radial-gradient(circle at top, #f97316, #7c2d12)";
+                } else if (modeInfo.mode === "ACTIVE") {
+                    modeChip.style.background = "radial-gradient(circle at top, #22c55e, #064e3b)";
+                } else {
+                    modeChip.style.background =
+                        "radial-gradient(circle at top, rgba(251,191,36,0.35), #020617)";
+                }
+
+                // MARKET STRENGTH
+                document.getElementById("strengthValue").textContent = strengthLabel;
+                document.getElementById("kpiChange").textContent =
+                    (change >= 0 ? "+" : "") + change.toFixed(2) + "%";
+                document.getElementById("kpiRange").textContent = rangePct.toFixed(2) + "%";
+
+                const heatScore = computeHeatScore(change, volScore, rangePct);
+                document.getElementById("kpiHeat").textContent = heatScore.toFixed(0) + " / 100";
+
+                const heatDot = document.getElementById("heatDot");
+                heatDot.style.left = Math.min(96, Math.max(4, heatScore)) + "%";
+
+                // RISK CARD
+                const riskCard = document.getElementById("riskCard");
+                const riskVal = document.getElementById("riskValue");
+                const riskNote = document.getElementById("riskNote");
+                const kpiMode = document.getElementById("kpiMode");
+                const kpiVol = document.getElementById("kpiVol");
+
+                riskVal.innerHTML = riskEmoji + " " + riskLevel;
+                riskNote.textContent = riskMsg;
+                kpiVol.textContent = volScore.toFixed(1) + " / 100";
+                kpiMode.textContent = modeInfo.label;
+
+                riskCard.classList.remove("green", "gold", "red");
+                if (riskLevel.includes("منخفض")) riskCard.classList.add("green");
+                else if (riskLevel.includes("متوسط")) riskCard.classList.add("gold");
+                else riskCard.classList.add("red");
+
+                // LIQUIDITY
+                document.getElementById("liquidityValue").textContent = liquidityPulse;
+                const liqLabel =
+                    change > 0 ? "ميل لصالح المشترين" :
+                    change < 0 ? "ميل لصالح البائعين" :
+                    "متوازنة تقريبًا";
+                document.getElementById("liqLabel").textContent = liqLabel;
+                document.getElementById("signalPulse").textContent =
+                    buildSignalPulse(change, volScore);
+
+                // VOLATILITY
+                document.getElementById("volatilityValue").textContent =
+                    volScore.toFixed(1);
+                document.getElementById("rangeDetail").textContent =
+                    rangePct.toFixed(2) + "%";
+                document.getElementById("volatilityLabel").textContent =
+                    classifyVolatility(volScore);
+
+                // LAST ERROR
+                const lastErr = data.last_error || {};
+                const errTitle = document.getElementById("lastErrorTitle");
+                const errCard = document.getElementById("errorCard");
+
+                if (lastErr && lastErr.message) {
+                    errTitle.textContent = "آخر خطأ — " + (lastErr.time || "");
+                    errCard.classList.add("gold");
+                } else {
+                    errTitle.textContent = "لا يوجد أخطاء مسجلة";
+                    errCard.classList.remove("gold");
+                }
+
+                // AUTO ALERT
+                const aa = data.last_auto_alert || {};
+                const alertCard = document.getElementById("alertFlashCard");
+                document.getElementById("alertReason").textContent =
+                    aa.reason || "لا يوجد تحذير حاليًا";
+                document.getElementById("alertTime").textContent =
+                    aa.time || "---";
+                document.getElementById("alertSent").textContent =
+                    aa.sent === true ? "نعم ✅" :
+                        aa.sent === false ? "لا ❌" : "---";
+
+                if (aa.reason && aa.reason !== "no_alert" && aa.reason !== "duplicate") {
+                    alertCard.classList.add("flash");
+                } else {
+                    alertCard.classList.remove("flash");
+                }
+
+                // ORDER FLOW
+                const of = estimateOrderFlow(change, volScore, liqLabel);
+                document.getElementById("orderFlowValue").textContent = of.label;
+                document.getElementById("buyersShare").textContent = of.buyers.toFixed(0) + "٪";
+                document.getElementById("sellersShare").textContent = of.sellers.toFixed(0) + "٪";
+
+                // SHORT TERM BIAS
+                const st = estimateShortTermBias(change, volScore, strengthLabel);
+                document.getElementById("shortTermBias").textContent = st.biasText;
+                document.getElementById("upProb").textContent = st.up + "٪";
+                document.getElementById("downProb").textContent = st.down + "٪";
+
+                // NOISE
+                const nf = estimateNoise(change, volScore, rangePct);
+                document.getElementById("noiseValue").textContent = nf.noise + " / 100";
+                document.getElementById("noiseScore").textContent = nf.noise + " / 100";
+                document.getElementById("noiseText").textContent = nf.label;
+
+                // SCALPER MODE
+                const sc = estimateScalperSuitability(volScore, nf.noise, rangePct);
+                document.getElementById("scalpSuitability").textContent =
+                    sc.score + " / 100";
+                document.getElementById("scalpText").textContent = sc.label;
+
+                // DOMINANCE
+                const dom = estimateDominance(change, liqLabel);
+                document.getElementById("dominanceValue").textContent = dom.label;
+                document.getElementById("dominanceText").textContent = dom.text;
+
+                // TREND TEMP
+                const tt = estimateTrendTemp(change, volScore);
+                document.getElementById("trendTempValue").textContent =
+                    tt.temp + " / 100";
+                document.getElementById("trendTempText").textContent = tt.label;
+
+                // SENTIMENT
+                const sent = computeSentimentIndex(change, volScore, rangePct);
+                document.getElementById("sentimentIndex").textContent =
+                    sent.index + " / 100";
+                document.getElementById("sentimentLabel").textContent = sent.label;
+                const pointer = document.getElementById("sentimentPointer");
+                pointer.style.left = Math.min(96, Math.max(4, sent.index)) + "%";
+                const badge = document.getElementById("sentimentBadge");
+                badge.title = sent.zone;
+
+                // HEATMAP
+                renderHeatmap(change, volScore, rangePct);
+
+                // SYSTEM HEALTH
+                const sh = computeSystemHealth(lastErr, aa, riskLevel);
+                document.getElementById("systemHealthValue").textContent = sh.status;
+                document.getElementById("systemHealthText").textContent = sh.text;
+                document.getElementById("systemLastError").textContent =
+                    lastErr && lastErr.time ? lastErr.time : "لا يوجد";
+                document.getElementById("systemLastAlert").textContent =
+                    aa && aa.time ? aa.time : "لا يوجد";
+
+                // REAL-TIME ENGINE
+                const rt = computeRealtimeMomentum(change, volScore, strengthLabel);
+                const shock = computeShockScore(change, volScore, rangePct);
+
+                document.getElementById("rtMomentumValue").textContent = rt.score + " / 100";
+                document.getElementById("rtMomentumLabel").textContent = rt.label;
+
+                const pressureLabel =
+                    of.buyers > 60 ? "ضغط المشترين" :
+                    of.sellers > 60 ? "ضغط البائعين" :
+                    "ضغط متوازن نسبيًا";
+                document.getElementById("rtPressureLabel").textContent = pressureLabel;
+
+                document.getElementById("rtShockLabel").textContent = shock.label;
+
+                const rtText = (() => {
+                    if (rt.score < 25) return "زخم ضعيف، الحركة الحالية أقرب للاختبار والتذبذب الخفيف عن اتجاه واضح.";
+                    if (rt.score < 55) return "زخم متوسط، يمكن استغلال الحركات لكن مع صبر على التأكيد.";
+                    if (rt.score < 80) return "زخم قوى، الاتجاه الحالى يستحق المتابعة الدقيقة مع التزام صارم بإدارة المخاطر.";
+                    return "زخم عنيف، أى قرار بدون خطة إدارة مخاطر واضحة قد يكون مخاطرة كبيرة.";
+                })();
+                document.getElementById("rtMomentumText").textContent = rtText;
+
+                // Bars
+                const mBar = document.getElementById("rtMomentumBar");
+                const sBar = document.getElementById("rtShockBar");
+                if (mBar) mBar.style.width = Math.min(100, Math.max(5, rt.score)) + "%";
+                if (sBar) sBar.style.width = Math.min(100, Math.max(5, shock.shock)) + "%";
+
+                // AI COMMENT
+                const comment = buildAIComment(
+                    change,
+                    volScore,
+                    riskMsg,
+                    riskLevel,
+                    liquidityPulse,
+                    strengthLabel,
+                    modeInfo
+                );
+                document.getElementById("aiComment").innerHTML = comment;
+
+            } catch (e) {
+                console.log("Dashboard Error:", e);
+            }
+        }
+
+        async function loadLogs() {
+            try {
+                const res = await fetch(apiUrl("/admin/logs"));
+                if (!res.ok) return;
+                const txt = await res.text();
+                document.getElementById("logsSnapshot").textContent =
+                    txt || "لا يوجد لوجات حتى الآن.";
+            } catch (e) {
+                console.log("Logs error:", e);
+            }
+        }
+
+        async function reloadAlerts() {
+            try {
+                const res = await fetch(apiUrl("/admin/alerts_history"));
+                const data = await res.json();
+                const container = document.getElementById("alertsList");
+
+                if (!data.ok) {
+                    container.textContent = "لا يمكن تحميل السجل الآن.";
+                    return;
+                }
+
+                const list = data.alerts || [];
+                if (!list.length) {
+                    container.textContent = "لا توجد تحذيرات مسجلة بعد.";
+                    return;
+                }
+
+                const items = list.slice().reverse().map(a => {
+                    const changeStr = a.change_pct != null
+                        ? ` (Δ ${a.change_pct.toFixed(2)}٪)`
+                        : "";
+                    return `
+                        <div class="alert-item">
+                            • [${a.time || "?"}] ${a.source || "?"} — ${a.reason || ""}${changeStr}
+                        </div>
+                    `;
+                }).join("");
+
+                container.innerHTML = items;
+            } catch (e) {
+                console.log("Alerts error:", e);
+            }
+        }
+
+        async function clearAlerts() {
+            if (!confirm("متأكد إنك عايز تمسح سجل التحذيرات بالكامل؟")) return;
+            try {
+                const res = await fetch(apiUrl("/admin/clear_alerts"));
+                const data = await res.json();
+                alert(data.message || "تم.");
+                reloadAlerts();
+            } catch (e) {
+                console.log("clearAlerts error:", e);
+            }
+        }
+
+        async function callAdmin(action) {
+            try {
+                const res = await fetch(apiUrl("/admin/" + action));
+                const data = await res.json();
+                alert(data.message || JSON.stringify(data));
+            } catch (e) {
+                console.log("admin action error:", e);
+            }
+        }
+
+        // أول تحميل
+        loadMain();
+        loadLogs();
+        reloadAlerts();
+
+        // تحديثات دورية
+        setInterval(loadMain, 10000);      // بيانات السوق
+        setInterval(loadLogs, 30000);      // Snapshot اللوج
+        setInterval(reloadAlerts, 60000);  // سجل التحذيرات
+    </script>
+</body>
+</html>
