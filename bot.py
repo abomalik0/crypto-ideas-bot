@@ -386,35 +386,78 @@ def webhook():
         return jsonify(ok=True)
 
     if lower_text == "/status":
-        metrics = get_market_metrics_cached()
-        if metrics:
-            change = metrics["change_pct"]
-            vol = metrics["volatility_score"]
-            risk = evaluate_risk_level(change, vol)
-            from analysis_engine import _risk_level_ar as _rl_txt
-            risk_text = (
-                f"{risk['emoji']} {_rl_txt(risk['level'])}" if risk else "N/A"
-            )
-        else:
-            risk_text = "N/A"
+        try:
+            # نجيب Snapshot كامل من المحرك الذكي
+            snapshot = compute_smart_market_snapshot()
+            metrics = snapshot.get("metrics", {})
+            risk = snapshot.get("risk", {})
+            alert_level = snapshot.get("alert_level", {})
+            pulse = snapshot.get("pulse", {})
 
-        msg_status = f"""
-🛰 <b>حالة نظام IN CRYPTO Ai</b>
+            price = metrics.get("price")
+            chg = metrics.get("change_pct")
+            vol = metrics.get("volatility_score")
+            rng = metrics.get("range_pct")
 
-• حالة Binance: {"✅" if config.API_STATUS["binance_ok"] else "⚠️"}
-• حالة KuCoin: {"✅" if config.API_STATUS["kucoin_ok"] else "⚠️"}
-• آخر فحص API: {config.API_STATUS.get("last_api_check")}
+            risk_emoji = risk.get("emoji", "❔")
+            risk_level = risk.get("level", "-")
 
-• آخر تحديث Real-Time: {config.REALTIME_CACHE.get("last_update")}
-• آخر Webhook: {datetime.utcfromtimestamp(config.LAST_WEBHOOK_TICK).isoformat(timespec="seconds") if config.LAST_WEBHOOK_TICK else "لا يوجد"}
+            shock = alert_level.get("shock_score")
+            level = alert_level.get("level")
+            speed = pulse.get("speed_index")
+            accel = pulse.get("accel_index")
 
-• حالة المخاطر العامة: {risk_text}
+            # حالة التايمرز — health للثريدات
+            def ago(ts):
+                if not ts:
+                    return "❌ لا يوجد"
+                diff = time.time() - ts
+                return f"{diff:.1f} ثانية منذ آخر نشاط"
 
-• عدد الشاتات المسجلة: {len(config.KNOWN_CHAT_IDS)}
-• آخر تقرير أسبوعى مبعوت: {config.LAST_WEEKLY_SENT_DATE}
-• آخر Auto Alert (قديم): {config.LAST_AUTO_ALERT_INFO.get("time")} ({config.LAST_AUTO_ALERT_INFO.get("reason")})
+            msg = f"""
+🛰 <b>Status Monitor — IN CRYPTO Ai</b>
+
+📌 <b>BTС</b>
+• السعر الآن: <b>${price:,.0f}</b>
+• التغير 24 ساعة: <b>{chg:+.2f}%</b>
+• مدى اليوم: <b>{rng:.2f}%</b> — التقلب <b>{vol:.1f}/100</b>
+
+⚙️ <b>Risk Engine</b>
+• مستوى المخاطر: {risk_emoji} <b>{risk_level}</b>
+• Shock Score: <b>{shock:.1f}/100</b>
+• Alert Level: <b>{(level or 'none').upper()}</b>
+
+📡 <b>Pulse Engine</b>
+• السرعة: <b>{speed:.1f}</b>
+• التسارع: <b>{accel:.2f}</b>
+
+------------------------------------
+
+🧠 <b>System Health</b>
+• RealTime Engine: {ago(config.LAST_REALTIME_TICK)}
+• Smart Alert Engine: {ago(config.LAST_SMART_ALERT_TICK)}
+• Weekly Scheduler: {ago(config.LAST_WEEKLY_TICK)}
+• Webhook: {ago(config.LAST_WEBHOOK_TICK)}
+• Watchdog: {ago(config.LAST_WATCHDOG_TICK)}
+• Keep-Alive: {ago(getattr(config, 'LAST_KEEP_ALIVE_OK', 0))}
+
+------------------------------------
+
+🗂 <b>System Info</b>
+• API Binance: {"✅" if config.API_STATUS["binance_ok"] else "⚠️"}  
+• API KuCoin: {"✅" if config.API_STATUS["kucoin_ok"] else "⚠️"}  
+• عدد الشاتات المسجلة: <b>{len(config.KNOWN_CHAT_IDS)}</b>
+• آخر Weekly Report: {config.LAST_WEEKLY_SENT_DATE}
+• آخر Auto Alert: {config.LAST_AUTO_ALERT_INFO.get("time")}
+
+<b>IN CRYPTO Ai — PRO Monitoring Active</b>
 """.strip()
-        send_message(chat_id, msg_status)
+
+            send_message(chat_id, msg)
+        except Exception as e:
+            send_message(chat_id, "⚠️ حدث خطأ أثناء تنفيذ أمر /status\nراجع اللوج.")
+            config.logger.exception("Status error: %s", e)
+
         return jsonify(ok=True)
 
     # أمر اختبار /weekly_now للأدمن (من خلال الخدمات الجديدة)
