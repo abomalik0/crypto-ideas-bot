@@ -347,3 +347,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN") or TELEGRAM_TOKEN
 
 # TTL للتقرير الأسبوعى فى الكاش (ثانية)
 WEEKLY_REPORT_TTL = 3600
+
+KEEP_ALIVE_URL = "https://dizzy-bab-incrypto-free-258377c4.koyeb.app/"
+KEEP_ALIVE_INTERVAL = 240   # كل 4 دقايق ping
