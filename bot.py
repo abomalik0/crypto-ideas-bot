@@ -1,4 +1,6 @@
 import time
+import os
+import json
 from datetime import datetime
 
 from flask import Flask, request, jsonify, Response
@@ -30,6 +32,65 @@ from analysis_engine import (
 import services
 
 app = Flask(__name__)
+
+# ==============================
+#   نظام إدارة الأدمنز (ديناميكى + JSON)
+# ==============================
+
+PRIMARY_ADMIN_ID = config.ADMIN_CHAT_ID          # الأدمن الرئيسى الثابت
+ADMIN_LIST_FILE = "admins.json"                  # ملف تخزين الأدمنز
+ADMIN_IDS: set[int] = set()                      # كاش فى الذاكرة
+
+
+def load_admins():
+    """
+    تحميل قائمة الأدمنز:
+      - يبدأ دائمًا بالأدمن الرئيسى فقط
+      - لو فيه ملف JSON يضيف منه الأدمنز الآخرين
+    """
+    global ADMIN_IDS
+    ADMIN_IDS = {int(PRIMARY_ADMIN_ID)}
+    try:
+        if os.path.exists(ADMIN_LIST_FILE):
+            with open(ADMIN_LIST_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            extra_ids = set()
+            for v in data:
+                try:
+                    iv = int(v)
+                    if iv != int(PRIMARY_ADMIN_ID):
+                        extra_ids.add(iv)
+                except Exception:
+                    continue
+            ADMIN_IDS |= extra_ids
+        config.logger.info("Admins loaded: %s", list(ADMIN_IDS))
+    except Exception as e:
+        config.logger.exception("Error loading admins.json: %s", e)
+
+
+def save_admins():
+    """
+    حفظ قائمة الأدمنز (ما عدا الرئيسى ممكن نحفظ الكل؛ مفيش مشكلة).
+    """
+    try:
+        with open(ADMIN_LIST_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(ADMIN_IDS), f, ensure_ascii=False, indent=2)
+        config.logger.info("Admins saved: %s", list(ADMIN_IDS))
+    except Exception as e:
+        config.logger.exception("Error saving admins.json: %s", e)
+
+
+def is_admin(user_id: int | None) -> bool:
+    """
+    التحقق هل الـ user_id أدمن أم لا.
+    """
+    if user_id is None:
+        return False
+    try:
+        uid = int(user_id)
+    except Exception:
+        return False
+    return uid in ADMIN_IDS or uid == int(PRIMARY_ADMIN_ID)
 
 
 # ==============================
@@ -231,7 +292,7 @@ def webhook():
             answer_callback_query(callback_id)
 
         if data == "alert_details":
-            if from_id != config.ADMIN_CHAT_ID:
+            if not is_admin(from_id):
                 if chat_id:
                     send_message(chat_id, "❌ هذا الزر مخصص للإدارة فقط.")
                 return jsonify(ok=True)
@@ -248,6 +309,8 @@ def webhook():
 
     msg = update["message"]
     chat_id = msg["chat"]["id"]
+    from_user = msg.get("from") or {}
+    user_id = from_user.get("id")
     text = (msg.get("text") or "").strip()
     lower_text = text.lower()
 
@@ -274,6 +337,9 @@ def webhook():
         send_message(chat_id, welcome)
         return jsonify(ok=True)
 
+    # ==============================
+    #   أوامر المستخدم العادية
+    # ==============================
     if lower_text == "/btc":
         reply = services.get_cached_response(
             "btc_analysis", lambda: format_analysis("BTCUSDT")
@@ -296,9 +362,109 @@ def webhook():
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
+    # ==============================
+    #   أوامر إدارة الأدمنز
+    # ==============================
+
+    if lower_text.startswith("/addadmin"):
+        if not is_admin(user_id):
+            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
+            return jsonify(ok=True)
+
+        parts = lower_text.split()
+        if len(parts) != 2:
+            send_message(
+                chat_id,
+                "⚠️ استخدم الأمر هكذا:\n"
+                "<code>/addadmin 123456789</code>",
+            )
+            return jsonify(ok=True)
+
+        try:
+            new_id = int(parts[1])
+        except ValueError:
+            send_message(chat_id, "⚠️ الـ ID يجب أن يكون رقم صحيح.")
+            return jsonify(ok=True)
+
+        if new_id == int(PRIMARY_ADMIN_ID):
+            send_message(chat_id, "ℹ️ هذا هو الأدمن الرئيسى بالفعل.")
+            return jsonify(ok=True)
+
+        if new_id in ADMIN_IDS:
+            send_message(chat_id, "ℹ️ هذا المستخدم مسجل كأدمن بالفعل.")
+            return jsonify(ok=True)
+
+        ADMIN_IDS.add(new_id)
+        save_admins()
+        send_message(
+            chat_id,
+            f"✅ تم إضافة <code>{new_id}</code> إلى قائمة الأدمنز بنجاح.",
+        )
+        return jsonify(ok=True)
+
+    if lower_text.startswith("/removeadmin"):
+        if not is_admin(user_id):
+            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
+            return jsonify(ok=True)
+
+        parts = lower_text.split()
+        if len(parts) != 2:
+            send_message(
+                chat_id,
+                "⚠️ استخدم الأمر هكذا:\n"
+                "<code>/removeadmin 123456789</code>",
+            )
+            return jsonify(ok=True)
+
+        try:
+            rem_id = int(parts[1])
+        except ValueError:
+            send_message(chat_id, "⚠️ الـ ID يجب أن يكون رقم صحيح.")
+            return jsonify(ok=True)
+
+        if rem_id == int(PRIMARY_ADMIN_ID):
+            send_message(chat_id, "❌ لا يمكن حذف الأدمن الرئيسى.")
+            return jsonify(ok=True)
+
+        if rem_id not in ADMIN_IDS:
+            send_message(chat_id, "⚠️ هذا المستخدم ليس فى قائمة الأدمنز.")
+            return jsonify(ok=True)
+
+        ADMIN_IDS.remove(rem_id)
+        save_admins()
+        send_message(
+            chat_id,
+            f"✅ تم إزالة <code>{rem_id}</code> من قائمة الأدمنز.",
+        )
+        return jsonify(ok=True)
+
+    if lower_text == "/listadmins":
+        if not is_admin(user_id):
+            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
+            return jsonify(ok=True)
+
+        admins_sorted = sorted(ADMIN_IDS)
+        lines = [
+            "👑 <b>قائمة الأدمنز الحالية:</b>",
+            "",
+            f"• الأدمن الرئيسى: <code>{PRIMARY_ADMIN_ID}</code>",
+        ]
+        others = [a for a in admins_sorted if a != int(PRIMARY_ADMIN_ID)]
+        if others:
+            lines.append("")
+            lines.append("• الأدمنز الإضافيين:")
+            for a in others:
+                lines.append(f"  - <code>{a}</code>")
+        else:
+            lines.append("")
+            lines.append("لا يوجد أدمنز إضافيين حتى الآن.")
+
+        send_message(chat_id, "\n".join(lines))
+        return jsonify(ok=True)
+
     # ===== أمر /alert الرسمى (Ultra PRO) =====
     if lower_text == "/alert":
-        if chat_id != config.ADMIN_CHAT_ID:
+        if not is_admin(user_id):
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -324,7 +490,7 @@ def webhook():
 
     # ===== أمر /alert_pro: إرسال Ultra PRO للمستخدمين =====
     if lower_text == "/alert_pro":
-        if chat_id != config.ADMIN_CHAT_ID:
+        if not is_admin(user_id):
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -335,7 +501,7 @@ def webhook():
     #   /test_smart — تشخيص Smart Alert (للأدمن فقط)
     # ==============================
     if lower_text == "/test_smart":
-        if chat_id != config.ADMIN_CHAT_ID:
+        if not is_admin(user_id):
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -462,7 +628,7 @@ def webhook():
 
     # أمر اختبار /weekly_now للأدمن (من خلال الخدمات الجديدة)
     if lower_text == "/weekly_now":
-        if chat_id != config.ADMIN_CHAT_ID:
+        if not is_admin(user_id):
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -736,6 +902,12 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
+
+    # تحميل قائمة الأدمنز
+    try:
+        load_admins()
+    except Exception as e:
+        logging.exception("Admin list load failed on startup: %s", e)
 
     # تحميل السناك شوت (لو متفعّل)
     try:
