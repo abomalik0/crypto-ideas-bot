@@ -728,6 +728,51 @@ def watchdog_loop():
 
 
 # =====================================================
+#   Anti-Sleep / Keep-Alive Loop
+# =====================================================
+
+
+def keep_alive_loop():
+    """
+    لوب بسيط لمنع السيرفر (Koyeb) من الدخول فى حالة Sleep:
+      - بيعمل Ping كل شوية على نفس التطبيق.
+      - يعتمد على:
+        * config.KEEP_ALIVE_URL  لو موجودة
+        * وإلا يستخدم URL الافتراضى لتطبيقك على Koyeb
+      - يكتب آخر نجاح فى config.LAST_KEEP_ALIVE_OK (اختيارى)
+    """
+    logger.info("Keep-alive loop started.")
+
+    # تقدر تغير الـ URL من config لو حابب:
+    default_url = "https://dizzy-bab-incrypto-free-258377c4.koyeb.app/"
+    url = getattr(config, "KEEP_ALIVE_URL", default_url)
+
+    # الفاصل الزمنى بين كل Ping (ثوانى) - تقدر تعدله من config
+    interval_seconds = getattr(config, "KEEP_ALIVE_INTERVAL", 240)
+
+    while True:
+        try:
+            resp = http_get(url, timeout=10)
+            if resp is not None:
+                logger.debug(
+                    "Keep-alive ping OK: %s %s",
+                    resp.status_code,
+                    url,
+                )
+                try:
+                    # نخزن آخر وقت نجاح بشكل اختيارى
+                    config.LAST_KEEP_ALIVE_OK = time.time()
+                except Exception:
+                    pass
+            else:
+                logger.warning("Keep-alive ping failed (no response object).")
+        except Exception as e:
+            logger.exception("Error in keep_alive_loop: %s", e)
+
+        time.sleep(interval_seconds)
+
+
+# =====================================================
 #   Threads Starter
 # =====================================================
 
@@ -739,6 +784,7 @@ def start_background_threads():
       - Realtime Engine
       - Smart Alert
       - Watchdog
+      - Keep-Alive (Anti-Sleep)
     """
     if getattr(config, "THREADS_STARTED", False):
         logger.info("Background threads already started, skipping.")
@@ -775,5 +821,13 @@ def start_background_threads():
     )
     watchdog_thread.start()
 
+    # 🔥 ثريد منع الـ Sleep
+    keep_alive_thread = threading.Thread(
+        target=keep_alive_loop,
+        name="keep_alive",
+        daemon=True,
+    )
+    keep_alive_thread.start()
+
     config.THREADS_STARTED = True
-    logger.info("All background threads started.")
+    logger.info("All background threads started (including keep-alive).")
