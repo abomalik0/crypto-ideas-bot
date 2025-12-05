@@ -1,6 +1,4 @@
 import time
-import os
-import json
 from datetime import datetime
 
 from flask import Flask, request, jsonify, Response
@@ -32,65 +30,6 @@ from analysis_engine import (
 import services
 
 app = Flask(__name__)
-
-# ==============================
-#   نظام إدارة الأدمنز (ديناميكى + JSON)
-# ==============================
-
-PRIMARY_ADMIN_ID = config.ADMIN_CHAT_ID          # الأدمن الرئيسى الثابت
-ADMIN_LIST_FILE = "admins.json"                  # ملف تخزين الأدمنز
-ADMIN_IDS: set[int] = set()                      # كاش فى الذاكرة
-
-
-def load_admins():
-    """
-    تحميل قائمة الأدمنز:
-      - يبدأ دائمًا بالأدمن الرئيسى فقط
-      - لو فيه ملف JSON يضيف منه الأدمنز الآخرين
-    """
-    global ADMIN_IDS
-    ADMIN_IDS = {int(PRIMARY_ADMIN_ID)}
-    try:
-        if os.path.exists(ADMIN_LIST_FILE):
-            with open(ADMIN_LIST_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            extra_ids = set()
-            for v in data:
-                try:
-                    iv = int(v)
-                    if iv != int(PRIMARY_ADMIN_ID):
-                        extra_ids.add(iv)
-                except Exception:
-                    continue
-            ADMIN_IDS |= extra_ids
-        config.logger.info("Admins loaded: %s", list(ADMIN_IDS))
-    except Exception as e:
-        config.logger.exception("Error loading admins.json: %s", e)
-
-
-def save_admins():
-    """
-    حفظ قائمة الأدمنز (ما عدا الرئيسى ممكن نحفظ الكل؛ مفيش مشكلة).
-    """
-    try:
-        with open(ADMIN_LIST_FILE, "w", encoding="utf-8") as f:
-            json.dump(list(ADMIN_IDS), f, ensure_ascii=False, indent=2)
-        config.logger.info("Admins saved: %s", list(ADMIN_IDS))
-    except Exception as e:
-        config.logger.exception("Error saving admins.json: %s", e)
-
-
-def is_admin(user_id: int | None) -> bool:
-    """
-    التحقق هل الـ user_id أدمن أم لا.
-    """
-    if user_id is None:
-        return False
-    try:
-        uid = int(user_id)
-    except Exception:
-        return False
-    return uid in ADMIN_IDS or uid == int(PRIMARY_ADMIN_ID)
 
 
 # ==============================
@@ -292,7 +231,7 @@ def webhook():
             answer_callback_query(callback_id)
 
         if data == "alert_details":
-            if not is_admin(from_id):
+            if from_id != config.ADMIN_CHAT_ID:
                 if chat_id:
                     send_message(chat_id, "❌ هذا الزر مخصص للإدارة فقط.")
                 return jsonify(ok=True)
@@ -309,8 +248,6 @@ def webhook():
 
     msg = update["message"]
     chat_id = msg["chat"]["id"]
-    from_user = msg.get("from") or {}
-    user_id = from_user.get("id")
     text = (msg.get("text") or "").strip()
     lower_text = text.lower()
 
@@ -319,27 +256,47 @@ def webhook():
     except Exception:
         pass
 
-    # /start
+    is_admin = (chat_id == config.ADMIN_CHAT_ID)
+
+    # ==============================
+    #           /start
+    # ==============================
     if lower_text == "/start":
-        welcome = (
-            "👋 أهلاً بك فى <b>IN CRYPTO Ai</b>.\n\n"
-            "استخدم الأوامر التالية:\n"
-            "• <code>/btc</code> — تحليل BTC\n"
-            "• <code>/vai</code> — تحليل VAI\n"
-            "• <code>/coin btc</code> — تحليل أى عملة\n\n"
-            "تحليل السوق:\n"
-            "• <code>/market</code> — نظرة عامة\n"
-            "• <code>/risk_test</code> — اختبار مخاطر\n"
-            "• <code>/alert</code> — تحذير Ultra PRO (للأدمن فقط)\n"
-            "• <code>/alert_pro</code> — إرسال Ultra PRO Alert للمستخدمين (للأدمن فقط)\n\n"
-            "النظام يجلب البيانات أولاً من Binance ثم KuCoin تلقائيًا."
+        # رسالة أوامر المستخدم العادى
+        user_block = (
+            "👋 أهلاً بك فى <b>IN CRYPTO Ai</b>.\n"
+            "غرفة عمليات تتابع البيتكوين والسوق لحظيًا وتعطيك قراءة واضحة بدون تعقيد.\n\n"
+            "<b>أوامر المستخدم:</b>\n"
+            "• <code>/btc</code> — تحليل لحظى للـ BTCUSDT\n"
+            "• <code>/vai</code> — تحليل VAIUSDT\n"
+            "• <code>/coin btc</code> — تحليل أى عملة (مثال: <code>/coin sol</code>)\n"
+            "• <code>/market</code> — نظرة عامة على السوق اليوم\n"
+            "• <code>/risk_test</code> — اختبار تعليمى بسيط لإدارة المخاطر\n"
         )
+
+        # لو أدمن، نضيف بلوك أوامر الأدمن
+        admin_block = ""
+        if is_admin:
+            admin_block = (
+                "\n<b>أوامر الإدارة (Admin Only):</b>\n"
+                "• <code>/alert</code> — تشغيل تنبيه Ultra PRO الآن للأدمن\n"
+                "• <code>/alert_pro</code> — إرسال Ultra PRO Alert للمستخدمين\n"
+                "• <code>/test_smart</code> — فحص Smart Alert Snapshot اللحظى\n"
+                "• <code>/status</code> — حالة النظام الكاملة (API + Threads + مخاطر)\n"
+                "• <code>/weekly_now</code> — إرسال التقرير الأسبوعى الآن لكل الشاتات\n"
+                "\n"
+                "لوحة تحكم الويب (Dashboard): من خلال الرابط الخاص مع كلمة السر.\n"
+            )
+
+        welcome = user_block + admin_block
+
         send_message(chat_id, welcome)
         return jsonify(ok=True)
 
     # ==============================
-    #   أوامر المستخدم العادية
+    #       أوامر المستخدم العادى
     # ==============================
+
     if lower_text == "/btc":
         reply = services.get_cached_response(
             "btc_analysis", lambda: format_analysis("BTCUSDT")
@@ -362,109 +319,28 @@ def webhook():
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    # ==============================
-    #   أوامر إدارة الأدمنز
-    # ==============================
-
-    if lower_text.startswith("/addadmin"):
-        if not is_admin(user_id):
-            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
-            return jsonify(ok=True)
-
+    if lower_text.startswith("/coin"):
         parts = lower_text.split()
-        if len(parts) != 2:
+        if len(parts) < 2:
             send_message(
                 chat_id,
                 "⚠️ استخدم الأمر هكذا:\n"
-                "<code>/addadmin 123456789</code>",
+                "<code>/coin btc</code>\n"
+                "<code>/coin btcusdt</code>\n"
+                "<code>/coin vai</code>",
             )
-            return jsonify(ok=True)
-
-        try:
-            new_id = int(parts[1])
-        except ValueError:
-            send_message(chat_id, "⚠️ الـ ID يجب أن يكون رقم صحيح.")
-            return jsonify(ok=True)
-
-        if new_id == int(PRIMARY_ADMIN_ID):
-            send_message(chat_id, "ℹ️ هذا هو الأدمن الرئيسى بالفعل.")
-            return jsonify(ok=True)
-
-        if new_id in ADMIN_IDS:
-            send_message(chat_id, "ℹ️ هذا المستخدم مسجل كأدمن بالفعل.")
-            return jsonify(ok=True)
-
-        ADMIN_IDS.add(new_id)
-        save_admins()
-        send_message(
-            chat_id,
-            f"✅ تم إضافة <code>{new_id}</code> إلى قائمة الأدمنز بنجاح.",
-        )
-        return jsonify(ok=True)
-
-    if lower_text.startswith("/removeadmin"):
-        if not is_admin(user_id):
-            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
-            return jsonify(ok=True)
-
-        parts = lower_text.split()
-        if len(parts) != 2:
-            send_message(
-                chat_id,
-                "⚠️ استخدم الأمر هكذا:\n"
-                "<code>/removeadmin 123456789</code>",
-            )
-            return jsonify(ok=True)
-
-        try:
-            rem_id = int(parts[1])
-        except ValueError:
-            send_message(chat_id, "⚠️ الـ ID يجب أن يكون رقم صحيح.")
-            return jsonify(ok=True)
-
-        if rem_id == int(PRIMARY_ADMIN_ID):
-            send_message(chat_id, "❌ لا يمكن حذف الأدمن الرئيسى.")
-            return jsonify(ok=True)
-
-        if rem_id not in ADMIN_IDS:
-            send_message(chat_id, "⚠️ هذا المستخدم ليس فى قائمة الأدمنز.")
-            return jsonify(ok=True)
-
-        ADMIN_IDS.remove(rem_id)
-        save_admins()
-        send_message(
-            chat_id,
-            f"✅ تم إزالة <code>{rem_id}</code> من قائمة الأدمنز.",
-        )
-        return jsonify(ok=True)
-
-    if lower_text == "/listadmins":
-        if not is_admin(user_id):
-            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
-            return jsonify(ok=True)
-
-        admins_sorted = sorted(ADMIN_IDS)
-        lines = [
-            "👑 <b>قائمة الأدمنز الحالية:</b>",
-            "",
-            f"• الأدمن الرئيسى: <code>{PRIMARY_ADMIN_ID}</code>",
-        ]
-        others = [a for a in admins_sorted if a != int(PRIMARY_ADMIN_ID)]
-        if others:
-            lines.append("")
-            lines.append("• الأدمنز الإضافيين:")
-            for a in others:
-                lines.append(f"  - <code>{a}</code>")
         else:
-            lines.append("")
-            lines.append("لا يوجد أدمنز إضافيين حتى الآن.")
-
-        send_message(chat_id, "\n".join(lines))
+            reply = format_analysis(parts[1])
+            send_message(chat_id, reply)
         return jsonify(ok=True)
+
+    # ==============================
+    #      أوامر الإدارة (Admin)
+    # ==============================
 
     # ===== أمر /alert الرسمى (Ultra PRO) =====
     if lower_text == "/alert":
-        if not is_admin(user_id):
+        if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -490,7 +366,7 @@ def webhook():
 
     # ===== أمر /alert_pro: إرسال Ultra PRO للمستخدمين =====
     if lower_text == "/alert_pro":
-        if not is_admin(user_id):
+        if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -501,7 +377,7 @@ def webhook():
     #   /test_smart — تشخيص Smart Alert (للأدمن فقط)
     # ==============================
     if lower_text == "/test_smart":
-        if not is_admin(user_id):
+        if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -536,105 +412,55 @@ def webhook():
 
         return jsonify(ok=True)
 
-    if lower_text.startswith("/coin"):
-        parts = lower_text.split()
-        if len(parts) < 2:
-            send_message(
-                chat_id,
-                "⚠️ استخدم الأمر هكذا:\n"
-                "<code>/coin btc</code>\n"
-                "<code>/coin btcusdt</code>\n"
-                "<code>/coin vai</code>",
+    # ==============================
+    #   /status — حالة النظام (أدمن فقط)
+    # ==============================
+    if lower_text == "/status":
+        if not is_admin:
+            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
+            return jsonify(ok=True)
+
+        metrics = get_market_metrics_cached()
+        if metrics:
+            change = metrics["change_pct"]
+            vol = metrics["volatility_score"]
+            risk = evaluate_risk_level(change, vol)
+            from analysis_engine import _risk_level_ar as _rl_txt
+            risk_text = (
+                f"{risk['emoji']} {_rl_txt(risk['level'])}" if risk else "N/A"
             )
         else:
-            reply = format_analysis(parts[1])
-            send_message(chat_id, reply)
-        return jsonify(ok=True)
+            risk_text = "N/A"
 
-    if lower_text == "/status":
-        try:
-            # نجيب Snapshot كامل من المحرك الذكي
-            snapshot = compute_smart_market_snapshot()
-            metrics = snapshot.get("metrics", {})
-            risk = snapshot.get("risk", {})
-            alert_level = snapshot.get("alert_level", {})
-            pulse = snapshot.get("pulse", {})
+        msg_status = f"""
+🛰 <b>حالة نظام IN CRYPTO Ai</b>
 
-            price = metrics.get("price")
-            chg = metrics.get("change_pct")
-            vol = metrics.get("volatility_score")
-            rng = metrics.get("range_pct")
+• حالة Binance: {"✅" if config.API_STATUS["binance_ok"] else "⚠️"}
+• حالة KuCoin: {"✅" if config.API_STATUS["kucoin_ok"] else "⚠️"}
+• آخر فحص API: {config.API_STATUS.get("last_api_check")}
 
-            risk_emoji = risk.get("emoji", "❔")
-            risk_level = risk.get("level", "-")
+• آخر تحديث Real-Time: {config.REALTIME_CACHE.get("last_update")}
+• آخر Webhook: {datetime.utcfromtimestamp(config.LAST_WEBHOOK_TICK).isoformat(timespec="seconds") if config.LAST_WEBHOOK_TICK else "لا يوجد"}
 
-            shock = alert_level.get("shock_score")
-            level = alert_level.get("level")
-            speed = pulse.get("speed_index")
-            accel = pulse.get("accel_index")
+• حالة المخاطر العامة: {risk_text}
 
-            # حالة التايمرز — health للثريدات
-            def ago(ts):
-                if not ts:
-                    return "❌ لا يوجد"
-                diff = time.time() - ts
-                return f"{diff:.1f} ثانية منذ آخر نشاط"
-
-            msg = f"""
-🛰 <b>Status Monitor — IN CRYPTO Ai</b>
-
-📌 <b>BTС</b>
-• السعر الآن: <b>${price:,.0f}</b>
-• التغير 24 ساعة: <b>{chg:+.2f}%</b>
-• مدى اليوم: <b>{rng:.2f}%</b> — التقلب <b>{vol:.1f}/100</b>
-
-⚙️ <b>Risk Engine</b>
-• مستوى المخاطر: {risk_emoji} <b>{risk_level}</b>
-• Shock Score: <b>{shock:.1f}/100</b>
-• Alert Level: <b>{(level or 'none').upper()}</b>
-
-📡 <b>Pulse Engine</b>
-• السرعة: <b>{speed:.1f}</b>
-• التسارع: <b>{accel:.2f}</b>
-
-------------------------------------
-
-🧠 <b>System Health</b>
-• RealTime Engine: {ago(config.LAST_REALTIME_TICK)}
-• Smart Alert Engine: {ago(config.LAST_SMART_ALERT_TICK)}
-• Weekly Scheduler: {ago(config.LAST_WEEKLY_TICK)}
-• Webhook: {ago(config.LAST_WEBHOOK_TICK)}
-• Watchdog: {ago(config.LAST_WATCHDOG_TICK)}
-• Keep-Alive: {ago(getattr(config, 'LAST_KEEP_ALIVE_OK', 0))}
-
-------------------------------------
-
-🗂 <b>System Info</b>
-• API Binance: {"✅" if config.API_STATUS["binance_ok"] else "⚠️"}  
-• API KuCoin: {"✅" if config.API_STATUS["kucoin_ok"] else "⚠️"}  
-• عدد الشاتات المسجلة: <b>{len(config.KNOWN_CHAT_IDS)}</b>
-• آخر Weekly Report: {config.LAST_WEEKLY_SENT_DATE}
-• آخر Auto Alert: {config.LAST_AUTO_ALERT_INFO.get("time")}
-
-<b>IN CRYPTO Ai — PRO Monitoring Active</b>
+• عدد الشاتات المسجلة: {len(config.KNOWN_CHAT_IDS)}
+• آخر تقرير أسبوعى مبعوت: {config.LAST_WEEKLY_SENT_DATE}
+• آخر Auto Alert (قديم): {config.LAST_AUTO_ALERT_INFO.get("time")} ({config.LAST_AUTO_ALERT_INFO.get("reason")})
 """.strip()
-
-            send_message(chat_id, msg)
-        except Exception as e:
-            send_message(chat_id, "⚠️ حدث خطأ أثناء تنفيذ أمر /status\nراجع اللوج.")
-            config.logger.exception("Status error: %s", e)
-
+        send_message(chat_id, msg_status)
         return jsonify(ok=True)
 
     # أمر اختبار /weekly_now للأدمن (من خلال الخدمات الجديدة)
     if lower_text == "/weekly_now":
-        if not is_admin(user_id):
+        if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
         services.handle_admin_weekly_now_command(chat_id)
         return jsonify(ok=True)
 
+    # أى رسالة أخرى حالياً نتجاهلها / أو ممكن تضيف معالجة بعدين
     return jsonify(ok=True)
 
 
@@ -902,12 +728,6 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-
-    # تحميل قائمة الأدمنز
-    try:
-        load_admins()
-    except Exception as e:
-        logging.exception("Admin list load failed on startup: %s", e)
 
     # تحميل السناك شوت (لو متفعّل)
     try:
