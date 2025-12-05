@@ -194,6 +194,12 @@ def weekly_scheduler_loop():
     """
     logger.info("Weekly scheduler loop started.")
     while True:
+        # Heartbeat
+        try:
+            config.LAST_WEEKLY_TICK = time.time()
+        except Exception:
+            pass
+
         try:
             now = datetime.now(timezone.utc)
 
@@ -297,6 +303,12 @@ def realtime_engine_loop():
     """
     logger.info("Realtime engine loop started.")
     while True:
+        # Heartbeat
+        try:
+            config.LAST_REALTIME_TICK = time.time()
+        except Exception:
+            pass
+
         try:
             from analysis_engine import get_market_metrics_cached
 
@@ -364,9 +376,12 @@ def smart_alert_loop():
 
     while True:
         try:
-            # علامة نبض للـ Watchdog والـ /status
+            # علامة نبض للـ Watchdog والـ /status + Supervisor
             config.LAST_SMART_ALERT_TICK = time.time()
+        except Exception:
+            pass
 
+        try:
             snapshot = compute_smart_market_snapshot()
             if not snapshot:
                 logger.warning("No smart snapshot available, skip alert cycle.")
@@ -718,6 +733,12 @@ def watchdog_loop():
     """
     logger.info("Watchdog loop started.")
     while True:
+        # Heartbeat
+        try:
+            config.LAST_WATCHDOG_TICK = time.time()
+        except Exception:
+            pass
+
         try:
             bot = _ensure_bot()
             me = bot.get_me()
@@ -751,6 +772,12 @@ def keep_alive_loop():
     interval_seconds = getattr(config, "KEEP_ALIVE_INTERVAL", 240)
 
     while True:
+        # Heartbeat
+        try:
+            config.LAST_KEEP_ALIVE_TICK = time.time()
+        except Exception:
+            pass
+
         try:
             resp = http_get(url, timeout=10)
             if resp is not None:
@@ -773,6 +800,120 @@ def keep_alive_loop():
 
 
 # =====================================================
+#   Supervisor / Self-Healing Engine
+# =====================================================
+
+
+def _supervisor_check_thread(name: str, target, tick_attr: str, max_idle: float):
+    """
+    يتأكد إن الثريد شغال + بيبعت نبضات.
+    لو وقف أو عدّى max_idle بدون نبضة → إعادة تشغيله.
+    """
+    try:
+        if not hasattr(config, "THREAD_HANDLES"):
+            config.THREAD_HANDLES = {}
+        threads = config.THREAD_HANDLES
+    except Exception:
+        return
+
+    now = time.time()
+    thread = threads.get(name)
+    last_tick = getattr(config, tick_attr, 0.0) or 0.0
+
+    alive = bool(thread and thread.is_alive())
+
+    # أول تشغيل: سيبه ياخد وقته يبعت أول نبضة
+    if alive and last_tick == 0.0:
+        return
+
+    if (not alive) or (now - last_tick > max_idle):
+        logger.warning(
+            "Supervisor: restarting thread '%s' (alive=%s, last_tick=%.1f, max_idle=%.1f)",
+            name,
+            alive,
+            last_tick,
+            max_idle,
+        )
+        try:
+            new_thread = threading.Thread(
+                target=target,
+                name=name,
+                daemon=True,
+            )
+            new_thread.start()
+            threads[name] = new_thread
+            setattr(config, tick_attr, time.time())
+        except Exception as e:
+            logger.exception("Supervisor: error restarting thread '%s': %s", name, e)
+
+
+def supervisor_loop():
+    """
+    لوب مشرف عام:
+      - يراقب كل الثريدز (realtime / smart / weekly / watchdog / keep-alive)
+      - لو أى واحد مات أو تجمّد → يعيد تشغيله أوتوماتيك.
+    """
+    logger.info("Supervisor loop started.")
+    # تأكد من وجود الحاوية
+    if not hasattr(config, "THREAD_HANDLES"):
+        config.THREAD_HANDLES = {}
+
+    while True:
+        try:
+            # realtime_engine: المفروض كل REALTIME_ENGINE_INTERVAL ثانية تقريبا
+            realtime_max_idle = max(10.0, config.REALTIME_ENGINE_INTERVAL * 4)
+            _supervisor_check_thread(
+                name="realtime_engine",
+                target=realtime_engine_loop,
+                tick_attr="LAST_REALTIME_TICK",
+                max_idle=realtime_max_idle,
+            )
+
+            # smart_alert: دوره متغير، نخلى الحد كبير شوية
+            smart_max_idle = 600.0  # 10 دقائق
+            _supervisor_check_thread(
+                name="smart_alert",
+                target=smart_alert_loop,
+                tick_attr="LAST_SMART_ALERT_TICK",
+                max_idle=smart_max_idle,
+            )
+
+            # weekly_scheduler: بيشتغل كل دقيقة تقريباً
+            weekly_max_idle = 600.0  # 10 دقائق
+            _supervisor_check_thread(
+                name="weekly_scheduler",
+                target=weekly_scheduler_loop,
+                tick_attr="LAST_WEEKLY_TICK",
+                max_idle=weekly_max_idle,
+            )
+
+            # watchdog: حسب WATCHDOG_INTERVAL
+            watchdog_max_idle = max(30.0, getattr(config, "WATCHDOG_INTERVAL", 5.0) * 6)
+            _supervisor_check_thread(
+                name="watchdog",
+                target=watchdog_loop,
+                tick_attr="LAST_WATCHDOG_TICK",
+                max_idle=watchdog_max_idle,
+            )
+
+            # keep_alive: حسب KEEP_ALIVE_INTERVAL
+            keep_alive_interval = getattr(config, "KEEP_ALIVE_INTERVAL", 240)
+            keep_alive_max_idle = max(keep_alive_interval * 3, 600.0)
+            _supervisor_check_thread(
+                name="keep_alive",
+                target=keep_alive_loop,
+                tick_attr="LAST_KEEP_ALIVE_TICK",
+                max_idle=keep_alive_max_idle,
+            )
+
+        except Exception as e:
+            logger.exception("Error in supervisor_loop: %s", e)
+
+        # supervisor نفسه يراجع كل 30 ثانية
+        time.sleep(30)
+
+
+# =====================================================
 #   Threads Starter
 # =====================================================
 
@@ -785,6 +926,7 @@ def start_background_threads():
       - Smart Alert
       - Watchdog
       - Keep-Alive (Anti-Sleep)
+      - Supervisor (Self-healing)
     """
     if getattr(config, "THREADS_STARTED", False):
         logger.info("Background threads already started, skipping.")
@@ -793,12 +935,18 @@ def start_background_threads():
     # تحميل snapshot بسيط لو متوفر
     load_snapshot()
 
+    # حاوية الثريدز لو مش موجودة
+    if not hasattr(config, "THREAD_HANDLES"):
+        config.THREAD_HANDLES = {}
+    threads = config.THREAD_HANDLES
+
     weekly_thread = threading.Thread(
         target=weekly_scheduler_loop,
         name="weekly_scheduler",
         daemon=True,
     )
     weekly_thread.start()
+    threads["weekly_scheduler"] = weekly_thread
 
     realtime_thread = threading.Thread(
         target=realtime_engine_loop,
@@ -806,6 +954,7 @@ def start_background_threads():
         daemon=True,
     )
     realtime_thread.start()
+    threads["realtime_engine"] = realtime_thread
 
     smart_thread = threading.Thread(
         target=smart_alert_loop,
@@ -813,6 +962,7 @@ def start_background_threads():
         daemon=True,
     )
     smart_thread.start()
+    threads["smart_alert"] = smart_thread
 
     watchdog_thread = threading.Thread(
         target=watchdog_loop,
@@ -820,6 +970,7 @@ def start_background_threads():
         daemon=True,
     )
     watchdog_thread.start()
+    threads["watchdog"] = watchdog_thread
 
     # 🔥 ثريد منع الـ Sleep
     keep_alive_thread = threading.Thread(
@@ -828,6 +979,16 @@ def start_background_threads():
         daemon=True,
     )
     keep_alive_thread.start()
+    threads["keep_alive"] = keep_alive_thread
+
+    # 🔥 ثريد المشرف العام (Self-Healing Supervisor)
+    supervisor_thread = threading.Thread(
+        target=supervisor_loop,
+        name="supervisor",
+        daemon=True,
+    )
+    supervisor_thread.start()
+    threads["supervisor"] = supervisor_thread
 
     config.THREADS_STARTED = True
-    logger.info("All background threads started (including keep-alive).")
+    logger.info("All background threads started (including keep-alive & supervisor).")
