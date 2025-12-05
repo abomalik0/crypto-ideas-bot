@@ -520,34 +520,6 @@
             transition: width 0.25s ease-out;
         }
 
-        /* ===== THREADS MONITOR (جديد) ===== */
-        .threads-list {
-            margin-top: 6px;
-            font-size: 10px;
-            max-height: 120px;
-            overflow: auto;
-        }
-
-        .thread-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 7px;
-            margin: 0 4px 4px 0;
-            border-radius: 999px;
-            border: 1px solid rgba(148, 163, 184, 0.5);
-            background: rgba(15, 23, 42, 0.96);
-        }
-
-        .thread-pill span.name {
-            color: #e5e7eb;
-            font-weight: 600;
-        }
-
-        .thread-pill span.age {
-            color: var(--text-muted);
-        }
-
         /* ===== FOOTER ===== */
         .footer {
             padding: 4px 18px 8px;
@@ -909,36 +881,6 @@
                 <div class="subtext" id="trendTempText"></div>
             </div>
 
-            <!-- مراقبة الثريدات / الحلقات الخلفية (جديد) -->
-            <div class="card span-2" id="threadsCard">
-                <div class="card-header">
-                    <div class="card-title">مراقبة الثريدات والحلقات الخلفية</div>
-                    <div class="card-tag">Threads & Loops Health</div>
-                </div>
-                <div class="card-main" id="threadsSummary">جارى التحميل...</div>
-                <div class="subtext">
-                    متابعة حية لحالة الثريدات الأساسية (Realtime, Smart Alert, Weekly, Watchdog, Keep-Alive, Webhook)
-                    لضمان أن غرفة العمليات تعمل بدون أى توقف فى الخلفية.
-                </div>
-                <div class="kpi-row">
-                    <div class="kpi-pill">
-                        <span class="kpi-label">آخر نبض Smart Alert:</span>
-                        <span class="kpi-val" id="tickSmart">---</span>
-                    </div>
-                    <div class="kpi-pill">
-                        <span class="kpi-label">آخر نبض RealTime:</span>
-                        <span class="kpi-val" id="tickRealtime">---</span>
-                    </div>
-                    <div class="kpi-pill">
-                        <span class="kpi-label">آخر نبض Watchdog:</span>
-                        <span class="kpi-val" id="tickWatchdog">---</span>
-                    </div>
-                </div>
-                <div class="threads-list" id="threadsList">
-                    جارٍ تحميل الثريدات...
-                </div>
-            </div>
-
             <!-- صحة النظام -->
             <div class="card span-1" id="systemHealthCard">
                 <div class="card-header">
@@ -974,7 +916,58 @@
                 <pre id="logsSnapshot">جارى تحميل اللوج...</pre>
             </div>
 
-            <!-- سجل التحذيرات (عرض كامل لتفريغ الفراغ تحت) -->
+            <!-- بطاقة مراقبة المحركات وواجهات الـ API (جديدة) -->
+            <div class="card span-3" id="enginesCard">
+                <div class="card-header">
+                    <div class="card-title">مراقبة المحركات وواجهات API</div>
+                    <div class="card-tag">Engines & API Monitor</div>
+                </div>
+                <div class="subtext" id="enginesSummary">
+                    يتم متابعة آخر نشاط لمحركات التحديث (Real-Time / Smart Alert / Weekly / Webhook / Watchdog / Keep-Alive) بالإضافة لحالة واجهات Binance و KuCoin.
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">Real-Time:</span>
+                        <span class="kpi-val" id="engRealtime">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">Smart Alert:</span>
+                        <span class="kpi-val" id="engSmart">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">Weekly:</span>
+                        <span class="kpi-val" id="engWeekly">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">Webhook:</span>
+                        <span class="kpi-val" id="engWebhook">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">Watchdog:</span>
+                        <span class="kpi-val" id="engWatchdog">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">Keep-Alive:</span>
+                        <span class="kpi-val" id="engKeepAlive">...</span>
+                    </div>
+                </div>
+                <div class="kpi-row">
+                    <div class="kpi-pill">
+                        <span class="kpi-label">Binance API:</span>
+                        <span class="kpi-val" id="apiBinance">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">KuCoin API:</span>
+                        <span class="kpi-val" id="apiKucoin">...</span>
+                    </div>
+                    <div class="kpi-pill">
+                        <span class="kpi-label">آخر تقرير أسبوعى:</span>
+                        <span class="kpi-val" id="engLastWeekly">...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- سجل التحذيرات -->
             <div class="card span-3">
                 <div class="card-header">
                     <div class="card-title">سجل التحذيرات</div>
@@ -1007,7 +1000,6 @@
             IN CRYPTO Ai — <span>Live Market, Risk & Alert Monitor</span> مبنى بالكامل على بيانات البيتكوين الفعلية.
         </div>
     </div>
-
     <!-- ========== JAVASCRIPT ========== -->
     <script>
         function getPassParam() {
@@ -1020,17 +1012,19 @@
             return pass ? path + "?pass=" + encodeURIComponent(pass) : path;
         }
 
-        // helper لحساب "منذ كم ثانية/دقيقة" فى كارت الثريدات
-        function formatAgoSeconds(ts) {
-            if (!ts) return "❌ لا يوجد";
-            const now = Date.now() / 1000;
-            const diff = now - ts;
-            if (diff < 0) return "الآن";
-            if (diff < 60) return diff.toFixed(1) + " ثانية";
+        // تحويل آخر نشاط لزمن مقروء (منذ كم ثانية / دقيقة / ساعة)
+        function formatAgo(ts) {
+            if (!ts) return "لا يوجد";
+            const nowSec = Date.now() / 1000;
+            const diff = nowSec - ts;
+            if (diff < 0) return "جارى التحديث...";
+            if (diff < 60) return diff.toFixed(0) + " ثانية";
             const mins = diff / 60;
             if (mins < 60) return mins.toFixed(1) + " دقيقة";
-            const hrs = mins / 60;
-            return hrs.toFixed(1) + " ساعة";
+            const hours = mins / 60;
+            if (hours < 24) return hours.toFixed(1) + " ساعة";
+            const days = hours / 24;
+            return days.toFixed(1) + " يوم";
         }
 
         function computeHeatScore(changePct, volatilityScore, rangePct) {
@@ -1094,6 +1088,7 @@
 
             return { buyers, sellers, label };
         }
+
         function estimateShortTermBias(change, volScore, strengthLabel) {
             const absChange = Math.abs(change);
             let up = 50, down = 50;
@@ -1341,7 +1336,8 @@
 
                 // HEADER BADGES
                 document.getElementById("badgeChats").textContent = data.known_chats ?? 0;
-                document.getElementById("badgeRealtime").textContent = data.last_realtime_tick || "لا يوجد";
+                document.getElementById("badgeRealtime").textContent =
+                    data.last_realtime_tick ? formatAgo(data.last_realtime_tick) : "لا يوجد";
 
                 // TOP BTC BAR
                 const barPrice = document.getElementById("barPrice");
@@ -1441,7 +1437,7 @@
                     aa.sent === true ? "نعم ✅" :
                         aa.sent === false ? "لا ❌" : "---";
 
-                if (aa.reason && aa.reason !== "no_condition" && aa.reason !== "duplicate_reason" && aa.reason !== "no_alert" && aa.reason !== "duplicate") {
+                if (aa.reason && aa.reason !== "no_alert" && aa.reason !== "duplicate") {
                     alertCard.classList.add("flash");
                 } else {
                     alertCard.classList.remove("flash");
@@ -1533,6 +1529,54 @@
                 if (mBar) mBar.style.width = Math.min(100, Math.max(5, rt.score)) + "%";
                 if (sBar) sBar.style.width = Math.min(100, Math.max(5, shock.shock)) + "%";
 
+                // ENGINES & API MONITOR
+                const engRealtime   = document.getElementById("engRealtime");
+                const engSmart      = document.getElementById("engSmart");
+                const engWeekly     = document.getElementById("engWeekly");
+                const engWebhook    = document.getElementById("engWebhook");
+                const engWatchdog   = document.getElementById("engWatchdog");
+                const engKeepAlive  = document.getElementById("engKeepAlive");
+                const engLastWeekly = document.getElementById("engLastWeekly");
+                const apiBinance    = document.getElementById("apiBinance");
+                const apiKucoin     = document.getElementById("apiKucoin");
+
+                if (engRealtime)  engRealtime.textContent  = formatAgo(data.last_realtime_tick);
+                if (engSmart)     engSmart.textContent     = formatAgo(data.last_smart_alert_tick);
+                if (engWeekly)    engWeekly.textContent    = formatAgo(data.last_weekly_tick);
+                if (engWebhook)   engWebhook.textContent   = formatAgo(data.last_webhook_tick);
+                if (engWatchdog)  engWatchdog.textContent  = formatAgo(data.last_watchdog_tick);
+                if (engKeepAlive) engKeepAlive.textContent =
+                    formatAgo((data.api_status && data.api_status.last_keep_alive_ok) || 0);
+
+                if (engLastWeekly) {
+                    engLastWeekly.textContent = data.last_weekly_sent || "لا يوجد بعد";
+                }
+
+                const apiStatus = data.api_status || {};
+                if (apiBinance) {
+                    apiBinance.textContent = apiStatus.binance_ok ? "✅ شغال" : "⚠️ مشكلة محتملة";
+                }
+                if (apiKucoin) {
+                    apiKucoin.textContent = apiStatus.kucoin_ok ? "✅ شغال" : "⚠️ مشكلة محتملة";
+                }
+
+                // ملخص نصى صغير للمحركات
+                const enginesSummary = document.getElementById("enginesSummary");
+                if (enginesSummary) {
+                    const anyDown = !apiStatus.binance_ok || !apiStatus.kucoin_ok;
+                    const smartLag =
+                        data.last_smart_alert_tick &&
+                        (Date.now() / 1000 - data.last_smart_alert_tick > 600);
+
+                    if (!anyDown && !smartLag && !lastErr.message) {
+                        enginesSummary.textContent =
+                            "كل المحركات الأساسية تعمل بشكل طبيعى، وواجهات Binance / KuCoin مستقرة حاليًا.";
+                    } else {
+                        enginesSummary.textContent =
+                            "تم رصد بعض النقاط التى تحتاج متابعة: راقب حالة API والزمن منذ آخر نشاط لكل محرك، خاصة إذا تأخر Smart Alert أو ظهرت أخطاء فى اللوج.";
+                    }
+                }
+
                 // AI COMMENT
                 const comment = buildAIComment(
                     change,
@@ -1550,7 +1594,6 @@
             }
         }
 
-        // تحميل اللوج
         async function loadLogs() {
             try {
                 const res = await fetch(apiUrl("/admin/logs"));
@@ -1563,7 +1606,6 @@
             }
         }
 
-        // سجل التحذيرات
         async function reloadAlerts() {
             try {
                 const res = await fetch(apiUrl("/admin/alerts_history"));
@@ -1620,62 +1662,15 @@
             }
         }
 
-        // === مراقبة الثريدات / /status ===
-        async function loadStatus() {
-            try {
-                const res = await fetch(apiUrl("/status"));
-                const data = await res.json();
-                if (!data.ok) return;
-
-                const threads = data.threads || [];
-                const threadsList = document.getElementById("threadsList");
-                const threadsSummary = document.getElementById("threadsSummary");
-
-                if (!threads.length) {
-                    threadsList.textContent = "لا توجد ثريدات مسجلة من السيرفر.";
-                } else {
-                    const html = threads.map(name => `
-                        <span class="thread-pill">
-                            <span class="name">${name}</span>
-                        </span>
-                    `).join("");
-                    threadsList.innerHTML = html;
-                }
-
-                // آخر نبضات الحلقات
-                document.getElementById("tickRealtime").textContent =
-                    formatAgoSeconds(data.realtime_last_tick);
-                document.getElementById("tickSmart").textContent =
-                    formatAgoSeconds(data.smart_alert_last_tick);
-                document.getElementById("tickWatchdog").textContent =
-                    formatAgoSeconds(data.watchdog_last_tick);
-
-                const anyStale =
-                    !data.realtime_last_tick ||
-                    !data.smart_alert_last_tick ||
-                    !data.watchdog_last_tick;
-
-                if (anyStale) {
-                    threadsSummary.textContent = "⚠️ بعض الثريدات لم ترسل نبضات حديثة — راجع اللوج إذا استمر الأمر.";
-                } else {
-                    threadsSummary.textContent = "🧵 كل الثريدات الأساسية ترسل نبضات حديثة — النظام يعمل بثبات.";
-                }
-            } catch (e) {
-                console.log("Status error:", e);
-            }
-        }
-
         // أول تحميل
         loadMain();
         loadLogs();
         reloadAlerts();
-        loadStatus();
 
         // تحديثات دورية
         setInterval(loadMain, 10000);      // بيانات السوق
         setInterval(loadLogs, 30000);      // Snapshot اللوج
         setInterval(reloadAlerts, 60000);  // سجل التحذيرات
-        setInterval(loadStatus, 15000);    // نبض الثريدات / الحلقات الخلفية
     </script>
 </body>
 </html>
