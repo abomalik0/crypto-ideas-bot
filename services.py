@@ -623,7 +623,57 @@ def handle_coin_command(chat_id: int, symbol: str):
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
+    
+# =====================================================
+#   System Status (/status)
+# =====================================================
 
+def handle_admin_status_command(chat_id: int):
+    bot = _ensure_bot()
+    text = get_system_status()
+    bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+def get_system_status() -> str:
+    now = time.time()
+
+    def fmt(seconds):
+        if seconds <= 0:
+            return "❓ لا يوجد بيانات"
+        mins = seconds / 60
+        if mins < 1:
+            return f"{int(seconds)} ثانية"
+        return f"{mins:.1f} دقيقة"
+
+    rt = now - (getattr(config, "LAST_REALTIME_TICK", 0) or 0)
+    sa = now - (getattr(config, "LAST_SMART_ALERT_TICK", 0) or 0)
+    wd = now - (getattr(config, "LAST_WATCHDOG_TICK", 0) or 0)
+    wk = now - (getattr(config, "LAST_WEEKLY_TICK", 0) or 0)
+    ka = now - (getattr(config, "LAST_KEEP_ALIVE_OK", 0) or 0)
+
+    return f"""
+<b>🛰 نظام مراقبة البوت — IN CRYPTO Ai</b>
+
+<b>⏱ آخر نشاط للأنظمة:</b>
+🔹 Realtime: <code>{fmt(rt)}</code>
+🔹 Smart Alert: <code>{fmt(sa)}</code>
+🔹 Watchdog: <code>{fmt(wd)}</code>
+🔹 Weekly Scheduler: <code>{fmt(wk)}</code>
+🔹 Keep-Alive: <code>{fmt(ka)}</code>
+
+<b>📌 الحالة العامة:</b>
+- Realtime: {"🟢 شغال" if rt < 120 else "🔴 متوقف"}
+- Smart Alert: {"🟢 شغال" if sa < 180 else "🔴 متوقف"}
+- Watchdog: {"🟢 شغال" if wd < 180 else "🔴 متوقف"}
+- Keep-Alive: {"🟢 نشط" if ka < 600 else "🔴 قد يكون معطل"}
+
+<b>⚙️ Supervisor:</b> 🟢 يعمل بشكل دائم
+
+<b>IN CRYPTO AI — System Status</b>
+"""
 
 # =====================================================
 #   Admin Helpers (/alert, /alert_details, /weekly_now, /alert_pro)
