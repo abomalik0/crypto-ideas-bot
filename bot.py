@@ -198,31 +198,6 @@ def _format_smart_snapshot(snapshot: dict, title: str) -> str:
 
 
 # ==============================
-#   نظام الصلاحيات: Owner / Admins
-# ==============================
-
-# نضيف ADMINS لو مش موجود من غير ما نمس أى حاجة قديمة
-if not hasattr(config, "ADMINS"):
-    config.ADMINS = {config.ADMIN_CHAT_ID}
-
-
-def is_owner(chat_id: int) -> bool:
-    """المالك الرئيسى للنظام (من config.ADMIN_CHAT_ID)."""
-    return chat_id == config.ADMIN_CHAT_ID
-
-
-def is_admin(chat_id: int) -> bool:
-    """
-    أى شخص فى قائمة ADMINS يعتبر أدمن.
-    الـ OWNER موجود ضمن ADMINS دائمًا.
-    """
-    try:
-        return chat_id in config.ADMINS or chat_id == config.ADMIN_CHAT_ID
-    except Exception:
-        return chat_id == config.ADMIN_CHAT_ID
-
-
-# ==============================
 #   مسارات أساسية / Webhook
 # ==============================
 
@@ -256,7 +231,7 @@ def webhook():
             answer_callback_query(callback_id)
 
         if data == "alert_details":
-            if not is_admin(from_id):
+            if from_id != config.ADMIN_CHAT_ID:
                 if chat_id:
                     send_message(chat_id, "❌ هذا الزر مخصص للإدارة فقط.")
                 return jsonify(ok=True)
@@ -281,49 +256,133 @@ def webhook():
     except Exception:
         pass
 
-    admin = is_admin(chat_id)
-    owner = is_owner(chat_id)
+    # تجهيز نظام الأدمنات الإضافيين فى runtime لو مش موجود
+    if not hasattr(config, "EXTRA_ADMINS"):
+        config.EXTRA_ADMINS = set()
+
+    is_owner = (chat_id == config.ADMIN_CHAT_ID)
+    is_admin = is_owner or (chat_id in config.EXTRA_ADMINS)
 
     # ==============================
     #           /start
     # ==============================
     if lower_text == "/start":
+        # رسالة أوامر المستخدم العادى
         user_block = (
-            "👋 أهلاً بك فى <b>IN CRYPTO Ai</b>.\n"
-            "غرفة عمليات تراقب البيتكوين والسوق لحظيًا وتعرض لك صورة واضحة بدون تعقيد.\n\n"
-            "💡 <b>أوامر المستخدم:</b>\n"
-            "• <code>/btc</code> — تحليل لحظى لزوج BTCUSDT\n"
-            "• <code>/vai</code> — تحليل VAIUSDT\n"
-            "• <code>/coin btc</code> — تحليل أى عملة (مثال: <code>/coin sol</code>)\n"
-            "• <code>/market</code> — نظرة عامة على السوق اليوم\n"
-            "• <code>/risk_test</code> — اختبار تعليمى بسيط لإدارة المخاطر\n"
+            "👋✨ أهلاً بك فى <b>IN CRYPTO Ai</b>.\n"
+            "منظومة تتابع حركة البيتكوين والسوق لحظيًا وتبعت لك الصورة جاهزة بدون تعقيد.\n\n"
+            "<b>أوامر المستخدم الأساسية:</b>\n"
+            "• <code>/btc</code> — تحليل لحظى ومبسط لـ BTCUSDT\n"
+            "• <code>/coin btc</code> — تحليل أى عملة (مثال: <code>/coin sol</code> أو <code>/coin eth</code>)\n"
+            "• <code>/market</code> — نظرة عامة على حالة السوق اليوم (حركة / تقلب / مزاج عام)\n"
+            "• <code>/risk_test</code> — اختبار تعليمى بسيط يساعدك تظبط إدارة المخاطر بما يناسبك\n\n"
+            "<b>ملاحظات مهمة:</b>\n"
+            "• البيانات معتمدة أساسًا على أسعار البيتكوين من Binance (مع معالجة وفلترة داخلية).\n"
+            "• التحليل تعليمى ومساعد لاتخاذ القرار، وليس توصية مباشرة بالشراء أو البيع.\n"
         )
 
+        # بلوك أوامر الأدمن يظهر فقط لمالك/أدمن
         admin_block = ""
-        if admin:
+        if is_admin:
             admin_block = (
-                "\n👑 <b>أوامر الإدارة (Admin Panel):</b>\n"
-                "• <code>/alert</code> — تشغيل تنبيه Ultra PRO الآن للأدمن\n"
-                "• <code>/alert_pro</code> — إرسال Ultra PRO Alert لكل المستخدمين\n"
-                "• <code>/test_smart</code> — فحص Smart Alert Snapshot اللحظى\n"
-                "• <code>/status</code> — حالة النظام الكاملة (API + مخاطر + Threads)\n"
-                "• <code>/weekly_now</code> — إرسال التقرير الأسبوعى الآن لكل الشاتات\n"
-                "• <code>/admins</code> — عرض قائمة الأدمن\n"
+                "\n<b>أوامر الإدارة (Admin Only):</b>\n"
+                "• <code>/alert</code> — تشغيل تنبيه Ultra PRO الآن وإرساله مع زر التفاصيل\n"
+                "• <code>/test_smart</code> — فحص Smart Alert Snapshot اللحظى (تشخيص سريع لحالة السوق)\n"
+                "• <code>/status</code> — حالة النظام الكاملة (API / Threads / مخاطر / آخر تنبيهات)\n"
+                "• <code>/weekly_now</code> — إرسال التقرير الأسبوعى الآن لكل الشاتات المسجلة\n"
             )
 
-        owner_block = ""
-        if owner:
-            owner_block = (
-                "\n🛠 <b>أوامر المالك (Owner Only):</b>\n"
-                "• <code>/add_admin &lt;chat_id&gt;</code> — إضافة أدمن جديد\n"
-                "• <code>/remove_admin &lt;chat_id&gt;</code> — إزالة أدمن\n"
-                "\n"
-                "📊 <b>لوحة التحكم (Dashboard):</b>\n"
-                "<a href=\"https://dizzy-bab-incrypto-free-258377c4.koyeb.app//admin/dashboard?pass=ahmed123\">رابط لوحة التحكم المباشرة</a>\n"
+            # أوامر إدارة الأدمنات — للـ Owner فقط
+            if is_owner:
+                admin_block += (
+                    "\n<b>إدارة الصلاحيات (Owner فقط):</b>\n"
+                    "• <code>/add_admin &lt;chat_id&gt;</code> — إضافة أدمن جديد\n"
+                    "• <code>/remove_admin &lt;chat_id&gt;</code> — إزالة أدمن حالي\n"
+                )
+
+            admin_block += (
+                "\n<b>لوحة التحكم (Dashboard):</b>\n"
+                "• <a href=\"https://dizzy-bab-incrypto-free-258377c4.koyeb.app//admin/dashboard?pass=ahmed123\">فتح لوحة التحكم من هنا</a>\n"
             )
 
-        welcome = user_block + admin_block + owner_block
+        welcome = user_block + admin_block
         send_message(chat_id, welcome)
+        return jsonify(ok=True)
+
+    # ==============================
+    #       أوامر إدارة الأدمنات
+    # ==============================
+    # Owner فقط يقدر يضيف/يحذف أدمن
+    if lower_text.startswith("/add_admin"):
+        if not is_owner:
+            send_message(chat_id, "❌ هذا الأمر مخصص لمالك النظام فقط.")
+            return jsonify(ok=True)
+
+        parts = text.split()
+        if len(parts) < 2:
+            send_message(
+                chat_id,
+                "⚠️ استخدم الأمر هكذا:\n"
+                "<code>/add_admin 123456789</code> (ضع chat_id المراد إضافته)",
+            )
+            return jsonify(ok=True)
+
+        target_raw = parts[1].strip()
+        if not target_raw.isdigit():
+            send_message(chat_id, "⚠️ الـ chat_id يجب أن يكون أرقام فقط.")
+            return jsonify(ok=True)
+
+        target_id = int(target_raw)
+
+        if target_id == config.ADMIN_CHAT_ID:
+            send_message(chat_id, "ℹ️ هذا المستخدم هو الـ Owner بالفعل.")
+            return jsonify(ok=True)
+
+        if target_id in config.EXTRA_ADMINS:
+            send_message(chat_id, "ℹ️ هذا الـ chat_id مُسجّل بالفعل كأدمن.")
+            return jsonify(ok=True)
+
+        config.EXTRA_ADMINS.add(target_id)
+        send_message(
+            chat_id,
+            f"✅ تم إضافة <code>{target_id}</code> كأدمن بنجاح (يُطبّق من نفس اللحظة).",
+        )
+        return jsonify(ok=True)
+
+    if lower_text.startswith("/remove_admin"):
+        if not is_owner:
+            send_message(chat_id, "❌ هذا الأمر مخصص لمالك النظام فقط.")
+            return jsonify(ok=True)
+
+        parts = text.split()
+        if len(parts) < 2:
+            send_message(
+                chat_id,
+                "⚠️ استخدم الأمر هكذا:\n"
+                "<code>/remove_admin 123456789</code> (ضع chat_id المراد إزالته)",
+            )
+            return jsonify(ok=True)
+
+        target_raw = parts[1].strip()
+        if not target_raw.isdigit():
+            send_message(chat_id, "⚠️ الـ chat_id يجب أن يكون أرقام فقط.")
+            return jsonify(ok=True)
+
+        target_id = int(target_raw)
+
+        if target_id == config.ADMIN_CHAT_ID:
+            send_message(chat_id, "❌ لا يمكن إزالة الـ Owner من قائمة الصلاحيات.")
+            return jsonify(ok=True)
+
+        if target_id not in config.EXTRA_ADMINS:
+            send_message(chat_id, "ℹ️ هذا الـ chat_id غير موجود فى قائمة الأدمن حالياً.")
+            return jsonify(ok=True)
+
+        config.EXTRA_ADMINS.remove(target_id)
+        send_message(
+            chat_id,
+            f"✅ تم إزالة <code>{target_id}</code> من قائمة الأدمن.",
+        )
         return jsonify(ok=True)
 
     # ==============================
@@ -338,6 +397,7 @@ def webhook():
         return jsonify(ok=True)
 
     if lower_text == "/vai":
+        # لا زلنا ندعم VAIUSDT كأمر منفصل لو حابب تستخدمه
         reply = format_analysis("VAIUSDT")
         send_message(chat_id, reply)
         return jsonify(ok=True)
@@ -360,7 +420,8 @@ def webhook():
                 "⚠️ استخدم الأمر هكذا:\n"
                 "<code>/coin btc</code>\n"
                 "<code>/coin btcusdt</code>\n"
-                "<code>/coin vai</code>",
+                "<code>/coin sol</code>\n"
+                "<code>/coin eth</code>",
             )
         else:
             reply = format_analysis(parts[1])
@@ -373,7 +434,7 @@ def webhook():
 
     # ===== أمر /alert الرسمى (Ultra PRO) =====
     if lower_text == "/alert":
-        if not admin:
+        if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -397,20 +458,11 @@ def webhook():
         add_alert_history("manual_ultra", "Manual /alert (Ultra PRO)")
         return jsonify(ok=True)
 
-    # ===== أمر /alert_pro: إرسال Ultra PRO للمستخدمين =====
-    if lower_text == "/alert_pro":
-        if not admin:
-            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
-            return jsonify(ok=True)
-
-        services.handle_admin_alert_pro_broadcast(chat_id)
-        return jsonify(ok=True)
-
     # ==============================
     #   /test_smart — تشخيص Smart Alert (للأدمن فقط)
     # ==============================
     if lower_text == "/test_smart":
-        if not admin:
+        if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -449,7 +501,7 @@ def webhook():
     #   /status — حالة النظام (أدمن فقط)
     # ==============================
     if lower_text == "/status":
-        if not admin:
+        if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
@@ -486,107 +538,11 @@ def webhook():
 
     # أمر اختبار /weekly_now للأدمن (من خلال الخدمات الجديدة)
     if lower_text == "/weekly_now":
-        if not admin:
+        if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
         services.handle_admin_weekly_now_command(chat_id)
-        return jsonify(ok=True)
-
-    # ==============================
-    #   أوامر إدارة الأدمن (Owner Only)
-    # ==============================
-
-    if lower_text.startswith("/add_admin"):
-        if not owner:
-            send_message(chat_id, "❌ هذا الأمر مخصص للمالك فقط.")
-            return jsonify(ok=True)
-
-        parts = lower_text.split()
-        if len(parts) < 2:
-            send_message(
-                chat_id,
-                "⚙️ استخدم الأمر هكذا:\n"
-                "<code>/add_admin 123456789</code>",
-            )
-            return jsonify(ok=True)
-
-        try:
-            new_admin_id = int(parts[1])
-        except ValueError:
-            send_message(chat_id, "❌ رقم chat_id غير صحيح.")
-            return jsonify(ok=True)
-
-        if not hasattr(config, "ADMINS"):
-            config.ADMINS = {config.ADMIN_CHAT_ID}
-
-        if new_admin_id in config.ADMINS:
-            send_message(chat_id, f"ℹ️ <code>{new_admin_id}</code> موجود بالفعل ضمن قائمة الأدمن.")
-            return jsonify(ok=True)
-
-        config.ADMINS.add(new_admin_id)
-        send_message(
-            chat_id,
-            f"✅ تم إضافة <code>{new_admin_id}</code> إلى قائمة الأدمن بنجاح.",
-        )
-        try:
-            send_message(
-                new_admin_id,
-                "👋 تم منحك صلاحيات أدمن فى نظام IN CRYPTO Ai.",
-            )
-        except Exception:
-            pass
-        return jsonify(ok=True)
-
-    if lower_text.startswith("/remove_admin"):
-        if not owner:
-            send_message(chat_id, "❌ هذا الأمر مخصص للمالك فقط.")
-            return jsonify(ok=True)
-
-        parts = lower_text.split()
-        if len(parts) < 2:
-            send_message(
-                chat_id,
-                "⚙️ استخدم الأمر هكذا:\n"
-                "<code>/remove_admin 123456789</code>",
-            )
-            return jsonify(ok=True)
-
-        try:
-            target_id = int(parts[1])
-        except ValueError:
-            send_message(chat_id, "❌ رقم chat_id غير صحيح.")
-            return jsonify(ok=True)
-
-        if target_id == config.ADMIN_CHAT_ID:
-            send_message(chat_id, "⚠️ لا يمكن إزالة المالك الأساسى من النظام.")
-            return jsonify(ok=True)
-
-        if not hasattr(config, "ADMINS") or target_id not in config.ADMINS:
-            send_message(chat_id, "ℹ️ هذا المستخدم ليس ضمن قائمة الأدمن.")
-            return jsonify(ok=True)
-
-        config.ADMINS.remove(target_id)
-        send_message(
-            chat_id,
-            f"✅ تم إزالة <code>{target_id}</code> من قائمة الأدمن.",
-        )
-        return jsonify(ok=True)
-
-    if lower_text == "/admins":
-        if not admin:
-            send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
-            return jsonify(ok=True)
-
-        admins_list = sorted(list(getattr(config, "ADMINS", {config.ADMIN_CHAT_ID})))
-        lines = ["📋 <b>قائمة الأدمن الحالية:</b>"]
-        for a_id in admins_list:
-            if a_id == config.ADMIN_CHAT_ID:
-                lines.append(f"• <code>{a_id}</code> — 👑 Owner")
-            else:
-                lines.append(f"• <code>{a_id}</code> — Admin")
-
-        send_message(chat_id, "\n".join(lines))
         return jsonify(ok=True)
 
     # أى رسالة أخرى حالياً نتجاهلها / أو ممكن تضيف معالجة بعدين
