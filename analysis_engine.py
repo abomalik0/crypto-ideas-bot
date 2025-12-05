@@ -1740,7 +1740,7 @@ ETH يتحرك فى اتجاه جانبى مرتبط بدرجة كبيرة بح�
 
     report = _shrink_text_preserve_content(report)
     return report
-# ==============================
+    # ==============================
 #   Hybrid PRO Direction Engine
 #   (Early Direction + Targets + Probabilities)
 # ==============================
@@ -1821,9 +1821,9 @@ def compute_hybrid_pro_core() -> dict | None:
     # ---------------------------
     #   صياغة سبب الاتجاه
     # ---------------------------
-    active_labels = events.get("active_labels", []) or []
-    if active_labels:
-        reason_short = "النظام يلتقط حالياً: " + " / ".join(active_labels)
+    events_labels = events.get("active_labels", []) or []
+    if events_labels:
+        reason_short = "النظام يلتقط حالياً: " + " / ".join(events_labels)
     else:
         # fallback بسيط لو مفيش أحداث خاصة
         if vol >= 60 and abs(change) >= 3:
@@ -1919,6 +1919,55 @@ def compute_hybrid_pro_core() -> dict | None:
     return core
 
 
+# ==============================
+#   C-Level Institutional Block (for Ultra PRO Alert)
+# ==============================
+
+def build_c_level_institutional_block(core: dict) -> str:
+    """
+    فقرة مؤسسية مختصرة تناسب C-Level:
+      - Shock Score + مستوى التحذير
+      - الاتجاه السائد
+      - السيولة والزخم
+      - توزيع الاحتمالات 24–72 ساعة
+    """
+    price = core.get("price", 0.0)
+    change = core.get("change", 0.0)
+    vol = core.get("volatility_score", 0.0)
+    shock = core.get("shock_score", 0.0)
+    level = core.get("level")
+    trend_word = core.get("trend_word", "غير محدد")
+    trend_sentence = core.get("trend_sentence", "")
+    liquidity_note = core.get("liquidity_note", "")
+    momentum_note = core.get("momentum_note", "")
+    prob_up = core.get("prob_up", 0)
+    prob_down = core.get("prob_down", 0)
+    prob_side = core.get("prob_side", 0)
+
+    if level == "critical":
+        level_label = "حرِج جدًا"
+    elif level == "high":
+        level_label = "مرتفع"
+    elif level == "medium":
+        level_label = "متوسط"
+    elif level == "low":
+        level_label = "مراقبة هادئة"
+    else:
+        level_label = "طبيعى"
+
+    block = (
+        "🏛 <b>ملخص مؤسسى (C-Level View):</b>\n"
+        f"• وضع البيتكوين الآن: <b>{price:,.0f}$</b> | تغير 24 ساعة: <b>%{change:+.2f}</b>\n"
+        f"• تصنيف حالة السوق: <b>{level_label}</b> "
+        f"(Shock Score ≈ {shock:.1f} / 100 ، تقلب ≈ {vol:.1f} / 100)\n"
+        f"• الاتجاه السائد: <b>{trend_word}</b> — {trend_sentence}\n"
+        f"• السيولة والزخم: {liquidity_note} / {momentum_note}\n"
+        f"• توزيع الاحتمالات 24–72 ساعة: صعود ~{prob_up}% / "
+        f"تماسك ~{prob_side}% / هبوط ~{prob_down}%"
+    )
+    return block
+
+
 def format_ultra_pro_alert() -> str:
     """
     رسالة التحذير الاحترافية الموحدة للمستخدم العادى:
@@ -1926,6 +1975,7 @@ def format_ultra_pro_alert() -> str:
       - أهداف هبوط وصعود محددة
       - نسب احتمالات
       - سبب بسيط وواضح
+      - + فقرة C-Level مؤسسية مختصرة
     """
     core = compute_hybrid_pro_core()
     if not core:
@@ -1959,6 +2009,9 @@ def format_ultra_pro_alert() -> str:
     liquidity_note = core["liquidity_note"]
     trend_sentence = core["trend_sentence"]
 
+    # فقرة C-Level المؤسسية
+    c_level_block = build_c_level_institutional_block(core)
+
     msg = f"""
 🚨 <b>تنبيه فورى — حركة قوية تتشكل الآن</b>
 
@@ -1966,6 +2019,8 @@ def format_ultra_pro_alert() -> str:
 📉 <b>تغير آخر 24 ساعة:</b> %{change:+.2f}
 📊 <b>مدى حركة اليوم:</b> ≈ {range_pct:.2f}%  
 🌪 <b>درجة التقلب:</b> {vol:.1f} / 100
+🏃 <b>سرعة الزخم:</b> {speed_index:.1f} / 100
+💧 <b>ضغط السيولة (تقديرى):</b> {liquidity_pressure:.1f} / 100
 
 🧭 <b>الاتجاه الأقرب الآن:</b> <b>{trend_word}</b>
 ⬇️ <b>احتمال سيناريو الهبوط:</b> ~{prob_down}%  
@@ -1987,6 +2042,9 @@ def format_ultra_pro_alert() -> str:
 • <b>قوة الزخم:</b> {momentum_note}  
 • <b>حالة السيولة:</b> {liquidity_note}  
 • <b>لماذا ظهر هذا التحذير؟</b> {reason_short}
+
+-----------------------------
+{c_level_block}
 
 -----------------------------
 ⚠️ <b>تنبيه مهم:</b>
