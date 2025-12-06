@@ -541,6 +541,65 @@ def smart_alert_loop():
                 risk_score,
             )
 
+            # ========== FORCE TEST ULTRA PRO (One-Shot, Full Path) ==========
+            # لو فعلت config.FORCE_TEST_ULTRA_PRO = True فى config.py
+            # هيرسل Ultra PRO حقيقى (بنفس الصياغة والهنت والتسجيل) لكل المستخدمين + الجروب مرة واحدة.
+            if getattr(config, "FORCE_TEST_ULTRA_PRO", False):
+                try:
+                    text = format_ultra_pro_alert()
+                    if text:
+                        # نحاول نضيف Hint للاتجاه برضه فى الاختبار
+                        try:
+                            hint = _build_direction_hint(metrics, pulse, events, alert_level)
+                            if hint:
+                                text = f"{text}\n\n{hint}"
+                        except Exception:
+                            pass
+
+                        sent_count = broadcast_ultra_pro_to_all_chats(text)
+
+                        now_ts = time.time()
+                        now_iso = datetime.utcnow().isoformat(timespec="seconds")
+
+                        config.LAST_SMART_ALERT_TS = now_ts
+                        config.LAST_CRITICAL_ALERT_TS = now_ts
+
+                        _append_alert_history(
+                            price=price,
+                            change=change,
+                            level=level,
+                            shock_score=shock_score,
+                            immediate=True,
+                        )
+
+                        try:
+                            config.LAST_SMART_ALERT_INFO = {
+                                "time": now_iso,
+                                "reason": "force_test",
+                                "level": level or "TEST",
+                                "shock_score": shock_score,
+                                "risk_level": risk.get("level"),
+                                "sent_to": getattr(config, "ALERT_TARGET_CHAT_ID", 0),
+                                "sent_to_count": sent_count,
+                            }
+                        except Exception:
+                            pass
+
+                        logger.info(
+                            "FORCE_TEST_ULTRA_PRO: sent test Ultra PRO alert to %s chats",
+                            sent_count,
+                        )
+                finally:
+                    try:
+                        config.FORCE_TEST_ULTRA_PRO = False
+                    except Exception:
+                        pass
+
+                # نكمّل لللفة الجاية من غير منطق القرارات العادى
+                time.sleep(config.SMART_ALERT_BASE_INTERVAL * 60)
+                continue
+            # ================================================================
+
             # -----------------------------
             #   منطق اتخاذ القرار (قوى لكن منظم)
             # -----------------------------
