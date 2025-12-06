@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import requests
+import json
 from datetime import datetime
 from collections import deque
 
@@ -117,6 +118,80 @@ def add_alert_history(
 # قائمة بالشاتات (كل مستخدم استخدم البوت مرة واحدة على الأقل)
 KNOWN_CHAT_IDS: set[int] = set()
 KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
+
+# ==============================
+#   حفظ / تحميل المستخدمين فى ملف JSON
+# ==============================
+
+KNOWN_USERS_FILE = os.getenv("KNOWN_USERS_FILE", "known_users.json")
+
+def load_known_users():
+    """
+    تحميل قائمة الشاتات المسجّلة من ملف JSON (لو موجود).
+    - ما بنمسحش اللى فى KNOWN_CHAT_IDS، بنعمل دمج (union).
+    """
+    global KNOWN_CHAT_IDS
+    try:
+        if not os.path.exists(KNOWN_USERS_FILE):
+            logger.info("No known_users file found: %s", KNOWN_USERS_FILE)
+            return
+
+        with open(KNOWN_USERS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f) or {}
+
+        # بنقبل فورماتين:
+        # 1) {"chat_ids": [..]}
+        # 2) [..] مباشرة
+        if isinstance(data, dict):
+            raw_ids = data.get("chat_ids") or []
+        else:
+            raw_ids = data
+
+        loaded_ids = set(
+            int(x) for x in raw_ids
+            if isinstance(x, (int, str)) and str(x).isdigit()
+        )
+
+        if not loaded_ids:
+            loaded_ids.add(ADMIN_CHAT_ID)
+
+        before = len(KNOWN_CHAT_IDS)
+        KNOWN_CHAT_IDS |= loaded_ids
+        after = len(KNOWN_CHAT_IDS)
+
+        logger.info(
+            "Loaded %d known chats from %s (total now = %d)",
+            len(loaded_ids),
+            KNOWN_USERS_FILE,
+            after,
+        )
+    except Exception as e:
+        logger.exception("Error loading known users: %s", e)
+
+
+def save_known_users():
+    """
+    حفظ KNOWN_CHAT_IDS فى ملف JSON.
+    هنناديها من البوت لما يسجّل مستخدم جديد.
+    """
+    try:
+        data = {"chat_ids": list(KNOWN_CHAT_IDS)}
+        with open(KNOWN_USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        logger.info(
+            "Saved %d known chats to %s",
+            len(KNOWN_CHAT_IDS),
+            KNOWN_USERS_FILE,
+        )
+    except Exception as e:
+        logger.exception("Error saving known users: %s", e)
+
+
+# نحاول نحمّل المستخدمين فور استيراد config
+try:
+    load_known_users()
+except Exception as _e:
+    logger.exception("Failed to load known users on import: %s", _e)
 
 # HTTP Session
 HTTP_SESSION = requests.Session()
