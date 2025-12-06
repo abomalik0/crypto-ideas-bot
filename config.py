@@ -202,6 +202,23 @@ def register_known_chat(chat_id: int):
     except Exception as e:
         logger.exception("Error registering known chat %s: %s", chat_id, e)
 
+# ==============================================================
+#   ➕ NEW — التسجيل التلقائى من الـ update بدون لمس الشغل القديم
+# ==============================================================
+
+def auto_register_from_update(update):
+    """
+    تسجيل الشات تلقائياً بمجرد ما يبعت أى رسالة (Start أو غيره).
+    دى إضافة فقط ومش بتعدل أى دوال موجودة.
+    """
+    try:
+        if update and getattr(update, "effective_chat", None):
+            cid = update.effective_chat.id
+            register_known_chat(cid)
+    except Exception:
+        # نبلع أى خطأ هنا عشان ما يكسرش البوت
+        pass
+
 # تحميل الشاتات من الملف عند أول استيراد لـ config
 try:
     _load_known_chats()
