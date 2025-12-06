@@ -350,3 +350,8 @@ WEEKLY_REPORT_TTL = 3600
 
 KEEP_ALIVE_URL = "https://dizzy-bab-incrypto-free-258377c4.koyeb.app/"
 KEEP_ALIVE_INTERVAL = 240   # كل 4 دقايق ping
+
+# 🔥 Test Mode — تشغيل Ultra PRO يدويًا من داخل smart_alert_loop
+# لو خليته True → أول دورة للـ Smart Alert هتبعت Ultra PRO كامل لكل الشاتات
+# وبعد الإرسال هيرجع False تلقائيًا
+FORCE_TEST_ULTRA_PRO = True
