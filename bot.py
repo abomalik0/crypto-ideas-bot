@@ -251,10 +251,8 @@ def webhook():
     text = (msg.get("text") or "").strip()
     lower_text = text.lower()
 
-    try:
-        config.KNOWN_CHAT_IDS.add(chat_id)
-    except Exception:
-        pass
+    # تسجيل الشات + حفظه على الملف (لو جديد)
+    config.register_known_chat(chat_id)
 
     # تجهيز نظام الأدمنات الإضافيين فى runtime لو مش موجود
     if not hasattr(config, "EXTRA_ADMINS"):
