@@ -171,29 +171,62 @@ def broadcast_message_to_group(text: str):
 def broadcast_ultra_pro_to_all_chats(text: str, silent: bool = False) -> int:
     """
     إرسال تنبيه Ultra PRO لجميع الشاتات المسجلة + جروب التحذيرات.
-    - لا يلغى broadcast_message_to_group (لسه موجودة).
-    - يستخدم KNOWN_CHAT_IDS + ALERT_TARGET_CHAT_ID من config.
-    - يرجّع عدد الشاتات اللى اتبعت لها الرسالة.
+
+    - كل الشاتات (Users + Groups) → نفس نص التحذير.
+    - شاتات الأدمن (ADMIN_CHAT_ID + EXTRA_ADMINS) → نفس التحذير لكن مع زر "عرض التفاصيل 📊".
     """
-    from config import KNOWN_CHAT_IDS, send_message, ALERT_TARGET_CHAT_ID, ADMIN_CHAT_ID
+    from config import KNOWN_CHAT_IDS, ALERT_TARGET_CHAT_ID, ADMIN_CHAT_ID
 
     total = 0
 
-    # إرسال أساسى لجروب التحذيرات (أو الأدمن كـ fallback)
-    target_chat = getattr(config, "ALERT_TARGET_CHAT_ID", None) or ADMIN_CHAT_ID
+    # مجموعة الأدمنز (المالك + الأدمنات الإضافيين)
+    admin_ids = {ADMIN_CHAT_ID}
     try:
-        send_message(target_chat, text, silent=silent)
+        extra_admins = getattr(config, "EXTRA_ADMINS", set())
+        if isinstance(extra_admins, (set, list, tuple, set)):
+            admin_ids.update(extra_admins)
+    except Exception:
+        pass
+
+    # الكيبورد الخاص بزر التفاصيل للأدمن فقط
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "عرض التفاصيل 📊",
+                    "callback_data": "alert_details",
+                }
+            ]
+        ]
+    }
+
+    # الشات الأساسى للتحذيرات (غالباً جروب/قناة)
+    target_chat = getattr(config, "ALERT_TARGET_CHAT_ID", None) or ADMIN_CHAT_ID
+
+    # أولاً: إرسال للتحذير الرئيسى (جروب/قناة أو الأدمن)
+    try:
+        if target_chat in admin_ids:
+            # لو الشات الأساسى نفسه أدمن → نفس الرسالة + زر التفاصيل
+            config.send_message_with_keyboard(target_chat, text, keyboard)
+        else:
+            # جروب/قناة للمستخدمين → رسالة عادية بدون زر
+            config.send_message(target_chat, text, silent=silent)
         total += 1
     except Exception as e:
         logger.exception("Error sending Ultra PRO to main alert chat: %s", e)
 
-    # إرسال لكل الشاتات المسجلة (المستخدمين)
+    # ثانياً: إرسال لكل الشاتات المعروفة (Users + Admins)
     for cid in list(KNOWN_CHAT_IDS):
-        # نتجنب تكرار الإرسال لنفس الجروب
+        # نتجنب تكرار الإرسال لنفس الشات
         if cid == target_chat:
             continue
         try:
-            send_message(cid, text, silent=silent)
+            if cid in admin_ids:
+                # أى أدمن → نفس التحذير + زر التفاصيل
+                config.send_message_with_keyboard(cid, text, keyboard)
+            else:
+                # باقى المستخدمين → نفس التحذير بدون زر
+                config.send_message(cid, text, silent=silent)
             total += 1
         except Exception as e:
             logger.exception(
@@ -712,7 +745,7 @@ def smart_alert_loop():
                         # لو حصل أى خطأ فى الهنت، مانكسرش التنبيه الأساسى
                         pass
 
-                    # إرسال للجروب + كل المستخدمين المسجلين
+                    # إرسال للجروب + كل المستخدمين المسجلين (مع زر للأدمن)
                     sent_count = broadcast_ultra_pro_to_all_chats(text)
 
                     config.LAST_SMART_ALERT_TS = now_ts
