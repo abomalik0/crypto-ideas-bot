@@ -2,9 +2,9 @@ import os
 import time
 import logging
 import requests
+import json
 from datetime import datetime
 from collections import deque
-import json  # ✅ إضافة بسيطة لاستخدام الحفظ فى ملف
 
 # ==============================
 #        الإعدادات العامة
@@ -27,6 +27,17 @@ if not APP_BASE_URL:
     raise RuntimeError("البيئة لا تحتوى على APP_BASE_URL")
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+
+# قاعدة مجلد البيانات (لحفظ known_chats.json)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except Exception:
+    # فى حالة أى خطأ فى إنشاء المجلد، نكمل عادى بدون كسر البوت
+    pass
+
+KNOWN_CHATS_FILE = os.path.join(DATA_DIR, "known_chats.json")
 
 # ==============================
 #  حالة التحذيرات / الأسبوعى
@@ -117,92 +128,85 @@ def add_alert_history(
     logger.info("Alert history added: %s", entry)
 
 # ==============================
-#   قائمة بالشاتات المعروفة
+#   قائمة بالشاتات المعروفة (مع حفظ على ملف)
 # ==============================
 
 # كل مستخدم استخدم البوت مرة واحدة على الأقل
 KNOWN_CHAT_IDS: set[int] = set()
 KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
 
-# 🔥 ملف تخزين الشاتات على الديسك عشان تفضل محفوظة بعد الريستارت
-CHAT_IDS_FILE = os.getenv("CHAT_IDS_FILE", "chat_ids.json")
-
-def load_known_chat_ids():
+def _save_known_chats():
     """
-    تحميل KNOWN_CHAT_IDS من ملف (لو موجود) مع الحفاظ على ADMIN_CHAT_ID.
+    حفظ KNOWN_CHAT_IDS فى ملف JSON داخل /data/known_chats.json
+    """
+    try:
+        # نحول الـ set لقائمة مرتبة علشان تكون مقروءة
+        data = sorted(int(cid) for cid in KNOWN_CHAT_IDS)
+        with open(KNOWN_CHATS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        logger.info("Saved %d known chat ids to %s", len(data), KNOWN_CHATS_FILE)
+    except Exception as e:
+        logger.exception("Error saving known chats: %s", e)
+
+def _load_known_chats():
+    """
+    تحميل الشاتات المعروفة من known_chats.json (لو موجود).
     """
     global KNOWN_CHAT_IDS
-    path = CHAT_IDS_FILE
-    if not path:
-        return
     try:
-        if not os.path.exists(path):
-            logger.info("No chat IDs file found: %s", path)
-            return
-
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        loaded_ids: set[int] = set()
-
-        if isinstance(data, list):
-            for x in data:
-                try:
-                    loaded_ids.add(int(x))
-                except Exception:
-                    continue
-        elif isinstance(data, dict):
-            ids = data.get("ids", [])
-            for x in ids:
-                try:
-                    loaded_ids.add(int(x))
-                except Exception:
-                    continue
-
-        if loaded_ids:
-            KNOWN_CHAT_IDS.update(loaded_ids)
-
-        # نتأكد إن الأدمن موجود دايمًا
+        if os.path.exists(KNOWN_CHATS_FILE):
+            with open(KNOWN_CHATS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                for cid in data:
+                    try:
+                        KNOWN_CHAT_IDS.add(int(cid))
+                    except Exception:
+                        continue
+            elif isinstance(data, dict):
+                # لو اتخزن dict بالخطأ فى أى وقت، نجرب ناخد القيم
+                for cid in data.values():
+                    try:
+                        KNOWN_CHAT_IDS.add(int(cid))
+                    except Exception:
+                        continue
+            logger.info(
+                "Loaded %d known chat ids from %s",
+                len(KNOWN_CHAT_IDS),
+                KNOWN_CHATS_FILE,
+            )
+    except Exception as e:
+        logger.exception("Error loading known chats: %s", e)
+    finally:
+        # نتأكد دايمًا إن الـ ADMIN_CHAT_ID موجود
         KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
 
-        logger.info(
-            "Loaded %d chat IDs from %s",
-            len(KNOWN_CHAT_IDS),
-            path,
-        )
-    except Exception as e:
-        logger.exception("Error loading chat IDs from %s: %s", path, e)
-
-
-def save_known_chat_ids():
+def register_known_chat(chat_id: int):
     """
-    حفظ KNOWN_CHAT_IDS فى ملف JSON بسيط.
-    يُستخدم لما الشاتات تتحدث (مثلاً عند /start).
+    تسجيل أى chat_id جديد فى KNOWN_CHAT_IDS + حفظه فوراً على الملف.
+    - لو الشات مسجل قبل كده → مفيش أى حفظ إضافى (مافيش Spam على الـ I/O).
     """
-    path = CHAT_IDS_FILE
-    if not path:
+    try:
+        chat_id = int(chat_id)
+    except Exception:
         return
     try:
-        # نضمن وجود الأدمن دائمًا
-        KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
-
-        ids_list = sorted(int(cid) for cid in KNOWN_CHAT_IDS)
-        tmp_path = f"{path}.tmp"
-
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(ids_list, f, ensure_ascii=False)
-
-        os.replace(tmp_path, path)
-        logger.debug(
-            "Saved %d chat IDs to %s",
-            len(ids_list),
-            path,
-        )
+        if chat_id not in KNOWN_CHAT_IDS:
+            KNOWN_CHAT_IDS.add(chat_id)
+            _save_known_chats()
+            logger.info(
+                "Registered new chat_id=%s (total_known=%d)",
+                chat_id,
+                len(KNOWN_CHAT_IDS),
+            )
     except Exception as e:
-        logger.exception("Error saving chat IDs to %s: %s", path, e)
+        logger.exception("Error registering known chat %s: %s", chat_id, e)
 
-# ممكن تضيف تحميل/حفظ من ملف هنا لو حبيت فى المستقبل
-# (دلوقتى التحميل بيتم أوتوماتيك تحت فى آخر الملف)
+# تحميل الشاتات من الملف عند أول استيراد لـ config
+try:
+    _load_known_chats()
+except Exception as e:
+    logger.exception("Failed to load known chats on startup: %s", e)
 
 # ==============================
 #   HTTP Session موحدة
@@ -448,15 +452,5 @@ KEEP_ALIVE_URL = os.getenv(
 KEEP_ALIVE_INTERVAL = int(os.getenv("KEEP_ALIVE_INTERVAL", "240"))   # كل 4 دقايق ping
 
 # 🔥 Test Mode — لتجربة Ultra PRO من smart_alert_loop
-# لو خليته True → أول دورة Smart Alert هتبعت Ultra PRO لكل الشاتات مرة واحدة
-# بعدها services.smart_alert_loop هيرجع يطفيه تلقائياً لو أنت مبرمجه كده
-FORCE_TEST_ULTRA_PRO = True
-
-# ==============================
-#  تحميل الشاتات من الملف عند تشغيل السيرفر
-# ==============================
-
-try:
-    load_known_chat_ids()
-except Exception as e:
-    logger.exception("Failed to load KNOWN_CHAT_IDS from file: %s", e)
+# مهم: نخليها False فى التشغيل العادى علشان مايبعتش تحذير تجريبى بعد كل Restart
+FORCE_TEST_ULTRA_PRO = False
