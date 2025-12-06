@@ -21,6 +21,76 @@ from analysis_engine import (
 logger = logging.getLogger(__name__)
 
 # =====================================================
+#   Startup Broadcast (Auto message after restart)
+# =====================================================
+
+# علامة علشان نضمن إن رسالة الـ Startup تتبعت مرة واحدة بس
+_STARTUP_BROADCAST_DONE: bool = False
+
+# عدد الثوانى اللى هنستنى قبل إرسال رسالة التشغيل بعد الريستارت
+STARTUP_BROADCAST_DELAY_SECONDS: int = 5
+
+
+def _startup_broadcast_message() -> str:
+    """
+    نص رسالة الافتتاح اللى هتتبعت لكل الشاتات بعد تشغيل السيرفر.
+    """
+    return (
+        "🤖 <b>IN CRYPTO AI is now online!</b>\n"
+        "🚀 النظام يعمل الآن بكامل طاقته.\n"
+        "📡 سيتم إرسال التنبيهات تلقائيًا عند ظهور أى حركة قوية فى السوق.\n\n"
+        "✅ لا تحتاج لكتابة /start مرة أخرى، سيصلك كل شيء تلقائيًا."
+    )
+
+
+def run_startup_broadcast():
+    """
+    بعد تشغيل كل الثريدات وخلال أول 5 ثوانى من التشغيل:
+      - ننتظر STARTUP_BROADCAST_DELAY_SECONDS
+      - نبعت رسالة افتتاحية لكل الشاتات المعروفة KNOWN_CHAT_IDS
+      - من غير ما نلمس أى لوجيك تانى أو نمسح أى شغل.
+    """
+    global _STARTUP_BROADCAST_DONE
+
+    # لو كانت اتبعت قبل كده فى نفس عمر البروسيس → منرجعش نبعتها تانى
+    if _STARTUP_BROADCAST_DONE:
+        return
+
+    try:
+        # تأخير بسيط علشان نتأكد إن كل حاجة اشتغلت (Webhook + Threads)
+        time.sleep(STARTUP_BROADCAST_DELAY_SECONDS)
+
+        from config import KNOWN_CHAT_IDS
+
+        text = _startup_broadcast_message()
+
+        sent = 0
+        # نبعت لكل الشاتات المسجلة
+        for cid in list(KNOWN_CHAT_IDS):
+            try:
+                config.send_message(
+                    chat_id=cid,
+                    text=text,
+                    parse_mode="HTML",
+                    silent=False,
+                )
+                sent += 1
+            except Exception as e:
+                logger.exception("Startup broadcast failed for chat %s: %s", cid, e)
+
+        _STARTUP_BROADCAST_DONE = True
+        logger.info(
+            "Startup broadcast sent to %d known chats (including admin).",
+            sent,
+        )
+
+    except Exception as e:
+        # حتى لو حصل خطأ، منحبّش نكرر المحاولة بلا نهاية
+        _STARTUP_BROADCAST_DONE = True
+        logger.exception("Error in run_startup_broadcast: %s", e)
+
+
+# =====================================================
 #   Helpers: Telegram + HTTP
 # =====================================================
 
@@ -628,7 +698,7 @@ def smart_alert_loop():
                     except Exception:
                         pass
 
-                # نكمّل لللفة الجاية من غير منطق القرارات العادى
+                # نكمّل للفة الجاية من غير منطق القرارات العادى
                 time.sleep(config.SMART_ALERT_BASE_INTERVAL * 60)
                 continue
             # ================================================================
@@ -893,7 +963,7 @@ def get_system_status() -> str:
 <b>⚙️ Supervisor:</b> 🟢 يعمل بشكل دائم
 
 <b>IN CRYPTO AI — System Status</b>
-"""
+""".strip()
 
 
 # =====================================================
@@ -1139,6 +1209,7 @@ def start_background_threads(force: bool = False):
       - Watchdog
       - Keep-Alive (Anti-Sleep)
       - Supervisor (IMMORTAL MODE)
+      - Startup Broadcast (رسالة افتتاح بعد الريستارت)
     """
     if getattr(config, "THREADS_STARTED", False) and not force:
         logger.info("Background threads already started, skipping.")
@@ -1191,5 +1262,13 @@ def start_background_threads(force: bool = False):
     )
     supervisor_thread.start()
 
+    # 🔔 Startup broadcast بعد تشغيل كل الثريدات (يتبعت مرة واحدة بس بعد ~5 ثوانى)
+    startup_thread = threading.Thread(
+        target=run_startup_broadcast,
+        name="startup_broadcast",
+        daemon=True,
+    )
+    startup_thread.start()
+
     config.THREADS_STARTED = True
-    logger.info("All background threads started (including keep-alive & supervisor).")
+    logger.info("All background threads started (including keep-alive, supervisor & startup broadcast).")
