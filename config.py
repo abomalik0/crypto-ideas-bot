@@ -123,33 +123,7 @@ def add_alert_history(
 KNOWN_CHAT_IDS: set[int] = set()
 KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
 
-# NEW: ملف لتخزين الشاتات عشان مايضيعوش بعد الريستارت
-KNOWN_CHATS_FILE = "known_chats.txt"  # NEW
-
-# NEW: تحميل الشاتات من الملف لو موجود
-if os.path.exists(KNOWN_CHATS_FILE):  # NEW
-    try:  # NEW
-        with open(KNOWN_CHATS_FILE, "r") as f:  # NEW
-            for line in f:  # NEW
-                line = line.strip()  # NEW
-                if line.isdigit():  # NEW
-                    KNOWN_CHAT_IDS.add(int(line))  # NEW
-        logger.info("Loaded KNOWN_CHAT_IDS from file: %d chats", len(KNOWN_CHAT_IDS))  # NEW
-    except Exception as e:  # NEW
-        logger.error("Failed loading known_chats.txt: %s", e)  # NEW
-
-# تأكيد أن الأدمن موجود دائماً حتى لو الملف فاضى
-KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)  # NEW (إعادة تأكيد)
-
-def save_known_chats():  # NEW
-    """حفظ KNOWN_CHAT_IDS فى ملف بسيط."""  # NEW
-    try:  # NEW
-        with open(KNOWN_CHATS_FILE, "w") as f:  # NEW
-            for cid in KNOWN_CHAT_IDS:  # NEW
-                f.write(str(cid) + "\n")  # NEW
-        logger.info("Saved KNOWN_CHAT_IDS to file (%d chats).", len(KNOWN_CHAT_IDS))  # NEW
-    except Exception as e:  # NEW
-        logger.error("Failed saving KNOWN_CHAT_IDS: %s", e)  # NEW
+# ممكن تضيف تحميل/حفظ من ملف هنا لو حبيت فى المستقبل
 
 # ==============================
 #   HTTP Session موحدة
@@ -256,14 +230,6 @@ def send_message(
 ):
     """إرسال رسالة عادية مع خيار الإشعار الصامت."""
     try:
-        # NEW: نتأكد إن الشات متسجل ومتحفظ فى الملف
-        if chat_id not in KNOWN_CHAT_IDS:  # NEW
-            KNOWN_CHAT_IDS.add(chat_id)    # NEW
-            try:                           # NEW
-                save_known_chats()         # NEW
-            except Exception as e:         # NEW
-                logger.error("Failed saving known chats in send_message: %s", e)  # NEW
-
         url = f"{TELEGRAM_API}/sendMessage"
         payload: dict = {
             "chat_id": chat_id,
@@ -293,14 +259,6 @@ def send_message_with_keyboard(
 ):
     """إرسال رسالة مع كيبورد إنلاين."""
     try:
-        # NEW: نفس منطق حفظ الشات هنا برضه
-        if chat_id not in KNOWN_CHAT_IDS:  # NEW
-            KNOWN_CHAT_IDS.add(chat_id)    # NEW
-            try:                           # NEW
-                save_known_chats()         # NEW
-            except Exception as e:         # NEW
-                logger.error("Failed saving known chats in send_message_with_keyboard: %s", e)  # NEW
-
         url = f"{TELEGRAM_API}/sendMessage"
         payload: dict = {
             "chat_id": chat_id,
@@ -411,6 +369,5 @@ KEEP_ALIVE_URL = os.getenv(
 KEEP_ALIVE_INTERVAL = int(os.getenv("KEEP_ALIVE_INTERVAL", "240"))   # كل 4 دقايق ping
 
 # 🔥 Test Mode — لتجربة Ultra PRO من smart_alert_loop
-# لو خليته True → أول دورة Smart Alert هتبعت Ultra PRO لكل الشاتات مرة واحدة
-# بعدها services.smart_alert_loop هيرجع يطفيه تلقائياً لو أنت مبرمجه كده
-FORCE_TEST_ULTRA_PRO = False  # NEW: نطفيه عشان ميبعّتش تحذير اختبار بعد الريستارت
+# خليه False فى الإنتاج علشان مايبعتش تحذير تلقائى بعد الريستارت
+FORCE_TEST_ULTRA_PRO = False
