@@ -4,6 +4,7 @@ import logging
 import requests
 from datetime import datetime
 from collections import deque
+import json  # ✅ إضافة بسيطة لاستخدام الحفظ فى ملف
 
 # ==============================
 #        الإعدادات العامة
@@ -123,7 +124,85 @@ def add_alert_history(
 KNOWN_CHAT_IDS: set[int] = set()
 KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
 
+# 🔥 ملف تخزين الشاتات على الديسك عشان تفضل محفوظة بعد الريستارت
+CHAT_IDS_FILE = os.getenv("CHAT_IDS_FILE", "chat_ids.json")
+
+def load_known_chat_ids():
+    """
+    تحميل KNOWN_CHAT_IDS من ملف (لو موجود) مع الحفاظ على ADMIN_CHAT_ID.
+    """
+    global KNOWN_CHAT_IDS
+    path = CHAT_IDS_FILE
+    if not path:
+        return
+    try:
+        if not os.path.exists(path):
+            logger.info("No chat IDs file found: %s", path)
+            return
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        loaded_ids: set[int] = set()
+
+        if isinstance(data, list):
+            for x in data:
+                try:
+                    loaded_ids.add(int(x))
+                except Exception:
+                    continue
+        elif isinstance(data, dict):
+            ids = data.get("ids", [])
+            for x in ids:
+                try:
+                    loaded_ids.add(int(x))
+                except Exception:
+                    continue
+
+        if loaded_ids:
+            KNOWN_CHAT_IDS.update(loaded_ids)
+
+        # نتأكد إن الأدمن موجود دايمًا
+        KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
+
+        logger.info(
+            "Loaded %d chat IDs from %s",
+            len(KNOWN_CHAT_IDS),
+            path,
+        )
+    except Exception as e:
+        logger.exception("Error loading chat IDs from %s: %s", path, e)
+
+
+def save_known_chat_ids():
+    """
+    حفظ KNOWN_CHAT_IDS فى ملف JSON بسيط.
+    يُستخدم لما الشاتات تتحدث (مثلاً عند /start).
+    """
+    path = CHAT_IDS_FILE
+    if not path:
+        return
+    try:
+        # نضمن وجود الأدمن دائمًا
+        KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
+
+        ids_list = sorted(int(cid) for cid in KNOWN_CHAT_IDS)
+        tmp_path = f"{path}.tmp"
+
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(ids_list, f, ensure_ascii=False)
+
+        os.replace(tmp_path, path)
+        logger.debug(
+            "Saved %d chat IDs to %s",
+            len(ids_list),
+            path,
+        )
+    except Exception as e:
+        logger.exception("Error saving chat IDs to %s: %s", path, e)
+
 # ممكن تضيف تحميل/حفظ من ملف هنا لو حبيت فى المستقبل
+# (دلوقتى التحميل بيتم أوتوماتيك تحت فى آخر الملف)
 
 # ==============================
 #   HTTP Session موحدة
@@ -369,5 +448,15 @@ KEEP_ALIVE_URL = os.getenv(
 KEEP_ALIVE_INTERVAL = int(os.getenv("KEEP_ALIVE_INTERVAL", "240"))   # كل 4 دقايق ping
 
 # 🔥 Test Mode — لتجربة Ultra PRO من smart_alert_loop
-# خليه False فى الإنتاج علشان مايبعتش تحذير تلقائى بعد الريستارت
-FORCE_TEST_ULTRA_PRO = False
+# لو خليته True → أول دورة Smart Alert هتبعت Ultra PRO لكل الشاتات مرة واحدة
+# بعدها services.smart_alert_loop هيرجع يطفيه تلقائياً لو أنت مبرمجه كده
+FORCE_TEST_ULTRA_PRO = True
+
+# ==============================
+#  تحميل الشاتات من الملف عند تشغيل السيرفر
+# ==============================
+
+try:
+    load_known_chat_ids()
+except Exception as e:
+    logger.exception("Failed to load KNOWN_CHAT_IDS from file: %s", e)
