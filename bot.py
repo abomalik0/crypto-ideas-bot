@@ -231,7 +231,10 @@ def webhook():
             answer_callback_query(callback_id)
 
         if data == "alert_details":
-            if from_id != config.ADMIN_CHAT_ID:
+            if from_id != config.ADMIN_CHAT_ID and (
+                not hasattr(config, "EXTRA_ADMINS")
+                or from_id not in config.EXTRA_ADMINS
+            ):
                 if chat_id:
                     send_message(chat_id, "❌ هذا الزر مخصص للإدارة فقط.")
                 return jsonify(ok=True)
@@ -286,7 +289,7 @@ def webhook():
         if is_admin:
             admin_block = (
                 "\n<b>أوامر الإدارة (Admin Only):</b>\n"
-                "• <code>/alert</code> — تشغيل تنبيه Ultra PRO الآن وإرساله مع زر التفاصيل\n"
+                "• <code>/alert</code> — تشغيل تنبيه Ultra PRO الآن وإرساله للجميع (Users + جروب التحذيرات)\n"
                 "• <code>/test_smart</code> — فحص Smart Alert Snapshot اللحظى (تشخيص سريع لحالة السوق)\n"
                 "• <code>/status</code> — حالة النظام الكاملة (API / Threads / مخاطر / آخر تنبيهات)\n"
                 "• <code>/weekly_now</code> — إرسال التقرير الأسبوعى الآن لكل الشاتات المسجلة\n"
@@ -444,18 +447,13 @@ def webhook():
             # fallback للنسخة القديمة لو حصل أى مشكلة
             alert_text = services.get_cached_response("alert_text", format_ai_alert)
 
-        keyboard = {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "عرض التفاصيل 📊",
-                        "callback_data": "alert_details",
-                    }
-                ]
-            ]
-        }
-        send_message_with_keyboard(chat_id, alert_text, keyboard)
-        add_alert_history("manual_ultra", "Manual /alert (Ultra PRO)")
+        # 🔥 إرسال التحذير للجميع (Users + جروب التحذيرات)
+        sent_count = services.broadcast_ultra_pro_to_all_chats(alert_text)
+
+        add_alert_history(
+            "manual_ultra",
+            f"Manual /alert (Ultra PRO) broadcast to {sent_count} chats",
+        )
         return jsonify(ok=True)
 
     # ==============================
