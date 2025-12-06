@@ -143,7 +143,7 @@ def get_cached_response(key: str, builder_func, ttl: float | None = None) -> str
 
 
 # =====================================================
-#   Broadcast Helper
+#   Broadcast Helpers
 # =====================================================
 
 
@@ -166,6 +166,118 @@ def broadcast_message_to_group(text: str):
         logger.info("Broadcast sent to chat_id=%s", chat_id)
     except Exception as e:
         logger.exception("Error broadcasting message: %s", e)
+
+
+def broadcast_ultra_pro_to_all_chats(text: str, silent: bool = False) -> int:
+    """
+    إرسال تنبيه Ultra PRO لجميع الشاتات المسجلة + جروب التحذيرات.
+    - لا يلغى broadcast_message_to_group (لسه موجودة).
+    - يستخدم KNOWN_CHAT_IDS + ALERT_TARGET_CHAT_ID من config.
+    - يرجّع عدد الشاتات اللى اتبعت لها الرسالة.
+    """
+    from config import KNOWN_CHAT_IDS, send_message, ALERT_TARGET_CHAT_ID, ADMIN_CHAT_ID
+
+    total = 0
+
+    # إرسال أساسى لجروب التحذيرات (أو الأدمن كـ fallback)
+    target_chat = getattr(config, "ALERT_TARGET_CHAT_ID", None) or ADMIN_CHAT_ID
+    try:
+        send_message(target_chat, text, silent=silent)
+        total += 1
+    except Exception as e:
+        logger.exception("Error sending Ultra PRO to main alert chat: %s", e)
+
+    # إرسال لكل الشاتات المسجلة (المستخدمين)
+    for cid in list(KNOWN_CHAT_IDS):
+        # نتجنب تكرار الإرسال لنفس الجروب
+        if cid == target_chat:
+            continue
+        try:
+            send_message(cid, text, silent=silent)
+            total += 1
+        except Exception as e:
+            logger.exception(
+                "Error sending Ultra PRO to chat %s: %s",
+                cid,
+                e,
+            )
+
+    logger.info(
+        "Ultra PRO broadcast sent to %d chats (users + main group).",
+        total,
+    )
+    return total
+
+
+def _build_direction_hint(metrics: dict, pulse: dict, events: dict, alert_level: dict) -> str | None:
+    """
+    إضافة Hint بسيط للمستخدم عن اتجاه الحركة اللحظية (شراء / بيع).
+    لا يغيّر من منطق Ultra PRO نفسه، بس يوضّح الإتجاه.
+    """
+    try:
+        change = float(metrics.get("change_pct", 0.0))
+    except Exception:
+        change = 0.0
+
+    liquidity_pulse = metrics.get("liquidity_pulse", "") or ""
+    strength_label = metrics.get("strength_label", "") or ""
+    txt = (liquidity_pulse + " " + strength_label).lower()
+
+    speed_idx = float(pulse.get("speed_index", 0.0))
+    accel_idx = float(pulse.get("accel_index", 0.0))
+
+    momentum_up = bool(events.get("momentum_spike_up"))
+    momentum_down = bool(events.get("momentum_spike_down"))
+    panic_drop = bool(events.get("panic_drop"))
+
+    level = alert_level.get("level")
+
+    # منطق بسيط لتحديد الاتجاه الغالب
+    direction = None
+
+    # اندفاع بيعي واضح
+    if (
+        change <= -1.5
+        or "هبوط" in txt
+        or "خروج سيولة" in txt
+        or "ضغوط بيعية" in txt
+        or panic_drop
+        or momentum_down
+    ):
+        direction = "sell"
+
+    # اندفاع شرائي واضح
+    if (
+        change >= 1.5
+        or "صعود" in txt
+        or "الدخول" in txt
+        or "تجميع" in txt
+        or momentum_up
+    ):
+        # لو فى إثنين متعارضين نخلى الأقوى حسب التغير
+        if direction is None or change > 2.5:
+            direction = "buy"
+
+    # لو مفيش اتجاه واضح أو المستوى None → مانزودش حاجة
+    if not direction or level is None:
+        return None
+
+    # صياغة الرسالة الإضافية للمستخدم
+    if direction == "sell":
+        return (
+            "📉 🔻 <b>قراءة سريعة للاتجاه اللحظى:</b>\n"
+            "- الحركة الحالية تميل إلى <b>اندفاع بيعى</b> مع ضغط واضح على السعر.\n"
+            "- يُنصح بالحذر من التسارع الهبوطى المفاجئ فى الفترات القصيرة."
+        )
+
+    if direction == "buy":
+        return (
+            "📈 🔼 <b>قراءة سريعة للاتجاه اللحظى:</b>\n"
+            "- الحركة الحالية تميل إلى <b>اندفاع شرائى</b> وزيادة شهية المخاطرة.\n"
+            "- يُنصح بالحذر من التقلبات السريعة بعد أى اختراقات رئيسية."
+        )
+
+    return None
 
 
 # =====================================================
@@ -527,11 +639,22 @@ def smart_alert_loop():
             #   إرسال التنبيه (Ultra PRO Alert)
             # -----------------------------
             reason_text = None
+            sent_count = 0
 
             if send_immediate or send_normal:
                 text = format_ultra_pro_alert()
                 if text:
-                    broadcast_message_to_group(text)
+                    # إضافة Hint بسيط للاتجاه (شراء/بيع) للمستخدمين
+                    try:
+                        hint = _build_direction_hint(metrics, pulse, events, alert_level)
+                        if hint:
+                            text = f"{text}\n\n{hint}"
+                    except Exception:
+                        # لو حصل أى خطأ فى الهنت، مانكسرش التنبيه الأساسى
+                        pass
+
+                    # إرسال للجروب + كل المستخدمين المسجلين
+                    sent_count = broadcast_ultra_pro_to_all_chats(text)
 
                     config.LAST_SMART_ALERT_TS = now_ts
                     if send_immediate:
@@ -565,6 +688,7 @@ def smart_alert_loop():
                             "shock_score": shock_score,
                             "risk_level": risk.get("level"),
                             "sent_to": getattr(config, "ALERT_TARGET_CHAT_ID", 0),
+                            "sent_to_count": sent_count,
                         }
                     except Exception:
                         pass
@@ -623,10 +747,12 @@ def handle_coin_command(chat_id: int, symbol: str):
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
-    
+
+
 # =====================================================
 #   System Status (/status)
 # =====================================================
+
 
 def handle_admin_status_command(chat_id: int):
     bot = _ensure_bot()
@@ -637,6 +763,8 @@ def handle_admin_status_command(chat_id: int):
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
+
+
 def get_system_status() -> str:
     now = time.time()
 
@@ -674,6 +802,7 @@ def get_system_status() -> str:
 
 <b>IN CRYPTO AI — System Status</b>
 """
+
 
 # =====================================================
 #   Admin Helpers (/alert, /alert_details, /weekly_now, /alert_pro)
