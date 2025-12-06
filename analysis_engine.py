@@ -1967,90 +1967,131 @@ def build_c_level_institutional_block(core: dict) -> str:
     )
     return block
 
-
 def format_ultra_pro_alert():
     """
-    Ultra PRO + C-LEVEL integrated alert
-    النسخة الذهبية الرسمية التى اعتمدها صاحب النظام.
+    Ultra PRO + C-LEVEL integrated alert (Stable Version)
+    النسخة المتوافقة مع النظام الحالي بدون أى مفاتيح غير موجودة.
     """
 
+    core = compute_hybrid_pro_core()
+    if not core:
+        return (
+            "⚠️ تعذّر إنشاء Ultra PRO Alert حاليًا بسبب مشكلة فى جلب بيانات السوق.\n"
+            "حاول مرة أخرى بعد قليل."
+        )
+
     try:
-        snap = compute_smart_market_snapshot()
-        if not snap:
-            return None
+        # ========== قراءة القيم من CORE ==========
+        price = core.get("price", 0.0)
+        change = core.get("change", 0.0)
+        range_pct = core.get("range_pct", 0.0)
+        vol = core.get("volatility_score", 0.0)
+        shock = core.get("shock_score", 0.0)
+        level = core.get("level")
 
-        m = snap.get("metrics", {})
-        pulse = snap.get("pulse", {})
-        zones = snap.get("zones", {})
-        trend = snap.get("trend", {})
+        trend_word = core.get("trend_word", "غير محدد")
+        trend_sentence = core.get("trend_sentence", "")
 
-        price = f"{m.get('price', 0):,.2f}"
-        speed_idx = pulse.get("speed_index", 0)
-        accel_idx = pulse.get("accel_index", 0)
-        buy_pressure = pulse.get("buy_pressure", 0)
-        buyer_dominance = pulse.get("buyer_dominance", 0)
+        momentum_note = core.get("momentum_note", "")
+        liquidity_note = core.get("liquidity_note", "")
+        liquidity_pressure = core.get("liquidity_pressure", 0.0)
 
-        pivot_level = zones.get("pivot_level", "-")
-        t1 = zones.get("target_1", "-")
-        t2 = zones.get("target_2", "-")
-        invalidation_level = zones.get("invalidation", "-")
+        speed_idx = core.get("speed_index", 0.0)
+        accel_idx = core.get("accel_index", 0.0)
 
-        trend_direction = trend.get("direction", "-")
-        trend_strength = trend.get("strength", "-")
-        trend_alignment = trend.get("alignment", "-")
-        price_angle = trend.get("angle", "-")
-        trend_delta = trend.get("delta", "-")
-        pattern_model = trend.get("pattern", "-")
+        strength_label = core.get("strength_label", "")
+        liquidity_pulse = core.get("liquidity_pulse", "")
+        reason_short = core.get("reason_short", "")
+        expected_direction_strong = core.get("expected_direction_strong", "")
 
+        prob_up = int(round(core.get("prob_up", 0)))
+        prob_down = int(round(core.get("prob_down", 0)))
+        prob_side = int(round(core.get("prob_side", 0)))
+
+        # ========== مناطق الأهداف ==========
+        dz1_low, dz1_high = core.get("down_zone_1", (price * 0.97, price * 0.99))
+        dz2_low, dz2_high = core.get("down_zone_2", (price * 0.94, price * 0.97))
+        uz1_low, uz1_high = core.get("up_zone_1", (price * 1.01, price * 1.03))
+        uz2_low, uz2_high = core.get("up_zone_2", (price * 1.03, price * 1.06))
+
+        d1_mid = round((dz1_low + dz1_high) / 2, 2)
+        d2_mid = round((dz2_low + dz2_high) / 2, 2)
+        u1_mid = round((uz1_low + uz1_high) / 2, 2)
+        u2_mid = round((uz2_low + uz2_high) / 2, 2)
+
+        # ========== ترجمة مستوى التحذير ==========
+        if level == "critical":
+            level_label = "حرِج جدًا"
+        elif level == "high":
+            level_label = "مرتفع"
+        elif level == "medium":
+            level_label = "متوسط"
+        elif level == "low":
+            level_label = "مراقبة هادئة"
+        else:
+            level_label = "طبيعى"
+
+        # ========== بلوك C-Level ==========
+        c_level_block = build_c_level_institutional_block(core)
+
+        from datetime import datetime
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+        # ========== الرسالة الأساسية ==========
         msg = f"""
-🚀⚠️ <b>تنبيه فوري — اندفاع صعودي قوي يتفعّل الآن!</b>
+🚨 <b>تنبيه فورى — اندفاع {trend_word} قوى يتفعّل الآن!</b>
 
-💰 <b>السعر الحالي:</b> {price}$
-📈 <b>قوة الزخم الصاعد:</b> {speed_idx}/100
-⚡ <b>معدل التسارع الإيجابي:</b> {accel_idx}/100
-🔼 <b>هيمنة الشراء اللحظية:</b> {buy_pressure}%
+📅 <b>التاريخ:</b> {today_str}
+💰 <b>السعر الحالى:</b> {price:,.0f}$
+📉 <b>تغير 24 ساعة:</b> %{change:+.2f}
+📊 <b>مدى الحركة اليومى:</b> {range_pct:.2f}% — التقلب: {vol:.1f} / 100
+⚡ <b>سرعة الزخم اللحظى:</b> {speed_idx:.1f} / 100
+🏃 <b>تسارع الحركة:</b> {accel_idx:.1f}
+💧 <b>ضغط السيولة التقديرى:</b> {liquidity_pressure:.1f} / 100
 
-<b>🎯 المنطقة الفاصلة (Pivot Zone):</b>
-{pivot_level}$  
-• اختراقها = اندفاع صعودي سريع  
-• الفشل في اختراقها = تهدئة مؤقتة فقط  
-
-<b>📌 نطاق الحركة المتوقع بناءً على السيولة:</b>
-🎯 الهدف الأول: {t1}$
-🎯 الهدف الثاني (امتداد القوة الشرائية): {t2}$
-
-<b>🧬 سبب الحركة — قراءة بنية السوق الفعلية:</b>
-• تدفّق شراء مباشر فوق مستويات عرض ضعيفة  
-• سيولة مختفية تدعم الصعود (Hidden Bid Cluster)  
-• سيطرة مشترين بنسبة {buyer_dominance}% على الــ Order Flow  
-• ضعف ضغط العروض فوق السعر يسمح بالاندفاع  
-• تفوق واضح لأوامر السوق الشرائية على البيعية  
-
-<b>🛑 إلغاء الإشارة:</b>
-هبوط السعر دون {invalidation_level}$ مع فقدان الزخم
-
-🔥 <b>مؤشر الدقة: 99.2٪</b>  
-⚠️ تحليل سيولة عالي الاحتراف — ليست توصية تداول.
+<b>🎯 الخلاصة المباشرة:</b>
+• الاتجاه الأقوى الآن: <b>{trend_word}</b>
+• السبب الرئيسى: {reason_short}
+• مستوى حالة السوق: <b>{level_label}</b> (Shock Score ≈ {shock:.1f}/100)
 
 ━━━━━━━━━━━━━━━━━━
+📉 <b>لو استمر سيناريو الهبوط:</b>
+• الهدف الأول: <b>{d1_mid:,.0f}$</b>
+• الهدف الثانى: <b>{d2_mid:,.0f}$</b>
+• نطاق الهبوط المتوقع: {dz1_low:,.0f}$ → {dz2_high:,.0f}$
 
-🚀🔻 <b>نموذج C-LEVEL — تحليل اتجاه مطوّر</b>
-
-<b>📊 وضع الاتجاه قبل الاندفاع (Trend Intelligence):</b>
-
-• <b>الاتجاه العام:</b> {trend_direction}  
-• <b>قوة الاتجاه:</b> {trend_strength}%  
-• <b>توافق الحركة مع الاتجاه:</b> {trend_alignment}  
-• <b>زاوية السعر (Price Angle):</b> {price_angle}°  
-• <b>تغير قوة الاتجاه قبل الانفجار:</b> {trend_delta}%  
-• <b>نموذج الحركة الحالي:</b> {pattern_model}
+📈 <b>لو حدث انعكاس وصعود:</b>
+• الهدف الأول: <b>{u1_mid:,.0f}$</b>
+• الهدف الثانى: <b>{u2_mid:,.0f}$</b>
+• نطاق الصعود المتوقع: {uz1_low:,.0f}$ → {uz2_high:,.0f}$
 
 ━━━━━━━━━━━━━━━━━━
-"""
-        return msg.strip()
+📊 <b>توزيع الاحتمالات (24–72 ساعة):</b>
+• صعود: <b>{prob_up}%</b>
+• تماسك: <b>{prob_side}%</b>
+• هبوط: <b>{prob_down}%</b>
+
+━━━━━━━━━━━━━━━━━━
+🧠 <b>قراءة IN CRYPTO Ai:</b>
+• قوة الحركة: {strength_label}
+• نبض السيولة: {liquidity_pulse}
+• تحليل السيولة: {liquidity_note}
+• تحليل الزخم: {momentum_note}
+
+<b>🔍 توقع الذكاء الاصطناعى:</b>
+{expected_direction_strong}
+
+━━━━━━━━━━━━━━━━━━
+{c_level_block}
+━━━━━━━━━━━━━━━━━━
+
+⚠️ <b>ملاحظة:</b>
+هذا التحذير تعليمى يعتمد على الذكاء الاصطناعى وليس توصية تداول مباشرة.
+
+<b>IN CRYPTO Ai 🤖 — Ultra PRO Alert Engine</b>
+""".strip()
+
+        return _shrink_text_preserve_content(msg, limit=3800)
 
     except Exception as e:
         return f"⚠️ حدث خطأ أثناء إنشاء Ultra PRO Alert: {e}"
-
-    # نتأكد أن الرسالة لا تتجاوز حدود تيليجرام
-    return _shrink_text_preserve_content(msg, limit=3800)
