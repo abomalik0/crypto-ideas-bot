@@ -211,6 +211,13 @@ def webhook():
     update = request.get_json(force=True, silent=True) or {}
     config.LAST_WEBHOOK_TICK = time.time()
 
+    # ⭐ NEW — تسجيل أي مستخدم تلقائياً من أول رسالة / أى تحديث
+    try:
+        config.auto_register_from_update(update)
+    except Exception:
+        pass
+    # ⭐ END NEW
+
     if config.BOT_DEBUG:
         config.logger.info("Update: %s", update)
     else:
@@ -265,7 +272,6 @@ def webhook():
     #           /start
     # ==============================
     if lower_text == "/start":
-        # رسالة أوامر المستخدم العادى
         user_block = (
             "👋✨ أهلاً بك فى <b>IN CRYPTO Ai</b>.\n"
             "منظومة تتابع حركة البيتكوين والسوق لحظيًا وتبعت لك الصورة جاهزة بدون تعقيد.\n\n"
@@ -279,7 +285,6 @@ def webhook():
             "• التحليل تعليمى ومساعد لاتخاذ القرار، وليس توصية مباشرة بالشراء أو البيع.\n"
         )
 
-        # بلوك أوامر الأدمن يظهر فقط لمالك/أدمن
         admin_block = ""
         if is_admin:
             admin_block = (
@@ -290,7 +295,6 @@ def webhook():
                 "• <code>/weekly_now</code> — إرسال التقرير الأسبوعى الآن لكل الشاتات المسجلة\n"
             )
 
-            # أوامر إدارة الأدمنات — للـ Owner فقط
             if is_owner:
                 admin_block += (
                     "\n<b>إدارة الصلاحيات (Owner فقط):</b>\n"
@@ -310,7 +314,6 @@ def webhook():
     # ==============================
     #       أوامر إدارة الأدمنات
     # ==============================
-    # Owner فقط يقدر يضيف/يحذف أدمن
     if lower_text.startswith("/add_admin"):
         if not is_owner:
             send_message(chat_id, "❌ هذا الأمر مخصص لمالك النظام فقط.")
@@ -395,7 +398,6 @@ def webhook():
         return jsonify(ok=True)
 
     if lower_text == "/vai":
-        # لا زلنا ندعم VAIUSDT كأمر منفصل لو حابب تستخدمه
         reply = format_analysis("VAIUSDT")
         send_message(chat_id, reply)
         return jsonify(ok=True)
