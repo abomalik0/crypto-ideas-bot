@@ -231,10 +231,7 @@ def webhook():
             answer_callback_query(callback_id)
 
         if data == "alert_details":
-            if from_id != config.ADMIN_CHAT_ID and (
-                not hasattr(config, "EXTRA_ADMINS")
-                or from_id not in config.EXTRA_ADMINS
-            ):
+            if from_id != config.ADMIN_CHAT_ID:
                 if chat_id:
                     send_message(chat_id, "❌ هذا الزر مخصص للإدارة فقط.")
                 return jsonify(ok=True)
@@ -289,7 +286,7 @@ def webhook():
         if is_admin:
             admin_block = (
                 "\n<b>أوامر الإدارة (Admin Only):</b>\n"
-                "• <code>/alert</code> — تشغيل تنبيه Ultra PRO الآن وإرساله للجميع (Users + جروب التحذيرات)\n"
+                "• <code>/alert</code> — تشغيل تنبيه Ultra PRO الآن وإرساله للجميع\n"
                 "• <code>/test_smart</code> — فحص Smart Alert Snapshot اللحظى (تشخيص سريع لحالة السوق)\n"
                 "• <code>/status</code> — حالة النظام الكاملة (API / Threads / مخاطر / آخر تنبيهات)\n"
                 "• <code>/weekly_now</code> — إرسال التقرير الأسبوعى الآن لكل الشاتات المسجلة\n"
@@ -441,18 +438,26 @@ def webhook():
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
-        # أولاً نحاول Ultra PRO
+        # بناء Ultra PRO (أو fallback لو حصل أى مشكلة)
         alert_text = format_ultra_pro_alert()
         if not alert_text:
-            # fallback للنسخة القديمة لو حصل أى مشكلة
             alert_text = services.get_cached_response("alert_text", format_ai_alert)
 
-        # 🔥 إرسال التحذير للجميع (Users + جروب التحذيرات)
-        sent_count = services.broadcast_ultra_pro_to_all_chats(alert_text)
+        # بث التحذير على كل الشاتات:
+        # - المستخدمين ↩ نفس التحذير بدون زر.
+        # - الأدمن ↩ نفس التحذير مع زر "عرض التفاصيل 📊" (داخل broadcast_ultra_pro_to_all_chats).
+        try:
+            sent_count = services.broadcast_ultra_pro_to_all_chats(
+                alert_text,
+                silent=False,
+            )
+        except Exception as e:
+            config.logger.exception("Error broadcasting /alert: %s", e)
+            sent_count = 0
 
         add_alert_history(
             "manual_ultra",
-            f"Manual /alert (Ultra PRO) broadcast to {sent_count} chats",
+            f"Manual /alert (Ultra PRO broadcast, sent_to={sent_count})",
         )
         return jsonify(ok=True)
 
