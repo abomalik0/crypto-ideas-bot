@@ -2,7 +2,6 @@ import os
 import time
 import logging
 import requests
-import json
 from datetime import datetime
 from collections import deque
 
@@ -48,8 +47,9 @@ LAST_SMART_ALERT_INFO: dict = {
     "reason": None,       # وصف السبب (منطق الأحداث الذكية)
     "level": None,        # low / medium / high / critical
     "shock_score": None,  # 0–100 تقدير عنف الحركة
-    "risk_level": None,   # low / medium / high (من evaluate_risk_level)
+    "risk_level": None,   # low / medium / high
     "sent_to": 0,         # عدد الشاتات التى استقبلت آخر تحذير
+    "sent_to_count": 0,
 }
 
 # آخر خطأ فى اللوج (يتحدث تلقائياً)
@@ -61,7 +61,7 @@ LAST_ERROR_INFO: dict = {
 # 🔁 آخر مرة تبعت فيها التقرير الأسبوعى أوتوماتيك (YYYY-MM-DD)
 LAST_WEEKLY_SENT_DATE: str | None = None
 
-# آخر مرة اتنفّذ فيها الـ weekly scheduler (كائن datetime فى services)
+# آخر مرة اتنفّذ فيها الـ weekly scheduler (قيمته تُحدَّث فى services)
 LAST_WEEKLY_RUN = None
 
 # ==============================
@@ -115,85 +115,20 @@ def add_alert_history(
     ALERTS_HISTORY.append(entry)
     logger.info("Alert history added: %s", entry)
 
-# قائمة بالشاتات (كل مستخدم استخدم البوت مرة واحدة على الأقل)
+# ==============================
+#   قائمة بالشاتات المعروفة
+# ==============================
+
+# كل مستخدم استخدم البوت مرة واحدة على الأقل
 KNOWN_CHAT_IDS: set[int] = set()
 KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
 
+# ممكن تضيف تحميل/حفظ من ملف هنا لو حبيت فى المستقبل
+
 # ==============================
-#   حفظ / تحميل المستخدمين فى ملف JSON
+#   HTTP Session موحدة
 # ==============================
 
-KNOWN_USERS_FILE = os.getenv("KNOWN_USERS_FILE", "known_users.json")
-
-def load_known_users():
-    """
-    تحميل قائمة الشاتات المسجّلة من ملف JSON (لو موجود).
-    - ما بنمسحش اللى فى KNOWN_CHAT_IDS، بنعمل دمج (union).
-    """
-    global KNOWN_CHAT_IDS
-    try:
-        if not os.path.exists(KNOWN_USERS_FILE):
-            logger.info("No known_users file found: %s", KNOWN_USERS_FILE)
-            return
-
-        with open(KNOWN_USERS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f) or {}
-
-        # بنقبل فورماتين:
-        # 1) {"chat_ids": [..]}
-        # 2) [..] مباشرة
-        if isinstance(data, dict):
-            raw_ids = data.get("chat_ids") or []
-        else:
-            raw_ids = data
-
-        loaded_ids = set(
-            int(x) for x in raw_ids
-            if isinstance(x, (int, str)) and str(x).isdigit()
-        )
-
-        if not loaded_ids:
-            loaded_ids.add(ADMIN_CHAT_ID)
-
-        before = len(KNOWN_CHAT_IDS)
-        KNOWN_CHAT_IDS |= loaded_ids
-        after = len(KNOWN_CHAT_IDS)
-
-        logger.info(
-            "Loaded %d known chats from %s (total now = %d)",
-            len(loaded_ids),
-            KNOWN_USERS_FILE,
-            after,
-        )
-    except Exception as e:
-        logger.exception("Error loading known users: %s", e)
-
-
-def save_known_users():
-    """
-    حفظ KNOWN_CHAT_IDS فى ملف JSON.
-    هنناديها من البوت لما يسجّل مستخدم جديد.
-    """
-    try:
-        data = {"chat_ids": list(KNOWN_CHAT_IDS)}
-        with open(KNOWN_USERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-        logger.info(
-            "Saved %d known chats to %s",
-            len(KNOWN_CHAT_IDS),
-            KNOWN_USERS_FILE,
-        )
-    except Exception as e:
-        logger.exception("Error saving known users: %s", e)
-
-
-# نحاول نحمّل المستخدمين فور استيراد config
-try:
-    load_known_users()
-except Exception as _e:
-    logger.exception("Failed to load known users on import: %s", _e)
-
-# HTTP Session
 HTTP_SESSION = requests.Session()
 HTTP_SESSION.headers.update(
     {
@@ -206,13 +141,13 @@ HTTP_SESSION.headers.update(
 # ==============================
 
 PRICE_CACHE: dict[str, dict] = {}
-CACHE_TTL_SECONDS = 5  # للكروت القصيرة
+CACHE_TTL_SECONDS = 5  # للكروت القصيرة (ثوانٍ)
 
 MARKET_METRICS_CACHE: dict = {
     "data": None,
     "time": 0.0,
 }
-MARKET_TTL_SECONDS = 4
+MARKET_TTL_SECONDS = 4  # ثوانى
 
 # ------------------------------
 #   Pulse History (Smart Engine)
@@ -220,7 +155,7 @@ MARKET_TTL_SECONDS = 4
 PULSE_HISTORY = deque(maxlen=30)
 
 # ==============================
-#   Real-Time Cache
+#   Real-Time Cache (نصوص جاهزة)
 # ==============================
 
 REALTIME_CACHE: dict = {
@@ -233,7 +168,7 @@ REALTIME_CACHE: dict = {
     "weekly_built_at": 0.0,
     "alert_built_at": 0.0,
 }
-REALTIME_TTL_SECONDS = 8
+REALTIME_TTL_SECONDS = 8  # ثوانى
 
 # ==============================
 #   Watchdog / Health Indicators
@@ -244,6 +179,8 @@ LAST_WEEKLY_TICK: float = 0.0
 LAST_WATCHDOG_TICK: float = 0.0
 LAST_WEBHOOK_TICK: float = 0.0
 LAST_SMART_ALERT_TICK: float = 0.0
+LAST_KEEP_ALIVE_TICK: float = 0.0
+LAST_KEEP_ALIVE_OK: float = 0.0
 
 API_STATUS: dict = {
     "binance_ok": True,
@@ -257,10 +194,11 @@ API_STATUS: dict = {
 #  إعدادات نظام التنبيه الذكى
 # ==============================
 
+# الفاصل الأدنى والأقصى (بالثوانى) لو أردت استخدامه مستقبلاً
 SMART_ALERT_MIN_INTERVAL: float = 1.0   # ثانية (للاندفاع الحاد)
 SMART_ALERT_MAX_INTERVAL: float = 4.0   # ثانية (للسوق الهادئ)
 
-# الفاصل الأساسى للـ Smart Alert (بالدقائق)
+# الفاصل الأساسى للـ Smart Alert (بالدقائق) – بيُستخدم داخل smart_alert_loop
 SMART_ALERT_BASE_INTERVAL: float = 1.0
 
 # زمن آخر تنبيه من الذكى
@@ -268,9 +206,9 @@ LAST_SMART_ALERT_TS: float = 0.0
 LAST_CRITICAL_ALERT_TS: float = 0.0
 
 # Threshold للإنذار المبكر
-EARLY_WARNING_THRESHOLD: float = 70.00
+EARLY_WARNING_THRESHOLD: float = 70.0
 
-# سجل تنبيهات الذكى
+# سجل تنبيهات الذكى (يختلف عن ALERTS_HISTORY العام)
 ALERT_HISTORY = deque(maxlen=200)
 
 # ==============================
@@ -278,7 +216,7 @@ ALERT_HISTORY = deque(maxlen=200)
 # ==============================
 
 RESPONSE_CACHE: dict = {}
-DEFAULT_RESPONSE_TTL: float = 10.0
+DEFAULT_RESPONSE_TTL: float = 10.0  # ثوانى
 
 # ==============================
 #  Telegram Helpers (+ Silent Alert)
@@ -395,7 +333,7 @@ def check_admin_auth(req) -> bool:
     return True
 
 # ==============================
-#  Fix missing variables for services.py
+#  إعدادات إضافية لـ services.py
 # ==============================
 
 # يوم إرسال التقرير الأسبوعي (0 = الاثنين … 6 = الأحد)
@@ -404,11 +342,11 @@ WEEKLY_REPORT_WEEKDAY = int(os.getenv("WEEKLY_REPORT_WEEKDAY", "6"))  # الاف
 # ساعة إرسال التقرير الأسبوعى UTC
 WEEKLY_REPORT_HOUR_UTC = int(os.getenv("WEEKLY_REPORT_HOUR_UTC", "12"))
 
-# البوت الأساسي (يتم إنشاؤه في services._ensure_bot)
+# البوت الأساسي (يتم إنشاؤه فى services._ensure_bot)
 BOT = None
 
-# فترات عمل اللوops
-WATCHDOG_INTERVAL = float(os.getenv("WATCHDOG_INTERVAL", "5.0"))        # ثوانى
+# فترات عمل اللوپس
+WATCHDOG_INTERVAL = float(os.getenv("WATCHDOG_INTERVAL", "5.0"))          # ثوانى
 REALTIME_ENGINE_INTERVAL = float(os.getenv("REALTIME_ENGINE_INTERVAL", "3.0"))  # ثوانى
 
 # لإيقاف تشغيل الـ threads مرة واحدة فقط
@@ -417,16 +355,20 @@ THREADS_STARTED = False
 # ملف السناك شوت (اختيارى)
 SNAPSHOT_FILE = os.getenv("SNAPSHOT_FILE")  # لو فاضى هيتجهل
 
-# توكن البوت (نفس TELEGRAM_TOKEN أو متغير منفصل)
+# توكن البوت (نفس TELEGRAM_TOKEN أو متغير منفصل لو حبيت)
 BOT_TOKEN = os.getenv("BOT_TOKEN") or TELEGRAM_TOKEN
 
 # TTL للتقرير الأسبوعى فى الكاش (ثانية)
 WEEKLY_REPORT_TTL = 3600
 
-KEEP_ALIVE_URL = "https://dizzy-bab-incrypto-free-258377c4.koyeb.app/"
-KEEP_ALIVE_INTERVAL = 240   # كل 4 دقايق ping
+# إعدادات Keep-Alive لـ Koyeb
+KEEP_ALIVE_URL = os.getenv(
+    "KEEP_ALIVE_URL",
+    "https://dizzy-bab-incrypto-free-258377c4.koyeb.app/",
+)
+KEEP_ALIVE_INTERVAL = int(os.getenv("KEEP_ALIVE_INTERVAL", "240"))   # كل 4 دقايق ping
 
-# 🔥 Test Mode — تشغيل Ultra PRO يدويًا من داخل smart_alert_loop
-# لو خليته True → أول دورة للـ Smart Alert هتبعت Ultra PRO كامل لكل الشاتات
-# وبعد الإرسال هيرجع False تلقائيًا
+# 🔥 Test Mode — لتجربة Ultra PRO من smart_alert_loop
+# لو خليته True → أول دورة Smart Alert هتبعت Ultra PRO لكل الشاتات مرة واحدة
+# بعدها services.smart_alert_loop هيرجع يطفيه تلقائياً لو أنت مبرمجه كده
 FORCE_TEST_ULTRA_PRO = True
