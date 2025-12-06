@@ -36,8 +36,8 @@ def _startup_broadcast_message() -> str:
     نص رسالة الافتتاح اللى هتتبعت لكل الشاتات بعد تشغيل السيرفر.
     """
     return (
-        "🤖 <b>IN CRYPTO AI is now online!</b>\n"
-        "🚀 النظام يعمل الآن بكامل طاقته.\n"
+        "🤖 <b>IN CRYPTO AI عاد للعمل</b>\n"
+        "🚀 النظام متصل الآن ويعمل بكامل طاقته.\n"
         "📡 سيتم إرسال التنبيهات تلقائيًا عند ظهور أى حركة قوية فى السوق.\n\n"
         "✅ لا تحتاج لكتابة /start مرة أخرى، سيصلك كل شيء تلقائيًا."
     )
@@ -45,7 +45,7 @@ def _startup_broadcast_message() -> str:
 
 def run_startup_broadcast():
     """
-    بعد تشغيل كل الثريدات وخلال أول 5 ثوانى من التشغيل:
+    بعد تشغيل كل الثريدات وخلال أول ثوانى من التشغيل:
       - ننتظر STARTUP_BROADCAST_DELAY_SECONDS
       - نبعت رسالة افتتاحية لكل الشاتات المعروفة KNOWN_CHAT_IDS
       - من غير ما نلمس أى لوجيك تانى أو نمسح أى شغل.
@@ -402,6 +402,45 @@ def run_weekly_ai_report():
         return
 
     broadcast_message_to_group(text)
+
+
+def send_weekly_report_to_all_chats() -> int:
+    """
+    إرسال التقرير الأسبوعى لكل الشاتات المسجلة (للـ endpoint /weekly_ai_report).
+    يحافظ على منطق الشغل القديم + يستخدم الكاش.
+    """
+    from config import KNOWN_CHAT_IDS, ADMIN_CHAT_ID
+
+    text = get_cached_response(
+        "weekly_report",
+        format_weekly_ai_report,
+        ttl=config.WEEKLY_REPORT_TTL,
+    )
+    if not text:
+        logger.warning("No weekly report text generated for send_weekly_report_to_all_chats.")
+        return 0
+
+    sent = 0
+    # نرسل للأدمن أولًا (لو مش داخل فى KNOWN_CHAT_IDS)
+    try:
+        config.send_message(ADMIN_CHAT_ID, text)
+        sent += 1
+    except Exception as e:
+        logger.exception("Failed sending weekly report to admin: %s", e)
+
+    # نرسل لكل الشاتات المسجلة
+    for cid in list(KNOWN_CHAT_IDS):
+        # نتجنب التكرار لو الأدمن موجود ضمن KNOWN_CHAT_IDS
+        if cid == ADMIN_CHAT_ID:
+            continue
+        try:
+            config.send_message(cid, text)
+            sent += 1
+        except Exception as e:
+            logger.exception("Failed sending weekly report to chat %s: %s", cid, e)
+
+    logger.info("Weekly AI report sent to %d chats (admin + users).", sent)
+    return sent
 
 
 def weekly_scheduler_loop():
@@ -1262,7 +1301,7 @@ def start_background_threads(force: bool = False):
     )
     supervisor_thread.start()
 
-    # 🔔 Startup broadcast بعد تشغيل كل الثريدات (يتبعت مرة واحدة بس بعد ~5 ثوانى)
+    # 🔔 Startup broadcast بعد تشغيل كل الثريدات (يتبعت مرة واحدة بس بعد ثوانى)
     startup_thread = threading.Thread(
         target=run_startup_broadcast,
         name="startup_broadcast",
