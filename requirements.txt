@@ -3,3 +3,4 @@ requests
 python-telegram-bot==13.15
 beautifulsoup4
 matplotlib
+psycopg2-binary
