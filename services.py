@@ -390,18 +390,17 @@ def _build_direction_hint(metrics: dict, pulse: dict, events: dict, alert_level:
 
 def run_weekly_ai_report():
     """
-    إرسال تقرير أسبوعى إلى الجروب/القناة المحددة.
+    إرسال تقرير أسبوعى أوتوماتيك لكل الشاتات المسجلة.
+    يستخدم send_weekly_report_to_all_chats بدلاً من الإرسال للجروب فقط.
     """
-    text = get_cached_response(
-        "weekly_report",
-        format_weekly_ai_report,
-        ttl=config.WEEKLY_REPORT_TTL,
-    )
-    if not text:
-        logger.warning("No weekly report text generated.")
-        return
-
-    broadcast_message_to_group(text)
+    sent = send_weekly_report_to_all_chats()
+    if not sent:
+        logger.warning("Weekly scheduler: no weekly report sent (0 chats).")
+    else:
+        logger.info(
+            "Weekly scheduler: weekly report sent to %d chats (admin + users).",
+            sent,
+        )
 
 
 def send_weekly_report_to_all_chats() -> int:
@@ -438,6 +437,12 @@ def send_weekly_report_to_all_chats() -> int:
             sent += 1
         except Exception as e:
             logger.exception("Failed sending weekly report to chat %s: %s", cid, e)
+
+    # تحديث تاريخ آخر تقرير أسبوعى (اختياري – مفيد للـ Dashboard)
+    try:
+        config.LAST_WEEKLY_SENT_DATE = datetime.now(timezone.utc).date().isoformat()
+    except Exception:
+        pass
 
     logger.info("Weekly AI report sent to %d chats (admin + users).", sent)
     return sent
@@ -1050,6 +1055,7 @@ def handle_admin_alert_details_command(chat_id: int):
 def handle_admin_weekly_now_command(chat_id: int):
     """
     يسمح للأدمن بإرسال التقرير الأسبوعى فوراً (نسخة اختبار / طوارئ).
+    (يبعت للأدمن فقط، والتقرير الأوتو بيبعت لكل الشاتات من run_weekly_ai_report)
     """
     bot = _ensure_bot()
     text = format_weekly_ai_report()
