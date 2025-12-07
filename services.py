@@ -390,17 +390,18 @@ def _build_direction_hint(metrics: dict, pulse: dict, events: dict, alert_level:
 
 def run_weekly_ai_report():
     """
-    إرسال تقرير أسبوعى أوتوماتيك لكل الشاتات المسجلة.
-    يستخدم send_weekly_report_to_all_chats بدلاً من الإرسال للجروب فقط.
+    إرسال تقرير أسبوعى إلى الجروب/القناة المحددة.
     """
-    sent = send_weekly_report_to_all_chats()
-    if not sent:
-        logger.warning("Weekly scheduler: no weekly report sent (0 chats).")
-    else:
-        logger.info(
-            "Weekly scheduler: weekly report sent to %d chats (admin + users).",
-            sent,
-        )
+    text = get_cached_response(
+        "weekly_report",
+        format_weekly_ai_report,
+        ttl=config.WEEKLY_REPORT_TTL,
+    )
+    if not text:
+        logger.warning("No weekly report text generated.")
+        return
+
+    broadcast_message_to_group(text)
 
 
 def send_weekly_report_to_all_chats() -> int:
@@ -437,12 +438,6 @@ def send_weekly_report_to_all_chats() -> int:
             sent += 1
         except Exception as e:
             logger.exception("Failed sending weekly report to chat %s: %s", cid, e)
-
-    # تحديث تاريخ آخر تقرير أسبوعى (اختياري – مفيد للـ Dashboard)
-    try:
-        config.LAST_WEEKLY_SENT_DATE = datetime.now(timezone.utc).date().isoformat()
-    except Exception:
-        pass
 
     logger.info("Weekly AI report sent to %d chats (admin + users).", sent)
     return sent
@@ -615,15 +610,17 @@ def _append_alert_history(price, change, level, shock_score, immediate: bool):
 
 def smart_alert_loop():
     """
-    لوب التحذير الذكى (Ultra PRO Auto) — MILITARY MODE v2.5:
+    لوب التحذير الذكى (Ultra PRO Auto) — MILITARY MODE v3.0 MAX:
       - يقرأ snapshot من compute_smart_market_snapshot
-      - يبنى شروط متعددة:
-          * super_critical
-          * immediate
-          * early (من detect_early_movement_signal)
-          * momentum
-      - يقرر إمتى يرسل تنبيه واحد قوى وواضح قبل الحركة بدقائق
-      - يمنع التكرار والسبام بفواصل زمنية ذكية
+      - يصنف الحالات إلى:
+          * super_critical  → انهيار / انفجار حاد جدًا
+          * immediate       → تحذير قوى
+          * early           → إنذار مبكر قبل الحركة
+          * momentum        → زخم حالي سريع
+          * normal          → تنبيه هادى لو السوق ساخن لكن مش انفجار
+      - يضيف Header قوى فى نص الرسالة يوضح نوع التحذير.
+      - لو فى إنذار مبكر من detect_early_movement_signal → يضيف بلوك واضح فى بداية الرسالة.
+      - يمنع السبام بفواصل زمنية ذكية لكن يحافظ على سرعة الاستجابة.
     """
     logger.info("Smart alert loop started.")
     _ = _ensure_bot()  # نتأكد إن البوت جاهز
@@ -689,13 +686,11 @@ def smart_alert_loop():
             )
 
             # ========== FORCE TEST ULTRA PRO (One-Shot, Full Path) ==========
-            # لو فعلت config.FORCE_TEST_ULTRA_PRO = True فى config.py
-            # هيرسل Ultra PRO حقيقى (بنفس الصياغة والهنت والتسجيل) لكل المستخدمين + الجروب مرة واحدة.
             if getattr(config, "FORCE_TEST_ULTRA_PRO", False):
                 try:
                     text = format_ultra_pro_alert()
                     if text:
-                        # نحاول نضيف Hint للاتجاه برضه فى الاختبار
+                        # Hint للاتجاه
                         try:
                             hint = _build_direction_hint(metrics, pulse, events, alert_level)
                             if hint:
@@ -703,7 +698,8 @@ def smart_alert_loop():
                         except Exception:
                             pass
 
-                        sent_count = broadcast_ultra_pro_to_all_chats(text)
+                        # فى test mode نبعت بصوت واضح (بدون Silent)
+                        sent_count = broadcast_ultra_pro_to_all_chats(text, silent=False)
 
                         now_ts = time.time()
                         now_iso = datetime.utcnow().isoformat(timespec="seconds")
@@ -742,7 +738,6 @@ def smart_alert_loop():
                     except Exception:
                         pass
 
-                # نكمّل للفة الجاية من غير منطق القرارات العادى
                 time.sleep(config.SMART_ALERT_BASE_INTERVAL * 60)
                 continue
             # ================================================================
@@ -754,7 +749,7 @@ def smart_alert_loop():
             last_alert_ts = getattr(config, "LAST_SMART_ALERT_TS", 0.0) or 0.0
             last_critical_ts = getattr(config, "LAST_CRITICAL_ALERT_TS", 0.0) or 0.0
 
-            base_interval_min = max(1.0, float(config.SMART_ALERT_BASE_INTERVAL))  # بالدقايق
+            base_interval_min = max(0.5, float(config.SMART_ALERT_BASE_INTERVAL))  # بالدقايق
             adaptive_interval_min = float(
                 snapshot.get("adaptive_interval", base_interval_min)
             )
@@ -764,7 +759,7 @@ def smart_alert_loop():
             composite_intensity = (
                 0.4 * shock_score
                 + 0.3 * speed_idx
-                + 0.3 * abs(accel_idx) * 100.0 / 3.0  # نطبع التسارع لمقياس قريب
+                + 0.3 * abs(accel_idx) * 100.0 / 3.0
             )
 
             # 1) super_critical: حالة انهيار/اندفاع عنيف جدًا
@@ -810,9 +805,10 @@ def smart_alert_loop():
             # -----------------------------
             send_immediate = False
             send_normal = False
+            alert_flavor = None  # super_critical / immediate / early / momentum / normal
 
             # الفاصل الزمني للحالات الحرجة (أقصر)
-            critical_gap = max(240.0, adaptive_interval_min * 60 * 0.4)  # ~4 دقائق كحد أدنى
+            critical_gap = max(180.0, adaptive_interval_min * 60 * 0.4)  # ~3 دقائق كحد أدنى
             # الفاصل الزمني للحالات العادية (أطول)
             normal_gap = max(1200.0, adaptive_interval_min * 60 * 0.8)  # ~20 دقيقة كحد أدنى
 
@@ -820,19 +816,40 @@ def smart_alert_loop():
             if super_critical:
                 if (now_ts - last_critical_ts) >= critical_gap / 2:
                     send_immediate = True
+                    alert_flavor = "super_critical"
                 else:
                     logger.info(
                         "Super-critical condition detected but still inside hard gap (%.1fs), skip.",
                         critical_gap / 2,
                     )
             else:
-                if immediate_condition or early_condition or momentum_condition:
+                if immediate_condition:
                     if (now_ts - last_critical_ts) >= critical_gap:
                         send_immediate = True
+                        alert_flavor = "immediate"
                     else:
                         logger.info(
-                            "Immediate/early/momentum detected but within critical gap (%.1fs), skip.",
+                            "Immediate condition detected but within critical gap (%.1fs), skip.",
                             critical_gap,
+                        )
+                elif early_condition:
+                    # إنذار مبكر → نسمح بفاصل أقل لكن مع Silent
+                    if (now_ts - last_alert_ts) >= critical_gap / 1.5:
+                        send_immediate = True
+                        alert_flavor = "early"
+                    else:
+                        logger.info(
+                            "Early warning detected but within early gap (%.1fs), skip.",
+                            critical_gap / 1.5,
+                        )
+                elif momentum_condition:
+                    if (now_ts - last_alert_ts) >= normal_gap / 2:
+                        send_immediate = True
+                        alert_flavor = "momentum"
+                    else:
+                        logger.info(
+                            "Momentum condition detected but within momentum gap (%.1fs), skip.",
+                            normal_gap / 2,
                         )
                 else:
                     # مفيش conditions قوية لكن المستوى العام medium/high
@@ -840,6 +857,7 @@ def smart_alert_loop():
                         now_ts - last_alert_ts
                     ) >= normal_gap:
                         send_normal = True
+                        alert_flavor = "normal"
 
             # -----------------------------
             #   إرسال التنبيه (Ultra PRO Alert)
@@ -850,39 +868,102 @@ def smart_alert_loop():
             if send_immediate or send_normal:
                 text = format_ultra_pro_alert()
                 if text:
-                    # إضافة Hint بسيط للاتجاه (شراء/بيع) للمستخدمين
+                    # Header حسب نوع التحذير
+                    header_lines = []
+                    if alert_flavor == "super_critical":
+                        header_lines.append(
+                            "☠️🔥 <b>تحذير حرج جدًا — حركة عنيفة محتملة على البيتكوين</b>\n"
+                            "⚠️ هذا النوع من التحذيرات نادر ويعبر عن <b>احتمال عالى لانفجار سعرى</b>."
+                        )
+                    elif alert_flavor == "immediate":
+                        header_lines.append(
+                            "🚨 <b>تحذير قوى من IN CRYPTO Ai</b>\n"
+                            "السوق يظهر <b>زخمًا حادًا</b> واحتمال حركة كبيرة فى وقت قصير."
+                        )
+                    elif alert_flavor == "early":
+                        header_lines.append(
+                            "⚠️ <b>إنذار مبكر — السوق يجهّز لحركة قوية محتملة</b>\n"
+                            "هذه إشارة استباقية قبل اكتمال الانفجار، الهدف منها التنبيه المبكر فقط."
+                        )
+                    elif alert_flavor == "momentum":
+                        header_lines.append(
+                            "🔥 <b>زخم قوى جارٍ الآن فى السوق</b>\n"
+                            "هناك اندفاع واضح على البيتكوين قد يتطور لحركة أكبر."
+                        )
+                    elif alert_flavor == "normal":
+                        header_lines.append(
+                            "📡 <b>تنبيه من IN CRYPTO Ai — السوق نشط حاليًا</b>"
+                        )
+
+                    # Hint للاتجاه (شراء/بيع)
                     try:
                         hint = _build_direction_hint(metrics, pulse, events, alert_level)
                         if hint:
-                            text = f"{text}\n\n{hint}"
+                            header_lines.append(hint)
                     except Exception:
-                        # لو حصل أى خطأ فى الهنت، مانكسرش التنبيه الأساسى
                         pass
 
+                    # بلوك إضافى للإنذار المبكر لو موجود
+                    if alert_flavor == "early" and early_signal:
+                        try:
+                            e_dir = early_signal.get("direction")
+                            if e_dir == "down":
+                                dir_txt = "هبوط حاد محتمل"
+                                emoji = "🔻"
+                            elif e_dir == "up":
+                                dir_txt = "اندفاع صاعد محتمل"
+                                emoji = "🔼"
+                            else:
+                                dir_txt = "حركة قوية محتملة"
+                                emoji = "⚠️"
+
+                            e_score = float(early_signal.get("score", 0.0))
+                            e_conf = float(early_signal.get("confidence", 0.0))
+                            e_win = int(early_signal.get("window_minutes") or 10)
+                            e_reason = early_signal.get("reason") or "إشارة مبكرة لحركة قوية."
+
+                            early_block = (
+                                f"{emoji} <b>تفاصيل الإنذار المبكر:</b>\n"
+                                f"- الاتجاه المرجح: <b>{dir_txt}</b>\n"
+                                f"- قوة الإشارة: <b>{e_score:.1f}/100</b>\n"
+                                f"- درجة الثقة: <b>{e_conf:.1f}%</b>\n"
+                                f"- نافذة زمنية تقديرية: خلال ~<b>{e_win} دقيقة</b>\n"
+                                f"- سبب الإشارة: {e_reason}"
+                            )
+                            header_lines.append(early_block)
+                        except Exception:
+                            pass
+
+                    if header_lines:
+                        header_text = "\n\n".join(header_lines)
+                        text = f"{header_text}\n\n━━━━━━━━━━\n{text}"
+
+                    # تحديد Silent أو لا حسب نوع التحذير
+                    if alert_flavor in ("super_critical", "immediate"):
+                        silent_flag = False
+                    elif alert_flavor in ("early", "momentum", "normal"):
+                        silent_flag = True
+                    else:
+                        silent_flag = True
+
                     # إرسال للجروب + كل المستخدمين المسجلين (مع زر للأدمن)
-                    sent_count = broadcast_ultra_pro_to_all_chats(text)
+                    sent_count = broadcast_ultra_pro_to_all_chats(text, silent=silent_flag)
 
                     config.LAST_SMART_ALERT_TS = now_ts
-                    if send_immediate:
+                    if alert_flavor in ("super_critical", "immediate"):
                         config.LAST_CRITICAL_ALERT_TS = now_ts
 
-                    if super_critical:
-                        reason_text = "super_critical"
-                    elif immediate_condition:
-                        reason_text = "immediate_condition"
-                    elif early_condition:
-                        reason_text = "early_condition"
-                    elif momentum_condition:
-                        reason_text = "momentum_condition"
+                    if alert_flavor is None:
+                        reason_text = "unknown"
                     else:
-                        reason_text = "normal_level_broadcast"
+                        reason_text = alert_flavor
 
                     _append_alert_history(
                         price=price,
                         change=change,
                         level=level,
                         shock_score=shock_score,
-                        immediate=send_immediate or super_critical,
+                        immediate=(alert_flavor in ("super_critical", "immediate")),
                     )
 
                     # تحديث حالة LAST_SMART_ALERT_INFO للـ dashboard
@@ -902,9 +983,9 @@ def smart_alert_loop():
             # -----------------------------
             #   نوم تكيفى بين الدورات
             # -----------------------------
-            # نخلى النوم قصير لو السوق متوتر / في حركة
             if super_critical or immediate_condition or early_condition or momentum_condition:
-                sleep_seconds = max(20.0, adaptive_interval_min * 60 * 0.3)
+                # فى الأجواء الساخنة نتابع أسرع
+                sleep_seconds = max(15.0, adaptive_interval_min * 60 * 0.3)
             else:
                 sleep_seconds = max(60.0, adaptive_interval_min * 60 * 0.7)
 
@@ -1055,7 +1136,6 @@ def handle_admin_alert_details_command(chat_id: int):
 def handle_admin_weekly_now_command(chat_id: int):
     """
     يسمح للأدمن بإرسال التقرير الأسبوعى فوراً (نسخة اختبار / طوارئ).
-    (يبعت للأدمن فقط، والتقرير الأوتو بيبعت لكل الشاتات من run_weekly_ai_report)
     """
     bot = _ensure_bot()
     text = format_weekly_ai_report()
