@@ -562,3 +562,12 @@ KEEP_ALIVE_INTERVAL = int(os.getenv("KEEP_ALIVE_INTERVAL", "240"))   # كل 4 د
 # 🔥 Test Mode — لتجربة Ultra PRO من smart_alert_loop
 # مهم: نخليها False فى التشغيل العادى علشان مايبعتش تحذير تجريبى بعد كل Restart
 FORCE_TEST_ULTRA_PRO = False
+
+# ==============================
+#  مزامنة أولية مع قاعدة البيانات
+# ==============================
+try:
+    # نكتب الشاتات المعروفة حاليًا (وفيها ADMIN_CHAT_ID) فى PostgreSQL
+    _save_known_chats()
+except Exception as e:
+    logger.exception("Initial sync of known chats failed: %s", e)
