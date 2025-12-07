@@ -1178,7 +1178,7 @@ def supervisor_loop():
     logger.info("Supervisor loop started.")
     # thresholds بالثوانى (قيمة عالية شوية علشان مايبقاش Aggressive قوى)
     REALTIME_TIMEOUT = 60.0        # لو مفيش نبض من realtime لمدة دقيقة
-    SMART_ALERT_TIMEOUT = 120.0    # لو مفيش نبض من smart alert دقيقتين
+    SMART_ALERT_TIMEOUT = 300.0    # لو مفيش نبض من smart alert دقيقتين
     WATCHDOG_TIMEOUT = 90.0        # لو مفيش نبض من watchdog دقيقة ونص
     WEEKLY_TIMEOUT = 3600.0 * 8    # 8 ساعات (كافى جداً)
     KEEPALIVE_TIMEOUT = 600.0      # 10 دقايق
