@@ -6,6 +6,9 @@ import json
 from datetime import datetime
 from collections import deque
 
+import psycopg2
+from psycopg2.extras import execute_values
+
 # ==============================
 #        الإعدادات العامة
 # ==============================
@@ -38,6 +41,42 @@ except Exception:
     pass
 
 KNOWN_CHATS_FILE = os.path.join(DATA_DIR, "known_chats.json")
+
+# ==============================
+#  إعداد PostgreSQL لحفظ الشاتات
+# ==============================
+
+PG_URL = os.getenv("PG_URL")
+_PG_CONN = None
+
+def get_pg_conn():
+    """
+    إرجاع اتصال PostgreSQL واحد يُستخدم طوال عمر العملية.
+    لو PG_URL غير متضبط → نرجع None.
+    """
+    global _PG_CONN
+    if not PG_URL:
+        return None
+    if _PG_CONN is None:
+        _PG_CONN = psycopg2.connect(PG_URL)
+        _PG_CONN.autocommit = True
+    return _PG_CONN
+
+def ensure_known_chats_table():
+    """
+    إنشاء جدول known_chats لو مش موجود.
+    """
+    conn = get_pg_conn()
+    if not conn:
+        return
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS known_chats (
+                chat_id BIGINT PRIMARY KEY
+            )
+            """
+        )
 
 # ==============================
 #  حالة التحذيرات / الأسبوعى
@@ -137,49 +176,101 @@ KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
 
 def _save_known_chats():
     """
-    حفظ KNOWN_CHAT_IDS فى ملف JSON داخل /data/known_chats.json
+    حفظ KNOWN_CHAT_IDS فى:
+    1) ملف JSON داخل /data/known_chats.json
+    2) قاعدة بيانات PostgreSQL (لو PG_URL متضبط)
     """
+    # 1) حفظ فى الملف المحلى
     try:
-        # نحول الـ set لقائمة مرتبة علشان تكون مقروءة
         data = sorted(int(cid) for cid in KNOWN_CHAT_IDS)
         with open(KNOWN_CHATS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
         logger.info("Saved %d known chat ids to %s", len(data), KNOWN_CHATS_FILE)
     except Exception as e:
-        logger.exception("Error saving known chats: %s", e)
+        logger.exception("Error saving known chats to file: %s", e)
+
+    # 2) حفظ فى PostgreSQL
+    try:
+        conn = get_pg_conn()
+        if not conn:
+            return
+
+        ensure_known_chats_table()
+        with conn.cursor() as cur:
+            # نمسح القديم ونكتب القائمة الحالية
+            cur.execute("TRUNCATE known_chats")
+            values = [(int(cid),) for cid in KNOWN_CHAT_IDS]
+            if values:
+                execute_values(
+                    cur,
+                    "INSERT INTO known_chats(chat_id) VALUES %s ON CONFLICT DO NOTHING",
+                    values,
+                )
+        logger.info("Saved known chats to PostgreSQL (%d rows)", len(KNOWN_CHAT_IDS))
+    except Exception as e:
+        logger.exception("Error saving known chats to PostgreSQL: %s", e)
 
 def _load_known_chats():
     """
-    تحميل الشاتات المعروفة من known_chats.json (لو موجود).
+    تحميل الشاتات المعروفة:
+    1) نحاول أولاً من PostgreSQL (لو PG_URL متضبط).
+    2) لو مفيش DB أو حصل خطأ → نرجع للملف المحلى known_chats.json.
     """
     global KNOWN_CHAT_IDS
+
+    loaded_from_db = False
+
+    # أولاً: التحميل من PostgreSQL
     try:
-        if os.path.exists(KNOWN_CHATS_FILE):
-            with open(KNOWN_CHATS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, list):
-                for cid in data:
-                    try:
-                        KNOWN_CHAT_IDS.add(int(cid))
-                    except Exception:
-                        continue
-            elif isinstance(data, dict):
-                # لو اتخزن dict بالخطأ فى أى وقت، نجرب ناخد القيم
-                for cid in data.values():
-                    try:
-                        KNOWN_CHAT_IDS.add(int(cid))
-                    except Exception:
-                        continue
-            logger.info(
-                "Loaded %d known chat ids from %s",
-                len(KNOWN_CHAT_IDS),
-                KNOWN_CHATS_FILE,
-            )
+        conn = get_pg_conn()
+        if conn:
+            ensure_known_chats_table()
+            with conn.cursor() as cur:
+                cur.execute("SELECT chat_id FROM known_chats")
+                rows = cur.fetchall()
+            for (cid,) in rows:
+                try:
+                    KNOWN_CHAT_IDS.add(int(cid))
+                except Exception:
+                    continue
+            if rows:
+                loaded_from_db = True
+                logger.info(
+                    "Loaded %d known chat ids from PostgreSQL",
+                    len(KNOWN_CHAT_IDS),
+                )
     except Exception as e:
-        logger.exception("Error loading known chats: %s", e)
-    finally:
-        # نتأكد دايمًا إن الـ ADMIN_CHAT_ID موجود
-        KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
+        logger.exception("Error loading known chats from PostgreSQL: %s", e)
+
+    # ثانياً: لو ماقدرناش من الـ DB → نحاول من الملف المحلى
+    if not loaded_from_db:
+        try:
+            if os.path.exists(KNOWN_CHATS_FILE):
+                with open(KNOWN_CHATS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    for cid in data:
+                        try:
+                            KNOWN_CHAT_IDS.add(int(cid))
+                        except Exception:
+                            continue
+                elif isinstance(data, dict):
+                    # لو اتخزن dict بالخطأ فى أى وقت، نجرب ناخد القيم
+                    for cid in data.values():
+                        try:
+                            KNOWN_CHAT_IDS.add(int(cid))
+                        except Exception:
+                            continue
+                logger.info(
+                    "Loaded %d known chat ids from %s",
+                    len(KNOWN_CHAT_IDS),
+                    KNOWN_CHATS_FILE,
+                )
+        except Exception as e:
+            logger.exception("Error loading known chats from file: %s", e)
+
+    # نتأكد دايمًا إن الـ ADMIN_CHAT_ID موجود
+    KNOWN_CHAT_IDS.add(ADMIN_CHAT_ID)
 
 def register_known_chat(chat_id: int):
     """
@@ -219,7 +310,7 @@ def auto_register_from_update(update):
         # نبلع أى خطأ هنا عشان ما يكسرش البوت
         pass
 
-# تحميل الشاتات من الملف عند أول استيراد لـ config
+# تحميل الشاتات من الملف/قاعدة البيانات عند أول استيراد لـ config
 try:
     _load_known_chats()
 except Exception as e:
