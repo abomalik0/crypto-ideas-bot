@@ -183,9 +183,9 @@ def _save_known_chats():
     # 1) حفظ فى الملف المحلى
     try:
         data = sorted(int(cid) for cid in KNOWN_CHAT_IDS)
-        with open(KNOWN_CHAT_IDS_FILE, "w", encoding="utf-8") as f:
+        with open(KNOWN_CHATS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
-        logger.info("Saved %d known chat ids to %s", len(data), KNOWN_CHAT_IDS_FILE)
+        logger.info("Saved %d known chat ids to %s", len(KNOWN_CHAT_IDS), KNOWN_CHATS_FILE)
     except Exception as e:
         logger.exception("Error saving known chats to file: %s", e)
 
@@ -397,7 +397,7 @@ LAST_SMART_ALERT_TS: float = 0.0
 LAST_CRITICAL_ALERT_TS: float = 0.0
 
 # Threshold للإنذار المبكر
-EARLY_WARNING_THRESHOLD: float = 70.0
+EARLY_WARNING_THRESHOLD: float = 60.0  # كان 70.0 لرفع حساسية الإنذار المبكر
 
 # سجل تنبيهات الذكى (يختلف عن ALERTS_HISTORY العام)
 ALERT_HISTORY = deque(maxlen=200)
