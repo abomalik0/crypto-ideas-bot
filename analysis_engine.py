@@ -1133,9 +1133,9 @@ def format_ultra_smart_alert_from_snapshot(snapshot: dict) -> str:
     speed_index = pulse.get("speed_index", 0.0)
     liquidity_text = metrics.get("liquidity_pulse", "")
 
-    if "خروج" in liquidity_text أو "تصريف" in liquidity_text:
+    if "خروج" in liquidity_text or "تصريف" in liquidity_text:
         liquidity_pressure = 75.0
-    elif "الدخول" in liquidity_text أو "تجميع" in liquidity_text:
+    elif "الدخول" in liquidity_text or "تجميع" in liquidity_text:
         liquidity_pressure = 60.0
     elif "متوازنة" in liquidity_text:
         liquidity_pressure = 40.0
