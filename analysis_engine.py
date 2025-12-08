@@ -448,19 +448,23 @@ def _compute_volatility_regime(volatility_score: float, range_pct: float) -> str
 
 def update_market_pulse(metrics: dict) -> dict:
     """
-    تحديث نبض السوق وتخزين آخر القراءات فى PULSE_HISTORY داخل config.
+    تحديث نبض السوق وتخزين آخر القراءات فى PULSE_HISTORY داخل config
+    مع حساب إحصائيات تاريخية (متوسط + انحراف معيارى + percentiles)
+    لاستخدامها فى بناء قراءات ديناميكية أدق.
     """
-    price = metrics["price"]
-    change = metrics["change_pct"]
-    range_pct = metrics["range_pct"]
-    vol = metrics["volatility_score"]
+    price = float(metrics["price"])
+    change = float(metrics["change_pct"])
+    range_pct = float(metrics["range_pct"])
+    vol = float(metrics["volatility_score"])
 
     regime = _compute_volatility_regime(vol, range_pct)
 
+    # -------- تهيئة / استخدام تاريخ النبض --------
     history = getattr(config, "PULSE_HISTORY", None)
     if history is None:
         from collections import deque
-        history = deque(maxlen=30)
+        maxlen = getattr(config, "PULSE_HISTORY_MAXLEN", 120)
+        history = deque(maxlen=maxlen)
         config.PULSE_HISTORY = history  # type: ignore[assignment]
 
     prev_entry = history[-1] if len(history) > 0 else None
@@ -469,10 +473,10 @@ def update_market_pulse(metrics: dict) -> dict:
     now = time.time()
     entry = {
         "time": now,
-        "price": float(price),
-        "change_pct": float(change),
-        "volatility_score": float(vol),
-        "range_pct": float(range_pct),
+        "price": price,
+        "change_pct": change,
+        "volatility_score": vol,
+        "range_pct": range_pct,
         "regime": regime,
     }
     history.append(entry)
@@ -480,12 +484,22 @@ def update_market_pulse(metrics: dict) -> dict:
     hist_list = list(history)
     n = len(hist_list)
 
+    def _mean(values: list[float]) -> float:
+        return sum(values) / len(values) if values else 0.0
+
+    def _std(values: list[float], m: float) -> float:
+        if not values:
+            return 0.0
+        var = sum((v - m) ** 2 for v in values) / max(1, len(values) - 1)
+        return var ** 0.5
+
+    # -------- سرعة الحركة & التسارع مثل الإصدار القديم --------
     if n >= 2:
         diffs = [
             abs(hist_list[i]["change_pct"] - hist_list[i - 1]["change_pct"])
             for i in range(1, n)
         ]
-        avg_diff = sum(diffs) / len(diffs) if diffs else 0.0
+        avg_diff = _mean(diffs)
     else:
         avg_diff = 0.0
 
@@ -499,12 +513,13 @@ def update_market_pulse(metrics: dict) -> dict:
             abs(hist_list[i]["change_pct"] - hist_list[i - 1]["change_pct"])
             for i in range(mid, n)
         ]
-        early_avg = sum(early_diffs) / len(early_diffs) if early_diffs else 0.0
-        late_avg = sum(late_diffs) / len(late_diffs) if late_diffs else 0.0
+        early_avg = _mean(early_diffs)
+        late_avg = _mean(late_diffs)
         accel = late_avg - early_avg
     else:
         accel = 0.0
 
+    # -------- ثقة الاتجاه من التاريخ القريب --------
     if n >= 3:
         recent = hist_list[-6:] if n >= 6 else hist_list
         same_sign_count = 0
@@ -515,9 +530,39 @@ def update_market_pulse(metrics: dict) -> dict:
                 same_sign_count += 1
             elif change < 0 and c < 0:
                 same_sign_count += 1
-        direction_confidence = (same_sign_count / total) * 100.0 if total else 0.0
+        direction_conf = (same_sign_count / total) * 100.0 if total else 0.0
     else:
-        direction_confidence = 0.0
+        direction_conf = 0.0
+
+    # -------- baseline ديناميكى (متوسط + std + percentiles) --------
+    if n >= 10:
+        changes = [float(e["change_pct"]) for e in hist_list]
+        vols = [float(e["volatility_score"]) for e in hist_list]
+        ranges = [float(e["range_pct"]) for e in hist_list]
+
+        mean_change = _mean(changes)
+        std_change = _std(changes, mean_change)
+
+        mean_vol = _mean(vols)
+        std_vol = _std(vols, mean_vol)
+
+        mean_range = _mean(ranges)
+        std_range = _std(ranges, mean_range)
+
+        sorted_vols = sorted(vols)
+        rank = sum(1 for v in sorted_vols if v <= vol)
+        vol_percentile = (rank / len(sorted_vols)) * 100.0 if sorted_vols else 0.0
+
+        sorted_ranges = sorted(ranges)
+        rank_r = sum(1 for v in sorted_ranges if v <= range_pct)
+        range_percentile = (
+            (rank_r / len(sorted_ranges)) * 100.0 if sorted_ranges else 0.0
+        )
+    else:
+        mean_change = std_change = 0.0
+        mean_vol = std_vol = 0.0
+        mean_range = std_range = 0.0
+        vol_percentile = range_percentile = 0.0
 
     speed_index = max(0.0, min(100.0, avg_diff * 8.0))
     accel_index = max(-100.0, min(100.0, accel * 10.0))
@@ -532,8 +577,16 @@ def update_market_pulse(metrics: dict) -> dict:
         "prev_regime": prev_regime,
         "speed_index": speed_index,
         "accel_index": accel_index,
-        "direction_confidence": direction_confidence,
+        "direction_confidence": direction_conf,
         "history_len": n,
+        "mean_change": mean_change,
+        "std_change": std_change,
+        "mean_vol": mean_vol,
+        "std_vol": std_vol,
+        "mean_range": mean_range,
+        "std_range": std_range,
+        "vol_percentile": vol_percentile,
+        "range_percentile": range_percentile,
     }
 
     return pulse
@@ -602,20 +655,36 @@ def classify_alert_level(
     pulse: dict,
     events: dict,
 ) -> dict:
-    change = metrics["change_pct"]
-    range_pct = metrics["range_pct"]
-    vol = metrics["volatility_score"]
+    """
+    تصنيف مستوى التحذير بناءً على Shock Score ديناميك
+    يعتمد على:
+      - التقلب والمدى والتغير
+      - سرعة الحركة
+      - percentiles
+      - الأحداث المؤسسية
+      - مستوى المخاطر العام
+    """
+    change = float(metrics["change_pct"])
+    range_pct = float(metrics["range_pct"])
+    vol = float(metrics["volatility_score"])
 
-    speed = pulse["speed_index"]
-    accel = pulse["accel_index"]
-    direction_conf = pulse["direction_confidence"]
+    speed = float(pulse.get("speed_index", 0.0))
+    accel = float(pulse.get("accel_index", 0.0))
+    direction_conf = float(pulse.get("direction_confidence", 0.0))
     risk_level = risk["level"]
 
+    vol_pct = float(pulse.get("vol_percentile", 0.0))
+    range_pctile = float(pulse.get("range_percentile", 0.0))
+
     shock_score = 0.0
-    shock_score += min(40.0, vol * 0.4)
+
+    shock_score += min(35.0, vol * 0.35)
     shock_score += min(20.0, max(0.0, range_pct - 3.0) * 1.2)
     shock_score += min(20.0, abs(change) * 2.0)
     shock_score += min(10.0, speed * 0.25)
+
+    if vol_pct >= 80 or range_pctile >= 80:
+        shock_score += 10.0
 
     if change < 0 and accel > 0:
         shock_score += min(10.0, accel * 0.5)
@@ -663,22 +732,43 @@ def classify_alert_level(
 
 
 def compute_potential_zones(metrics: dict, pulse: dict, risk: dict) -> dict:
-    price = metrics["price"]
-    high = metrics["high"]
-    low = metrics["low"]
-    change = metrics["change_pct"]
-    range_abs = max(0.0, high - low)
+    """
+    حساب مناطق الهبوط والصعود التقريبية بناءً على:
+      - مدى اليوم الحالى (High-Low)
+      - نظام التقلب (calm / normal / expansion / explosion)
+      - مستوى المخاطر العام
+    """
+    price = float(metrics["price"])
+    high = float(metrics["high"])
+    low = float(metrics["low"])
+    change = float(metrics["change_pct"])
 
+    if price <= 0:
+        price = max(1.0, abs(high) or abs(low) or 1.0)
+
+    range_abs = max(0.0, high - low)
     if range_abs <= 0:
         range_abs = price * 0.02
 
     base_range = range_abs
 
-    vol = metrics["volatility_score"]
-    if vol >= 70:
-        base_range *= 1.2
-    elif vol <= 25:
+    vol = float(metrics["volatility_score"])
+    regime = pulse.get("regime")
+    risk_level = risk["level"]
+
+    if regime == "explosion" or vol >= 70:
+        base_range *= 1.3
+    elif regime == "expansion" or vol >= 50:
+        base_range *= 1.1
+    elif regime == "calm" and vol <= 20:
         base_range *= 0.8
+    else:
+        base_range *= 1.0
+
+    if risk_level == "high":
+        base_range *= 1.15
+    elif risk_level == "low":
+        base_range *= 0.9
 
     down_zone_1_low = price - 0.25 * base_range
     down_zone_1_high = price - 0.12 * base_range
@@ -705,7 +795,6 @@ def compute_potential_zones(metrics: dict, pulse: dict, risk: dict) -> dict:
         "downside_zone_2": (round(down_zone_2_low, 2), round(down_zone_2_high, 2)),
         "upside_zone_1": (round(up_zone_1_low, 2), round(up_zone_1_high, 2)),
         "upside_zone_2": (round(up_zone_2_low, 2), round(up_zone_2_high, 2)),
-        # mid-points لسهولة إرسال أهداف واضحة للمستخدم
         "downside_mid_1": round((down_zone_1_low + down_zone_1_high) / 2, 2),
         "downside_mid_2": round((down_zone_2_low + down_zone_2_high) / 2, 2),
         "upside_mid_1": round((up_zone_1_low + up_zone_1_high) / 2, 2),
@@ -724,55 +813,78 @@ def detect_early_movement_signal(
 ) -> dict | None:
     """
     رصد مبكر لحركة قوية محتملة (هبوط / صعود) قبل اكتمال الانفجار الكامل.
-    يعتمد على:
-      - سرعة التغير فى العائدات (speed_index)
-      - تسارع الحركة (accel_index)
-      - التقلب اليومى
-      - أحداث مؤسسية مثل Panic Drop / Liquidity Shock
+    الإصدار المحسّن يعتمد على:
+      - Z-Score للتغير اليومى مقابل المتوسط التاريخى
+      - Z-Score للتقلب والمدى
+      - سرعة وتَسارع الحركة
+      - أحداث مؤسسية
+      - مستوى المخاطر العام
     """
-    change = metrics["change_pct"]
-    vol = metrics["volatility_score"]
-    range_pct = metrics["range_pct"]
+    change = float(metrics["change_pct"])
+    vol = float(metrics["volatility_score"])
+    range_pct = float(metrics["range_pct"])
     risk_level = risk["level"]
 
-    speed = pulse["speed_index"]
-    accel = pulse["accel_index"]
-    regime = pulse["regime"]
-    direction_conf = pulse.get("direction_confidence", 0.0)
+    speed = float(pulse.get("speed_index", 0.0))
+    accel = float(pulse.get("accel_index", 0.0))
+    regime = pulse.get("regime")
+    direction_conf = float(pulse.get("direction_confidence", 0.0))
+
+    mean_change = float(pulse.get("mean_change", 0.0))
+    std_change = float(pulse.get("std_change", 0.0)) or 0.0
+    mean_vol = float(pulse.get("mean_vol", 0.0))
+    std_vol = float(pulse.get("std_vol", 0.0)) or 0.0
+    mean_range = float(pulse.get("mean_range", 0.0))
+    std_range = float(pulse.get("std_range", 0.0)) or 0.0
+
+    def _z(v: float, m: float, s: float) -> float:
+        if s <= 0:
+            return 0.0
+        return (v - m) / s
+
+    z_change = _z(change, mean_change, std_change)
+    z_vol = _z(vol, mean_vol, std_vol)
+    z_range = _z(range_pct, mean_range, std_range)
 
     score = 0.0
-    direction = None
+    direction: str | None = None
     reasons: list[str] = []
 
-    # سرعة الحركة
-    if speed >= 40:
+    if abs(z_change) >= 2.5:
         score += 25.0
-        reasons.append("تسارع سريع فى الحركة اللحظية.")
-    elif speed >= 25:
+        reasons.append("تغير يومى خارج النطاق المعتاد تاريخيًا (حركة شاذة قوية).")
+    elif abs(z_change) >= 1.5:
         score += 15.0
-        reasons.append("زيادة ملحوظة فى سرعة الحركة.")
+        reasons.append("تغير يومى أعلى من المتوسط التاريخى بصورة واضحة.")
 
-    # التقلب والمدى
-    if vol >= 60 or range_pct >= 7:
+    if z_vol >= 2.0 or z_range >= 2.0:
         score += 20.0
-        reasons.append("تقلب مرتفع يشير لاحتمال انفجار سعرى.")
-    elif vol >= 45:
+        reasons.append("تقلب ومدى يومى أعلى بكثير من النمط المعتاد.")
+    elif z_vol >= 1.0 or z_range >= 1.0:
         score += 10.0
-        reasons.append("تقلب فوق المتوسط يدعم حركة قوية.")
+        reasons.append("ارتفاع ملحوظ فى التقلب مقارنة بالقراءات السابقة.")
 
-    # التسارع عبر الزمن
-    if accel > 0 and abs(change) >= 1.0:
+    if speed >= 40:
+        score += 20.0
+        reasons.append("زيادة واضحة فى سرعة الحركة اللحظية.")
+    elif speed >= 25:
+        score += 10.0
+        reasons.append("سرعة الحركة فوق المتوسط بقليل.")
+
+    if abs(accel) >= 10:
         score += 15.0
-        reasons.append("تسارع فى التغير اليومى مقارنة بالقراءات السابقة.")
+        reasons.append("تسارع حاد فى تغير الحركة خلال آخر قراءات.")
+    elif abs(accel) >= 5:
+        score += 8.0
+        reasons.append("تسارع ملحوظ فى تغير الحركة.")
 
-    # الأحداث المؤسسية
     if events.get("panic_drop"):
         score += 25.0
         direction = "down"
-        reasons.append("إشارات تشبه Panic Drop مبكر.")
+        reasons.append("إشارات Panic Drop مبكرة على البيتكوين.")
     if events.get("liquidity_shock"):
         score += 15.0
-        reasons.append("صدمة سيولة محتملة.")
+        reasons.append("صدمة سيولة محتملة تؤثر على الاستقرار.")
     if events.get("momentum_spike_down"):
         score += 15.0
         direction = "down"
@@ -783,33 +895,33 @@ def detect_early_movement_signal(
             direction = "up"
         reasons.append("اندفاع صاعد سريع (Momentum Spike Up).")
 
-    # اتجاه مبنى على التغير العام لو لسه مش محدد
     if direction is None:
         if change <= -1.5 and direction_conf >= 55:
             direction = "down"
         elif change >= 1.5 and direction_conf >= 55:
             direction = "up"
 
-    # تعديل حسب مستوى المخاطر
     if risk_level == "high":
         score += 10.0
     elif risk_level == "medium":
         score += 5.0
 
+    if regime == "explosion":
+        score += 5.0
+
     score = max(0.0, min(100.0, score))
 
-    # لو الإشارة ضعيفة أو الاتجاه مش واضح → لا نعتبرها Early Warning
     if score < 45.0 or direction is None:
         return None
 
-    if score >= 75:
+    if score >= 80:
         window_minutes = 5
-    elif score >= 60:
+    elif score >= 65:
         window_minutes = 10
     else:
         window_minutes = 15
 
-    confidence = min(100.0, score + (direction_conf * 0.2))
+    confidence = min(100.0, score + (direction_conf * 0.25))
     reason_text = " ".join(reasons) if reasons else "إشارة مبكرة لحركة قوية محتملة."
 
     return {
@@ -1021,9 +1133,9 @@ def format_ultra_smart_alert_from_snapshot(snapshot: dict) -> str:
     speed_index = pulse.get("speed_index", 0.0)
     liquidity_text = metrics.get("liquidity_pulse", "")
 
-    if "خروج" in liquidity_text or "تصريف" in liquidity_text:
+    if "خروج" in liquidity_text أو "تصريف" in liquidity_text:
         liquidity_pressure = 75.0
-    elif "الدخول" in liquidity_text or "تجميع" in liquidity_text:
+    elif "الدخول" in liquidity_text أو "تجميع" in liquidity_text:
         liquidity_pressure = 60.0
     elif "متوازنة" in liquidity_text:
         liquidity_pressure = 40.0
@@ -1142,7 +1254,7 @@ def format_analysis(user_symbol: str) -> str:
 
     base, binance_symbol, kucoin_symbol = normalize_symbol(user_symbol)
     display_symbol = (
-        binance_symbol if exchange == "binance" else kucoin_symbol
+        binance_symbol إذا exchange == "binance" else kucoin_symbol
     ).replace("-", "")
 
     support = round(low * 0.99, 6) if low > 0 else round(price * 0.95, 6)
@@ -1740,9 +1852,9 @@ ETH يتحرك فى اتجاه جانبى مرتبط بدرجة كبيرة بح�
 
     report = _shrink_text_preserve_content(report)
     return report
-    # ==============================
+
+# ==============================
 #   Hybrid PRO Direction Engine
-#   (Early Direction + Targets + Probabilities)
 # ==============================
 
 def compute_hybrid_pro_core() -> dict | None:
@@ -1763,7 +1875,6 @@ def compute_hybrid_pro_core() -> dict | None:
     zones = snapshot["zones"]
     alert_level = snapshot["alert_level"]
 
-    # نعيد استخدام Fusion AI لرفع مستوى الذكاء
     fusion = fusion_ai_brain(metrics, risk)
 
     price = float(metrics["price"])
@@ -1781,9 +1892,6 @@ def compute_hybrid_pro_core() -> dict | None:
     shock_score = float(alert_level.get("shock_score", 0.0))
     trend_bias = alert_level.get("trend_bias", "neutral")
 
-    # ---------------------------
-    #   تحويل السيولة لقوة رقمية
-    # ---------------------------
     liquidity_pressure = 50.0
     lp = (liquidity_pulse or "") + " " + (strength_label or "")
 
@@ -1796,7 +1904,6 @@ def compute_hybrid_pro_core() -> dict | None:
     if "متوازنة" in lp:
         liquidity_pressure = 50.0
 
-    # تعديل بسيط حسب اتجاه التغير
     if change < 0:
         liquidity_pressure += 5.0
     elif change > 0:
@@ -1804,10 +1911,6 @@ def compute_hybrid_pro_core() -> dict | None:
 
     liquidity_pressure = max(0.0, min(100.0, liquidity_pressure))
 
-    # ---------------------------
-    #   تحديد الاتجاه الأقرب
-    # ---------------------------
-    # نستخدم مزيج من: trend_bias + Fusion + Pulse + change
     p_up = fusion["p_up"]
     p_down = fusion["p_down"]
     p_side = fusion["p_side"]
@@ -1819,14 +1922,10 @@ def compute_hybrid_pro_core() -> dict | None:
     else:
         trend_word = "تماسك / حركة جانبية"
 
-    # ---------------------------
-    #   صياغة سبب الاتجاه
-    # ---------------------------
     events_labels = events.get("active_labels", []) or []
     if events_labels:
         reason_short = "النظام يلتقط حالياً: " + " / ".join(events_labels)
     else:
-        # fallback بسيط لو مفيش أحداث خاصة
         if vol >= 60 and abs(change) >= 3:
             reason_short = "زيادة قوية فى التقلب مع حركة سعرية حادة."
         elif liquidity_pressure >= 70:
@@ -1836,9 +1935,6 @@ def compute_hybrid_pro_core() -> dict | None:
         else:
             reason_short = "توازن نسبى فى السيولة مع مراقبة حذرة للاتجاه."
 
-    # ---------------------------
-    #   صياغة قوة الزخم والمومنتوم
-    # ---------------------------
     if speed_index >= 60 and abs(accel_index) >= 10:
         momentum_note = "الحركة الحالية سريعة ومُتسارعة بشكل واضح (Momentum عالى)."
     elif speed_index >= 35:
@@ -1848,9 +1944,6 @@ def compute_hybrid_pro_core() -> dict | None:
     else:
         momentum_note = "سرعة الحركة متوسطة مع زخم قابل للتغير سريعاً."
 
-    # ---------------------------
-    #   تلخيص السيولة بصورة مفهومة
-    # ---------------------------
     if liquidity_pressure >= 75:
         liquidity_note = "ضغط سيولة هابط واضح (خروج أموال من السوق)."
     elif liquidity_pressure >= 60:
@@ -1862,9 +1955,6 @@ def compute_hybrid_pro_core() -> dict | None:
     else:
         liquidity_note = "لا يوجد حتى الآن انحراف حاد فى سلوك السيولة."
 
-    # ---------------------------
-    #   صياغة اتجاه متوقع لفظياً
-    # ---------------------------
     if trend_word == "هبوط":
         expected_direction_strong = (
             "القراءات الحالية ترجّح سيناريو هبوط قادم أو استمرار للضغط البيعى "
@@ -1881,9 +1971,6 @@ def compute_hybrid_pro_core() -> dict | None:
             "وأى كسر واضح لأحد الأطراف قد يفتح حركة قوية فى نفس الاتجاه."
         )
 
-    # ---------------------------
-    #   إدماج نظام التحذير المبكر Early Warning
-    # ---------------------------
     early = detect_early_movement_signal(metrics, pulse, events, risk)
     if early and early.get("active"):
         try:
@@ -1902,9 +1989,6 @@ def compute_hybrid_pro_core() -> dict | None:
     else:
         early = None
 
-    # ---------------------------
-    #   استخراج مناطق الأهداف من Zones
-    # ---------------------------
     dz1_low, dz1_high = zones["downside_zone_1"]
     dz2_low, dz2_high = zones["downside_zone_2"]
     uz1_low, uz1_high = zones["upside_zone_1"]
@@ -1941,19 +2025,11 @@ def compute_hybrid_pro_core() -> dict | None:
 
     return core
 
-
 # ==============================
-#   C-Level Institutional Block (for Ultra PRO Alert)
+#   C-Level Institutional Block
 # ==============================
 
 def build_c_level_institutional_block(core: dict) -> str:
-    """
-    فقرة مؤسسية مختصرة تناسب C-Level:
-      - Shock Score + مستوى التحذير
-      - الاتجاه السائد
-      - السيولة والزخم
-      - توزيع الاحتمالات 24–72 ساعة
-    """
     price = core.get("price", 0.0)
     change = core.get("change", 0.0)
     vol = core.get("volatility_score", 0.0)
@@ -1990,19 +2066,11 @@ def build_c_level_institutional_block(core: dict) -> str:
     )
     return block
 
-
 # ==============================
-#   بلوك الأهداف المبكر (أقرب أهداف + زمن تقريبى + سبب)
+#   بلوك الأهداف المبكر
 # ==============================
 
 def _build_directional_targets_block(core: dict) -> str:
-    """
-    يبنى بلوك يوضح:
-      - الاتجاه المرجّح (صعود / هبوط)
-      - أقرب هدفين محتملين (من مناطق Zones)
-      - الإطار الزمنى التقريبى
-      - السبب الرئيسى للحركة (من السيولة + الزخم + الأحداث المبكرة)
-    """
     try:
         price = float(core.get("price") or 0.0)
         trend_word = core.get("trend_word") or "غير محدد"
@@ -2024,7 +2092,6 @@ def _build_directional_targets_block(core: dict) -> str:
     if price <= 0:
         return ""
 
-    # مناطق الأهداف
     dz1_low, dz1_high = core.get("down_zone_1", (price * 0.97, price * 0.99))
     dz2_low, dz2_high = core.get("down_zone_2", (price * 0.94, price * 0.97))
     uz1_low, uz1_high = core.get("up_zone_1", (price * 1.01, price * 1.03))
@@ -2035,8 +2102,7 @@ def _build_directional_targets_block(core: dict) -> str:
     u1_mid = round((uz1_low + uz1_high) / 2, 2)
     u2_mid = round((uz2_low + uz2_high) / 2, 2)
 
-    # تحديد الاتجاه العملى من الاحتمالات + الترند
-    direction = None  # "up" / "down"
+    direction = None
 
     if prob_down >= prob_up + 10 and prob_down >= prob_side:
         direction = "down"
@@ -2048,7 +2114,6 @@ def _build_directional_targets_block(core: dict) -> str:
         elif "صعود" in trend_word:
             direction = "up"
 
-    # لو التحذير المبكر شغال، نعطيه أولوية فى الاتجاه
     if early and early.get("active"):
         try:
             if early["direction"] == "down":
@@ -2059,10 +2124,8 @@ def _build_directional_targets_block(core: dict) -> str:
             pass
 
     if not direction:
-        # مفيش اتجاه واضح → ما نطلعش بلوك أهداف عشان مانخدعش المستخدم
         return ""
 
-    # إطار زمنى تقريبى للحركة (Minutes/Hours/Session)
     intensity = (
         abs(core.get("change", 0.0)) * 0.7
         + vol * 0.5
@@ -2072,7 +2135,6 @@ def _build_directional_targets_block(core: dict) -> str:
     )
 
     if early and early.get("active"):
-        # لو فى تحذير مبكر، نستخدم نافذة الزمن منه
         window = int(early.get("window_minutes", 15))
         if window <= 10:
             time_hint = (
@@ -2098,7 +2160,6 @@ def _build_directional_targets_block(core: dict) -> str:
                 "⏱ الإطار الزمنى المرجّح: خلال <b>جلسة اليوم</b> ما لم يهدأ الزخم."
             )
 
-    # سبب الحركة — نستخدم مزيج من السبب القصير + السيولة + الزخم + (التحذير المبكر لو موجود)
     reasons_lines: list[str] = []
     if reason_short:
         reasons_lines.append(reason_short)
@@ -2160,19 +2221,11 @@ def _build_directional_targets_block(core: dict) -> str:
 
     return "\n".join(lines)
 
-
 # ==============================
-#   Ultra PRO Alert (Stable + Targets)
+#   Ultra PRO Alert
 # ==============================
 
 def format_ultra_pro_alert():
-    """
-    Ultra PRO + C-LEVEL integrated alert (Stable Version)
-    النسخة المتوافقة مع النظام الحالي مع إضافة:
-      - دمج التحذير المبكر
-      - بلوك أهداف دقيق (صعود/هبوط) + زمن تقريبى + سبب الحركة
-    """
-
     core = compute_hybrid_pro_core()
     if not core:
         return (
@@ -2181,7 +2234,6 @@ def format_ultra_pro_alert():
         )
 
     try:
-        # ========== قراءة القيم من CORE ==========
         price = core.get("price", 0.0)
         change = core.get("change", 0.0)
         range_pct = core.get("range_pct", 0.0)
@@ -2208,7 +2260,6 @@ def format_ultra_pro_alert():
         prob_down = int(round(core.get("prob_down", 0)))
         prob_side = int(round(core.get("prob_side", 0)))
 
-        # ========== مناطق الأهداف ==========
         dz1_low, dz1_high = core.get("down_zone_1", (price * 0.97, price * 0.99))
         dz2_low, dz2_high = core.get("down_zone_2", (price * 0.94, price * 0.97))
         uz1_low, uz1_high = core.get("up_zone_1", (price * 1.01, price * 1.03))
@@ -2219,7 +2270,6 @@ def format_ultra_pro_alert():
         u1_mid = round((uz1_low + uz1_high) / 2, 2)
         u2_mid = round((uz2_low + uz2_high) / 2, 2)
 
-        # ========== ترجمة مستوى التحذير ==========
         if level == "critical":
             level_label = "حرِج جدًا"
         elif level == "high":
@@ -2231,12 +2281,10 @@ def format_ultra_pro_alert():
         else:
             level_label = "طبيعى"
 
-        # ========== بلوك C-Level ==========
         c_level_block = build_c_level_institutional_block(core)
 
         today_str = datetime.utcnow().strftime("%Y-%m-%d")
 
-        # ========== الرسالة الأساسية ==========
         msg = f"""
 🚨 <b>تنبيه فورى — اندفاع {trend_word} قوى يتفعّل الآن!</b>
 
@@ -2290,7 +2338,6 @@ def format_ultra_pro_alert():
 <b>IN CRYPTO Ai 🤖 — Ultra PRO Alert Engine</b>
 """.strip()
 
-        # ========== بلوك الأهداف المبكر (دقيق) ==========
         targets_block = _build_directional_targets_block(core)
         if targets_block:
             msg = msg + "\n━━━━━━━━━━━━━━━━━━\n" + targets_block
