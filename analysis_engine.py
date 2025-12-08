@@ -1254,7 +1254,7 @@ def format_analysis(user_symbol: str) -> str:
 
     base, binance_symbol, kucoin_symbol = normalize_symbol(user_symbol)
     display_symbol = (
-        binance_symbol إذا exchange == "binance" else kucoin_symbol
+        binance_symbol if exchange == "binance" else kucoin_symbol
     ).replace("-", "")
 
     support = round(low * 0.99, 6) if low > 0 else round(price * 0.95, 6)
