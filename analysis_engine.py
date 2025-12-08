@@ -1750,6 +1750,7 @@ def compute_hybrid_pro_core() -> dict | None:
     نواة التحليل المؤسسى الاحترافى:
       - دمج Smart Snapshot + Fusion AI + Pulse Engine + Zones
       - استخراج اتجاه واضح + أهداف هبوط/صعود + نسب احتمالات
+      - إدماج نظام التحذير المبكر Early Warning داخل القرار
     """
     snapshot = compute_smart_market_snapshot()
     if not snapshot:
@@ -1784,7 +1785,7 @@ def compute_hybrid_pro_core() -> dict | None:
     #   تحويل السيولة لقوة رقمية
     # ---------------------------
     liquidity_pressure = 50.0
-    lp = liquidity_pulse + " " + strength_label
+    lp = (liquidity_pulse or "") + " " + (strength_label or "")
 
     if "خروج" in lp or "هبوط" in lp or "ضغوط بيعية" in lp:
         liquidity_pressure = 70.0
@@ -1881,6 +1882,27 @@ def compute_hybrid_pro_core() -> dict | None:
         )
 
     # ---------------------------
+    #   إدماج نظام التحذير المبكر Early Warning
+    # ---------------------------
+    early = detect_early_movement_signal(metrics, pulse, events, risk)
+    if early and early.get("active"):
+        try:
+            dir_txt = "هابط" if early["direction"] == "down" else "صاعد"
+            expected_direction_strong = (
+                f"⚠️ نظام التحذير المبكر يلتقط حالياً إشارة {dir_txt} قوية "
+                f"بدرجة ثقة تقارب {early['confidence']:.0f}/100 خلال "
+                f"{early['window_minutes']} دقيقة قادمة. {early['reason']}"
+            )
+            if early["direction"] == "down":
+                trend_word = "هبوط"
+            elif early["direction"] == "up":
+                trend_word = "صعود"
+        except Exception:
+            pass
+    else:
+        early = None
+
+    # ---------------------------
     #   استخراج مناطق الأهداف من Zones
     # ---------------------------
     dz1_low, dz1_high = zones["downside_zone_1"]
@@ -1914,6 +1936,7 @@ def compute_hybrid_pro_core() -> dict | None:
         "down_zone_2": (dz2_low, dz2_high),
         "up_zone_1": (uz1_low, uz1_high),
         "up_zone_2": (uz2_low, uz2_high),
+        "early_signal": early,
     }
 
     return core
@@ -1967,10 +1990,187 @@ def build_c_level_institutional_block(core: dict) -> str:
     )
     return block
 
+
+# ==============================
+#   بلوك الأهداف المبكر (أقرب أهداف + زمن تقريبى + سبب)
+# ==============================
+
+def _build_directional_targets_block(core: dict) -> str:
+    """
+    يبنى بلوك يوضح:
+      - الاتجاه المرجّح (صعود / هبوط)
+      - أقرب هدفين محتملين (من مناطق Zones)
+      - الإطار الزمنى التقريبى
+      - السبب الرئيسى للحركة (من السيولة + الزخم + الأحداث المبكرة)
+    """
+    try:
+        price = float(core.get("price") or 0.0)
+        trend_word = core.get("trend_word") or "غير محدد"
+        range_pct = float(core.get("range_pct") or 0.0)
+        vol = float(core.get("volatility_score") or 0.0)
+        shock = float(core.get("shock_score") or 0.0)
+        speed_idx = float(core.get("speed_index") or 0.0)
+        accel_idx = float(core.get("accel_index") or 0.0)
+        prob_up = float(core.get("prob_up") or 0.0)
+        prob_down = float(core.get("prob_down") or 0.0)
+        prob_side = float(core.get("prob_side") or 0.0)
+        liquidity_note = core.get("liquidity_note") or ""
+        momentum_note = core.get("momentum_note") or ""
+        reason_short = core.get("reason_short") or ""
+        early = core.get("early_signal")
+    except Exception:
+        return ""
+
+    if price <= 0:
+        return ""
+
+    # مناطق الأهداف
+    dz1_low, dz1_high = core.get("down_zone_1", (price * 0.97, price * 0.99))
+    dz2_low, dz2_high = core.get("down_zone_2", (price * 0.94, price * 0.97))
+    uz1_low, uz1_high = core.get("up_zone_1", (price * 1.01, price * 1.03))
+    uz2_low, uz2_high = core.get("up_zone_2", (price * 1.03, price * 1.06))
+
+    d1_mid = round((dz1_low + dz1_high) / 2, 2)
+    d2_mid = round((dz2_low + dz2_high) / 2, 2)
+    u1_mid = round((uz1_low + uz1_high) / 2, 2)
+    u2_mid = round((uz2_low + uz2_high) / 2, 2)
+
+    # تحديد الاتجاه العملى من الاحتمالات + الترند
+    direction = None  # "up" / "down"
+
+    if prob_down >= prob_up + 10 and prob_down >= prob_side:
+        direction = "down"
+    elif prob_up >= prob_down + 10 and prob_up >= prob_side:
+        direction = "up"
+    else:
+        if "هبوط" in trend_word:
+            direction = "down"
+        elif "صعود" in trend_word:
+            direction = "up"
+
+    # لو التحذير المبكر شغال، نعطيه أولوية فى الاتجاه
+    if early and early.get("active"):
+        try:
+            if early["direction"] == "down":
+                direction = "down"
+            elif early["direction"] == "up":
+                direction = "up"
+        except Exception:
+            pass
+
+    if not direction:
+        # مفيش اتجاه واضح → ما نطلعش بلوك أهداف عشان مانخدعش المستخدم
+        return ""
+
+    # إطار زمنى تقريبى للحركة (Minutes/Hours/Session)
+    intensity = (
+        abs(core.get("change", 0.0)) * 0.7
+        + vol * 0.5
+        + speed_idx * 0.4
+        + abs(accel_idx) * 0.8
+        + shock * 0.3 / 10.0
+    )
+
+    if early and early.get("active"):
+        # لو فى تحذير مبكر، نستخدم نافذة الزمن منه
+        window = int(early.get("window_minutes", 15))
+        if window <= 10:
+            time_hint = (
+                f"⏱ الإطار الزمنى المرجّح: خلال <b>{window} دقيقة تقريبًا</b> "
+                "لو استمر نفس الزخم الحالى."
+            )
+        else:
+            time_hint = (
+                f"⏱ الإطار الزمنى المرجّح: خلال <b>{window}–30 دقيقة</b> "
+                "مع مراقبة تغير سرعة الحركة."
+            )
+    else:
+        if intensity >= 30 or speed_idx >= 70 or abs(accel_idx) >= 10:
+            time_hint = (
+                "⏱ الإطار الزمنى المرجّح: خلال <b>دقائق إلى ساعة</b> فى حال استمرار نفس الزخم."
+            )
+        elif intensity >= 18:
+            time_hint = (
+                "⏱ الإطار الزمنى المرجّح: خلال <b>1 – 3 ساعات</b> القادمة."
+            )
+        else:
+            time_hint = (
+                "⏱ الإطار الزمنى المرجّح: خلال <b>جلسة اليوم</b> ما لم يهدأ الزخم."
+            )
+
+    # سبب الحركة — نستخدم مزيج من السبب القصير + السيولة + الزخم + (التحذير المبكر لو موجود)
+    reasons_lines: list[str] = []
+    if reason_short:
+        reasons_lines.append(reason_short)
+    if liquidity_note:
+        reasons_lines.append(f"سلوك السيولة: {liquidity_note}")
+    if momentum_note:
+        reasons_lines.append(f"سلوك الزخم: {momentum_note}")
+    if early and early.get("active"):
+        try:
+            dir_ar = "هابط" if early["direction"] == "down" else "صاعد"
+            reasons_lines.append(
+                f"إضافة إلى ذلك، نظام التحذير المبكر يلتقط إشارة {dir_ar} "
+                f"بدرجة ثقة ~{early['confidence']:.0f}/100."
+            )
+        except Exception:
+            pass
+
+    if not reasons_lines:
+        reasons_lines.append(
+            "لا توجد إشارة واحدة مسيطرة، لكن تداخل السيولة والزخم يعطى هذا الاتجاه أفضلية نسبية."
+        )
+
+    dir_txt = "🔻 <b>سيناريو هبوط متوقع</b>" if direction == "down" else "🔼 <b>سيناريو صعود متوقع</b>"
+
+    lines = [
+        "🎯 <b>أهداف الحركة المتوقعة (قراءة مبكرة دقيقة)</b>",
+        "",
+        dir_txt,
+        f"- السعر الحالى تقريباً: <code>{price:,.0f}$</code>",
+    ]
+
+    if direction == "down":
+        lines.append(
+            f"- الهدف الأول الأقرب: <b>{d1_mid:,.0f}$</b>  (منطقة {dz1_low:,.0f}$ – {dz1_high:,.0f}$)"
+        )
+        lines.append(
+            f"- الهدف الثانى الأعمق: <b>{d2_mid:,.0f}$</b>  (منطقة {dz2_low:,.0f}$ – {dz2_high:,.0f}$)"
+        )
+    else:
+        lines.append(
+            f"- الهدف الأول الأقرب: <b>{u1_mid:,.0f}$</b>  (منطقة {uz1_low:,.0f}$ – {uz1_high:,.0f}$)"
+        )
+        lines.append(
+            f"- الهدف الثانى الأوسع: <b>{u2_mid:,.0f}$</b>  (منطقة {uz2_low:,.0f}$ – {uz2_high:,.0f}$)"
+        )
+
+    lines.append(time_hint)
+
+    lines.append("")
+    lines.append("📌 <b>سبب الحركة من منظور IN CRYPTO Ai:</b>")
+    for r in reasons_lines:
+        lines.append(f"- {r}")
+
+    lines.append("")
+    lines.append(
+        "⚠️ هذه الأهداف تعليمية مبنية على بيانات البيتكوين اللحظية "
+        "وليست توصية مباشرة بالدخول أو الخروج."
+    )
+
+    return "\n".join(lines)
+
+
+# ==============================
+#   Ultra PRO Alert (Stable + Targets)
+# ==============================
+
 def format_ultra_pro_alert():
     """
     Ultra PRO + C-LEVEL integrated alert (Stable Version)
-    النسخة المتوافقة مع النظام الحالي بدون أى مفاتيح غير موجودة.
+    النسخة المتوافقة مع النظام الحالي مع إضافة:
+      - دمج التحذير المبكر
+      - بلوك أهداف دقيق (صعود/هبوط) + زمن تقريبى + سبب الحركة
     """
 
     core = compute_hybrid_pro_core()
@@ -2034,7 +2234,6 @@ def format_ultra_pro_alert():
         # ========== بلوك C-Level ==========
         c_level_block = build_c_level_institutional_block(core)
 
-        from datetime import datetime
         today_str = datetime.utcnow().strftime("%Y-%m-%d")
 
         # ========== الرسالة الأساسية ==========
@@ -2090,6 +2289,11 @@ def format_ultra_pro_alert():
 
 <b>IN CRYPTO Ai 🤖 — Ultra PRO Alert Engine</b>
 """.strip()
+
+        # ========== بلوك الأهداف المبكر (دقيق) ==========
+        targets_block = _build_directional_targets_block(core)
+        if targets_block:
+            msg = msg + "\n━━━━━━━━━━━━━━━━━━\n" + targets_block
 
         return _shrink_text_preserve_content(msg, limit=3800)
 
