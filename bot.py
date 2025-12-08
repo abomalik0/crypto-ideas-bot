@@ -26,6 +26,8 @@ from analysis_engine import (
     detect_alert_condition,
     compute_smart_market_snapshot,
     format_ultra_pro_alert,
+    fusion_ai_brain,
+    compute_hybrid_pro_core,
 )
 import services
 
@@ -291,7 +293,7 @@ def webhook():
         if is_admin:
             admin_block = (
                 "\n📌 <b>أوامر الإدارة:</b>\n"
-                "• <code>/alert</code> — إرسال تنبيه Ultra PRO للجميع\n"
+                "• <code>/alert</code> — إرسال تنبيه Ultra PRO (اختبار للأدمن فقط)\n"
                 "• <code>/test_smart</code> — فحص Smart Alert Snapshot اللحظى\n"
                 "• <code>/status</code> — حالة النظام (APIs / Threads / مخاطر)\n"
                 "• <code>/weekly_now</code> — إرسال التقرير الأسبوعى الآن لكل الشاتات\n"
@@ -393,9 +395,61 @@ def webhook():
     # ==============================
 
     if lower_text == "/btc":
-        reply = services.get_cached_response(
+        # التحليل الأساسى من المحرك القديم (مع كاش)
+        base_text = services.get_cached_response(
             "btc_analysis", lambda: format_analysis("BTCUSDT")
         )
+
+        header = ""
+        try:
+            snapshot = compute_smart_market_snapshot()
+        except Exception as e:
+            config.logger.exception("Error in /btc snapshot: %s", e)
+            snapshot = None
+
+        if snapshot:
+            metrics = snapshot.get("metrics") or {}
+            risk = snapshot.get("risk") or {}
+
+            price = metrics.get("price")
+            change = metrics.get("change_pct")
+            vol = metrics.get("volatility_score")
+            range_pct = metrics.get("range_pct")
+
+            try:
+                fusion = fusion_ai_brain(metrics, risk)
+            except Exception as e:
+                config.logger.exception("fusion_ai_brain error in /btc: %s", e)
+                fusion = None
+
+            from analysis_engine import _risk_level_ar as _rl_txt
+            risk_level = (risk or {}).get("level")
+            risk_emoji = (risk or {}).get("emoji", "")
+            risk_name = _rl_txt(risk_level) if risk_level else "غير معروف"
+
+            bias_text = fusion["bias_text"] if fusion and "bias_text" in fusion else "لا توجد قراءة اتجاه واضحة."
+            strength_label = metrics.get("strength_label", "-")
+            liquidity_pulse = metrics.get("liquidity_pulse", "-")
+
+            if price is not None:
+                try:
+                    p = float(price)
+                    ch = float(change or 0.0)
+                    v = float(vol or 0.0)
+                    r = float(range_pct or 0.0)
+                    header = (
+                        "🧭 <b>ملخص سريع لوضع البيتكوين الآن:</b>\n"
+                        f"• السعر اللحظى: <b>${p:,.0f}</b> | تغير 24 ساعة: <b>{ch:+.2f}%</b>\n"
+                        f"• قوة التقلب: <b>{v:.1f}</b> / 100 | مدى اليوم ≈ <b>{r:.2f}%</b>\n"
+                        f"• قوة الحركة: {strength_label}\n"
+                        f"• نبض السيولة: {liquidity_pulse}\n"
+                        f"• الاتجاه العام حسب الذكاء الاصطناعى: {bias_text}\n"
+                        f"• مستوى المخاطر: {risk_emoji} <b>{risk_name}</b>\n\n"
+                    )
+                except Exception as e:
+                    config.logger.exception("Header format error in /btc: %s", e)
+
+        reply = header + base_text
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
@@ -434,33 +488,32 @@ def webhook():
     #      أوامر الإدارة (Admin)
     # ==============================
 
-    # ===== أمر /alert الرسمى (Ultra PRO) =====
+    # ===== أمر /alert — الآن اختبار Ultra PRO للأدمن فقط =====
     if lower_text == "/alert":
         if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
             return jsonify(ok=True)
 
-        # بناء Ultra PRO (أو fallback لو حصل أى مشكلة)
-        alert_text = format_ultra_pro_alert()
+        try:
+            alert_text = format_ultra_pro_alert()
+        except Exception as e:
+            config.logger.exception("format_ultra_pro_alert failed: %s", e)
+            alert_text = None
+
         if not alert_text:
             alert_text = services.get_cached_response("alert_text", format_ai_alert)
 
-        # بث التحذير على كل الشاتات:
-        # - المستخدمين ↩ نفس التحذير بدون زر.
-        # - الأدمن ↩ نفس التحذير مع زر "عرض التفاصيل 📊" (داخل broadcast_ultra_pro_to_all_chats).
+        # إرسال فقط فى شات الأدمن اللى نفّذ الأمر (اختبار)
         try:
-            sent_count = services.broadcast_ultra_pro_to_all_chats(
-                alert_text,
-                silent=False,
-            )
+            send_message(chat_id, alert_text)
         except Exception as e:
-            config.logger.exception("Error broadcasting /alert: %s", e)
-            sent_count = 0
+            config.logger.exception("Error sending /alert to admin chat: %s", e)
 
         add_alert_history(
-            "manual_ultra",
-            f"Manual /alert (Ultra PRO broadcast, sent_to={sent_count})",
+            "manual_ultra_test",
+            "Manual /alert (ADMIN TEST ONLY, no broadcast)",
         )
+
         return jsonify(ok=True)
 
     # ==============================
@@ -647,6 +700,13 @@ def dashboard_api():
 
     from analysis_engine import _risk_level_ar as _rl_txt
 
+    pro_core = None
+    try:
+        pro_core = compute_hybrid_pro_core()
+    except Exception as e:
+        config.logger.exception("dashboard_api: compute_hybrid_pro_core failed: %s", e)
+        pro_core = None
+
     return jsonify(
         ok=True,
         price=metrics["price"],
@@ -668,6 +728,7 @@ def dashboard_api():
         last_webhook_tick=config.LAST_WEBHOOK_TICK,
         last_watchdog_tick=config.LAST_WATCHDOG_TICK,
         last_smart_alert_tick=config.LAST_SMART_ALERT_TICK,
+        pro_alert_core=pro_core,
     )
 
 
