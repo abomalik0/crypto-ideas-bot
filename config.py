@@ -183,9 +183,9 @@ def _save_known_chats():
     # 1) حفظ فى الملف المحلى
     try:
         data = sorted(int(cid) for cid in KNOWN_CHAT_IDS)
-        with open(KNOWN_CHATS_FILE, "w", encoding="utf-8") as f:
+        with open(KNOWN_CHAT_IDS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
-        logger.info("Saved %d known chat ids to %s", len(data), KNOWN_CHATS_FILE)
+        logger.info("Saved %d known chat ids to %s", len(data), KNOWN_CHAT_IDS_FILE)
     except Exception as e:
         logger.exception("Error saving known chats to file: %s", e)
 
@@ -561,13 +561,4 @@ KEEP_ALIVE_INTERVAL = int(os.getenv("KEEP_ALIVE_INTERVAL", "240"))   # كل 4 د
 
 # 🔥 Test Mode — لتجربة Ultra PRO من smart_alert_loop
 # مهم: نخليها False فى التشغيل العادى علشان مايبعتش تحذير تجريبى بعد كل Restart
-FORCE_TEST_ULTRA_PRO = True
-
-# ==============================
-#  مزامنة أولية مع قاعدة البيانات
-# ==============================
-try:
-    # نكتب الشاتات المعروفة حاليًا (وفيها ADMIN_CHAT_ID) فى PostgreSQL
-    _save_known_chats()
-except Exception as e:
-    logger.exception("Initial sync of known chats failed: %s", e)
+FORCE_TEST_ULTRA_PRO = False
