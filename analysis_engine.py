@@ -2348,37 +2348,20 @@ def format_ultra_pro_alert():
         return f"⚠️ حدث خطأ أثناء إنشاء Ultra PRO Alert: {e}"
 
 
-# =====================================================
-#   Ultra Market Engine V12 — Multi-Timeframe & Patterns
-#   (Layer أعلى فوق المحرك الأساسى بدون كسر أى واجهة)
-# =====================================================
-
-# نحاول نستخدم كاش بسيط للـ klines علشان منضغطش على Binance
-try:
-    KLINES_CACHE = getattr(config, "KLINES_CACHE")
-except Exception:  # pragma: no cover - احتياطى
-    KLINES_CACHE = {}
-    try:
-        setattr(config, "KLINES_CACHE", KLINES_CACHE)
-    except Exception:
-        pass
-
+# ==============================
+#   Ultra Market Engine V12 – Multi-Timeframe & Advanced Structure
+# ==============================
 
 def _fetch_binance_klines(symbol: str, interval: str, limit: int = 120):
     """
-    جلب شموع من Binance لفريم معين.
-    نستخدم كاش بسيط بزمن قصير لتقليل الضغط على الـ API.
+    جلب شموع من باينانس لرمز وفريم محدد.
+    نستخدمها فى:
+      - Multi-Timeframe Context
+      - كشف الشمعات
+      - ICT / Harmonic / Elliott / Liquidity Map (بشكل مبسط)
     """
-    cache_key = f"KLINES:{symbol}:{interval}:{limit}"
-    now = time.time()
-    item = KLINES_CACHE.get(cache_key)
-    ttl = 30.0  # 30 ثانية لكل فريم كـ افتراض آمن
-
-    if item and (now - item["time"] <= ttl):
-        return item["data"]
-
-    url = "https://api.binance.com/api/v3/klines"
     try:
+        url = "https://api.binance.com/api/v3/klines"
         r = config.HTTP_SESSION.get(
             url,
             params={"symbol": symbol, "interval": interval, "limit": limit},
@@ -2386,625 +2369,566 @@ def _fetch_binance_klines(symbol: str, interval: str, limit: int = 120):
         )
         if r.status_code != 200:
             config.logger.info(
-                "Binance klines error %s for %s %s: %s",
+                "Binance kline error %s for %s@%s: %s",
                 r.status_code,
                 symbol,
                 interval,
-                r.text[:120],
+                r.text[:200],
             )
-            return None
-        data = r.json()
-        if not isinstance(data, list) or not data:
-            return None
+            return []
 
-        KLINES_CACHE[cache_key] = {"time": now, "data": data}
-        return data
-    except Exception as e:  # pragma: no cover - حماية إضافية
+        raw = r.json()
+        klines = []
+        for k in raw:
+            # kline format:
+            # [0 open time, 1 open, 2 high, 3 low, 4 close, 5 volume, ...]
+            try:
+                klines.append(
+                    {
+                        "time": float(k[0]) / 1000.0,
+                        "open": float(k[1]),
+                        "high": float(k[2]),
+                        "low": float(k[3]),
+                        "close": float(k[4]),
+                        "volume": float(k[5]),
+                    }
+                )
+            except Exception:
+                continue
+        return klines
+    except Exception as e:
         config.logger.exception("Error fetching klines from Binance: %s", e)
+        return []
+
+
+def _compute_trend_from_klines(klines):
+    """
+    تحديد اتجاه بسيط من الشموع:
+      - نقارن آخر إغلاق بمتوسط إغلاقات آخر 20 شمعة.
+    """
+    if not klines or len(klines) < 10:
+        return {
+            "trend": "neutral",
+            "change_pct": 0.0,
+        }
+
+    closes = [k["close"] for k in klines]
+    last = closes[-1]
+    ref_len = min(20, len(closes))
+    ref = sum(closes[-ref_len:]) / ref_len
+    if ref <= 0:
+        ref = last or 1.0
+    diff_pct = ((last - ref) / ref) * 100.0
+
+    if diff_pct >= 1.2:
+        trend = "strong_up"
+    elif diff_pct >= 0.4:
+        trend = "up"
+    elif diff_pct <= -1.2:
+        trend = "strong_down"
+    elif diff_pct <= -0.4:
+        trend = "down"
+    else:
+        trend = "sideways"
+
+    return {
+        "trend": trend,
+        "change_pct": round(diff_pct, 2),
+    }
+
+
+def _detect_candle_patterns_simple(klines):
+    """
+    كشف مبسط لأشهر نماذج الشموع على آخر 3 شموع من الفريم.
+    الهدف: رسالة واضحة فقط، مش تحليل احترافى كامل.
+    """
+    patterns = []
+    if not klines or len(klines) < 3:
+        return patterns
+
+    last3 = klines[-3:]
+    o1, h1, l1, c1 = last3[0]["open"], last3[0]["high"], last3[0]["low"], last3[0]["close"]
+    o2, h2, l2, c2 = last3[1]["open"], last3[1]["high"], last3[1]["low"], last3[1]["close"]
+    o3, h3, l3, c3 = last3[2]["open"], last3[2]["high"], last3[2]["low"], last3[2]["close"]
+
+    # أحجام الأجساد والذيول
+    body2 = abs(c2 - o2)
+    range2 = h2 - l2
+    body3 = abs(c3 - o3)
+    range3 = h3 - l3
+
+    # Bullish Engulfing
+    if c2 < o2 and c3 > o3 and body3 > body2 * 1.1 and o3 <= c2 and c3 >= o2:
+        patterns.append("ابتلاع شرائى (Bullish Engulfing)")
+
+    # Bearish Engulfing
+    if c2 > o2 and c3 < o3 and body3 > body2 * 1.1 and o3 >= c2 and c3 <= o2:
+        patterns.append("ابتلاع بيعى (Bearish Engulfing)")
+
+    # Pin Bar صاعد
+    upper3 = h3 - max(c3, o3)
+    lower3 = min(c3, o3) - l3
+    if lower3 > body3 * 2 and upper3 < body3 and c3 > o3:
+        patterns.append("شمعة بن بار صاعدة (Bullish Pin Bar)")
+
+    # Pin Bar هابط
+    if upper3 > body3 * 2 and lower3 < body3 and c3 < o3:
+        patterns.append("شمعة بن بار هابطة (Bearish Pin Bar)")
+
+    # Inside Bar (شمعة داخلية)
+    if h3 < h2 and l3 > l2:
+        patterns.append("شمعة داخلية (Inside Bar)")
+
+    return patterns
+
+
+def _detect_ict_signals_basic(klines):
+    """
+    كشف مبسط لأفكار ICT على الفريم (مثل 1H / 4H):
+      - مساواة قمم/قيعان (Equal Highs/Lows)
+      - كسر قمة/قاع ورجوع (Liquidity Grab)
+      - فجوة سعرية بسيطة (Fair Value Gap تقريبى)
+    """
+    signals = []
+    if not klines or len(klines) < 10:
+        return signals
+
+    closes = [k["close"] for k in klines]
+    highs = [k["high"] for k in klines]
+    lows = [k["low"] for k in klines]
+
+    # مساواة قمم أو قيعان قريبة
+    tolerance = 0.001  # نسبى تقريبا 0.1%
+    for i in range(len(highs) - 3, len(highs) - 1):
+        if i <= 0:
+            continue
+        h_prev = highs[i - 1]
+        h_cur = highs[i]
+        if h_prev and abs(h_cur - h_prev) / h_prev < tolerance:
+            signals.append("مساواة قمم قريبة (Buy-Side Liquidity فوق هذه المنطقة).")
+            break
+
+    for i in range(len(lows) - 3, len(lows) - 1):
+        if i <= 0:
+            continue
+        l_prev = lows[i - 1]
+        l_cur = lows[i]
+        if l_prev and abs(l_cur - l_prev) / l_prev < tolerance:
+            signals.append("مساواة قيعان قريبة (Sell-Side Liquidity أسفل هذه المنطقة).")
+            break
+
+    # Liquidity Grab مبسط: شمعة اخترقت قمة ثم أغلقت داخل النطاق السابق
+    for i in range(2, len(klines)):
+        prev_high = highs[i - 1]
+        prev_low = lows[i - 1]
+        k = klines[i]
+        if k["high"] > prev_high and k["close"] < prev_high and k["close"] > prev_low:
+            signals.append("احتمال Liquidity Grab أعلى القمة الأخيرة (Stop Run على المشترين).")
+            break
+        if k["low"] < prev_low and k["close"] > prev_low and k["close"] < prev_high:
+            signals.append("احتمال Liquidity Grab أسفل القاع الأخير (Stop Run على البائعين).")
+            break
+
+    # Fair Value Gap تقريبى: ثلاثة شموع متتالية بفجوة واضحة بين high و low
+    for i in range(2, len(klines)):
+        k1 = klines[i - 2]
+        k2 = klines[i - 1]
+        k3 = klines[i]
+        if k2["low"] > k1["high"] and k2["low"] > k3["high"]:
+            signals.append("فجوة سعرية صاعدة (Fair Value Gap) قد تُعاد زيارتها.")
+            break
+        if k2["high"] < k1["low"] and k2["high"] < k3["low"]:
+            signals.append("فجوة سعرية هابطة (Fair Value Gap) قد تُعاد زيارتها.")
+            break
+
+    return signals
+
+
+def _detect_basic_harmonic_abcd(klines):
+    """
+    هارمونيك مبسط جدًا: نموذج ABCD على آخر 4 نقاط إغلاق.
+    لا يعتبر ماسح احترافى، لكنه يعطى فكرة عامة فقط.
+    """
+    if not klines or len(klines) < 4:
         return None
 
+    closes = [k["close"] for k in klines]
+    c1, c2, c3, c4 = closes[-4], closes[-3], closes[-2], closes[-1]
 
-def _approx_rsi_from_closes(closes, period: int = 14) -> float:
-    """
-    حساب RSI تقريبى من سلسلة أسعار إغلاق.
-    لا يستبدل الحساب الاحترافى لكنه كافى للإشارات العامة.
-    """
-    if not closes or len(closes) < period + 2:
-        return 50.0
-    gains = []
-    losses = []
-    for i in range(1, len(closes)):
-        diff = closes[i] - closes[i - 1]
-        if diff > 0:
-            gains.append(diff)
-        elif diff < 0:
-            losses.append(-diff)
-    if not gains and not losses:
-        return 50.0
-    avg_gain = sum(gains) / max(1, len(gains))
-    avg_loss = sum(losses) / max(1, len(losses))
-    if avg_loss == 0:
-        return 70.0
-    rs = avg_gain / avg_loss
-    rsi = 100.0 - (100.0 / (1.0 + rs))
-    return max(0.0, min(100.0, rsi))
+    ab = c2 - c1
+    bc = c3 - c2
+    cd = c4 - c3
 
+    def _ratio(a, b):
+        if b == 0:
+            return 0.0
+        return abs(a / b)
 
-def _detect_candle_pattern_from_last(open_, high, low, close) -> str:
-    """
-    قراءة نمط الشمعة الأخيرة: ابتلاعية / بن بار / ماروبوزو / غير ذلك.
-    """
-    body = abs(close - open_)
-    full_range = max(0.0000001, high - low)
-    upper_wick = high - max(open_, close)
-    lower_wick = min(open_, close) - low
+    # نموذج ABCD صاعد: up → down → up
+    if ab > 0 and bc < 0 and cd > 0 and abs(ab) > 0 and _ratio(cd, ab) >= 0.7 and _ratio(cd, ab) <= 1.3:
+        return "نموذج ABCD صاعد (احتمالى) قيد التكوين."
 
-    body_ratio = body / full_range
-    upper_ratio = upper_wick / full_range
-    lower_ratio = lower_wick / full_range
+    # نموذج ABCD هابط: down → up → down
+    if ab < 0 and bc > 0 and cd < 0 and abs(ab) > 0 and _ratio(cd, ab) >= 0.7 and _ratio(cd, ab) <= 1.3:
+        return "نموذج ABCD هابط (احتمالى) قيد التكوين."
 
-    is_bull = close > open_
-    is_bear = close < open_
-
-    # ماروبوزو تقريبى
-    if body_ratio >= 0.8:
-        return "شمعة قوية ممتلئة (ماروبوزو تقريبًا) تدل على زخم واضح."
-
-    # بن بار (هامر / شوتينج ستار)
-    if body_ratio <= 0.3:
-        if lower_ratio >= 0.6 and is_bull:
-            return "شمعة بن بار صاعدة (Hammer) تشير لاحتمال امتصاص بيع من القاع."
-        if upper_ratio >= 0.6 and is_bear:
-            return "شمعة بن بار هابطة (Shooting Star) تشير لاحتمال رفض من القمة."
-
-    # شمعة عادية بدون نمط واضح
-    if is_bull:
-        return "شمعة صاعدة عادية بدون نمط انعكاسى واضح."
-    if is_bear:
-        return "شمعة هابطة عادية بدون نمط انعكاسى واضح."
-    return "شمعة حيادية ذات جسم صغير وحركة محدودة."
-
-
-def _detect_engulfing(prev_open, prev_close, open_, close) -> str | None:
-    """
-    رصد ابتلاع صاعد/هابط بسيط من آخر شمعتين.
-    """
-    prev_body = abs(prev_close - prev_open)
-    body = abs(close - open_)
-    if prev_body <= 0:
-        return None
-
-    # ابتلاع صاعد
-    if close > open_ and prev_close < prev_open and body > prev_body:
-        if open_ <= prev_close and close >= prev_open:
-            return "نمط ابتلاع صاعد (Bullish Engulfing) على الشمعتين الأخيرتين."
-    # ابتلاع هابط
-    if close < open_ and prev_close > prev_open and body > prev_body:
-        if open_ >= prev_close and close <= prev_open:
-            return "نمط ابتلاع هابط (Bearish Engulfing) على الشمعتين الأخيرتين."
     return None
 
 
-def _build_timeframe_view(symbol: str, interval: str, limit: int = 80) -> dict:
+def _detect_basic_elliott_wave(klines):
     """
-    بناء قراءة بسيطة لكل فريم:
-      - اتجاه تقريبى
-      - RSI تقريبى
-      - نمط شموع أساسى
+    كشف مبسط للغاية لموجة دافعة (5 موجات) تقريبية:
+      - ننظر لاتجاه الإغلاقات الأخيرة وهل معظمها صعود أو هبوط.
     """
-    klines = _fetch_binance_klines(symbol, interval, limit=limit)
+    if not klines or len(klines) < 7:
+        return "لا توجد قراءة موجية واضحة الآن."
+
+    closes = [k["close"] for k in klines]
+    diffs = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    ups = sum(1 for d in diffs if d > 0)
+    downs = sum(1 for d in diffs if d < 0)
+
+    if ups >= len(diffs) * 0.7:
+        return "حركة تشبه موجة دافعة صاعدة (إليوت) على هذا الفريم."
+    if downs >= len(diffs) * 0.7:
+        return "حركة تشبه موجة دافعة هابطة (إليوت) على هذا الفريم."
+    return "الحركة الحالية أقرب لموجة تصحيحية/جانبية من منظور إليوت."
+
+
+def _build_liquidity_map_basic(klines):
+    """
+    Liquidity Map مبسط:
+      - أعلى 3 قمم قريبة فوق السعر الحالى → مقاومات + سيولة مشترين.
+      - أدنى 3 قيعان قريبة تحت السعر الحالى → دعوم + سيولة بائعين.
+    """
     if not klines:
-        return {
-            "interval": interval,
-            "direction": "neutral",
-            "rsi": 50.0,
-            "candle_note": "لا توجد بيانات كافية للفريم حالياً.",
+        return {"above": [], "below": []}
+
+    highs = [(k["high"], k["time"]) for k in klines]
+    lows = [(k["low"], k["time"]) for k in klines]
+    last_price = klines[-1]["close"]
+
+    above = sorted([h for h in highs if h[0] > last_price], key=lambda x: x[0])[:3]
+    below = sorted([l for l in lows if l[0] < last_price], key=lambda x: x[0], reverse=True)[:3]
+
+    above_levels = [round(x[0], 2) for x in above]
+    below_levels = [round(x[0], 2) for x in below]
+
+    return {
+        "above": above_levels,
+        "below": below_levels,
+        "last_price": round(last_price, 2),
+    }
+
+
+def compute_multi_timeframe_structure(symbol: str = "BTCUSDT"):
+    """
+    Ultra Market Engine V12 – Multi-Timeframe Structure Core
+    يشمل:
+      - 1m / 5m / 15m / 1h / 4h / 1d
+      - كشف شمعات مبسط
+      - ICT Basic Signals
+      - Harmonic ABCD بسيط
+      - Elliott Waves Basic
+      - Liquidity Map
+    """
+    try:
+        tf_map = {
+            "1m": "1m",
+            "5m": "5m",
+            "15m": "15m",
+            "1h": "1h",
+            "4h": "4h",
+            "1d": "1d",
         }
 
-    closes = [float(k[4]) for k in klines]
-    opens = [float(k[1]) for k in klines]
-    highs = [float(k[2]) for k in klines]
-    lows = [float(k[3]) for k in klines]
+        all_data = {}
+        for tf_name, interval in tf_map.items():
+            kl = _fetch_binance_klines(symbol, interval, limit=120)
+            if not kl:
+                all_data[tf_name] = {
+                    "trend": "unknown",
+                    "change_pct": 0.0,
+                    "patterns": [],
+                }
+                continue
 
-    last_close = closes[-1]
-    first_close = closes[0]
-    change_pct = ((last_close - first_close) / first_close) * 100.0 if first_close else 0.0
+            trend_info = _compute_trend_from_klines(kl)
+            patterns = _detect_candle_patterns_simple(kl)
 
-    if change_pct >= 1.5:
-        direction = "bullish"
-    elif change_pct <= -1.5:
-        direction = "bearish"
-    else:
-        direction = "sideways"
+            tf_entry = {
+                "klines": kl,
+                "trend": trend_info["trend"],
+                "change_pct": trend_info["change_pct"],
+                "patterns": patterns,
+            }
 
-    rsi = _approx_rsi_from_closes(closes[-30:])
+            # نضيف ICT / Harmonic / Elliott / Liquidity على الفريمات الأكبر
+            if tf_name in ("1h", "4h", "1d"):
+                tf_entry["ict_signals"] = _detect_ict_signals_basic(kl)
+                tf_entry["harmonic"] = _detect_basic_harmonic_abcd(kl)
+                tf_entry["elliott"] = _detect_basic_elliott_wave(kl)
+                tf_entry["liquidity_map"] = _build_liquidity_map_basic(kl)
 
-    o_last = opens[-1]
-    h_last = highs[-1]
-    l_last = lows[-1]
-    c_last = closes[-1]
+            all_data[tf_name] = tf_entry
 
-    candle_note = _detect_candle_pattern_from_last(o_last, h_last, l_last, c_last)
-    if len(klines) >= 2:
-        o_prev = opens[-2]
-        c_prev = closes[-2]
-        engulf = _detect_engulfing(o_prev, c_prev, o_last, c_last)
-        if engulf:
-            candle_note = engulf + " " + candle_note
-
-    return {
-        "interval": interval,
-        "direction": direction,
-        "rsi": round(rsi, 1),
-        "change_pct": round(change_pct, 2),
-        "candle_note": candle_note,
-        "last_close": last_close,
-    }
-
-
-def _detect_ict_model_on_short_tf(symbol: str) -> dict:
-    """
-    رصد بسيط جدًا لبعض أفكار ICT:
-      - سيولة أعلى/أسفل قمة/قاع قريب (Liquidity Sweep)
-      - فجوة قيمة عادلة صغيرة (FVG) بين آخر 3 شموع
-    """
-    klines = _fetch_binance_klines(symbol, "5m", limit=30)
-    if not klines or len(klines) < 5:
-        return {"active": False, "label": "لا توجد إشارة ICT واضحة حالياً."}
-
-    highs = [float(k[2]) for k in klines]
-    lows = [float(k[3]) for k in klines]
-    closes = [float(k[4]) for k in klines]
-
-    h3, h2, h1 = highs[-3], highs[-2], highs[-1]
-    l3, l2, l1 = lows[-3], lows[-2], lows[-1]
-    c1 = closes[-1]
-
-    ict_label = None
-    ict_detail = None
-
-    if h1 > max(h2, h3) and c1 < (h1 + l1) / 2:
-        ict_label = "Buy-Side Liquidity Sweep"
-        ict_detail = (
-            "تم اختراق قمة قريبة مع إغلاق أسفل منتصف الشمعة → "
-            "إشارة محتملة لاستهداف سيولة المشترين ثم الهبوط (BSSL)."
-        )
-    elif l1 < min(l2, l3) and c1 > (h1 + l1) / 2:
-        ict_label = "Sell-Side Liquidity Sweep"
-        ict_detail = (
-            "تم كسر قاع قريب مع إغلاق أعلى منتصف الشمعة → "
-            "إشارة محتملة لاستهداف سيولة البائعين ثم الصعود (SSSL)."
-        )
-
-    fvg_label = None
-    if highs[-3] < lows[-1]:
-        fvg_label = "Potential Bullish FVG"
-    elif lows[-3] > highs[-1]:
-        fvg_label = "Potential Bearish FVG"
-
-    if not ict_label and not fvg_label:
-        return {"active": False, "label": "لا توجد إشارة ICT قوية حاليًا على فريم 5 دقائق."}
-
-    parts = []
-    if ict_label:
-        parts.append(ict_detail or ict_label)
-    if fvg_label:
-        parts.append("تم رصد فجوة قيمة عادلة صغيرة تدعم قراءة السيولة.")
-
-    return {
-        "active": True,
-        "label": " / ".join(p for p in parts if p),
-        "liquidity_sweep": bool(ict_label),
-        "fvg": bool(fvg_label),
-    }
-
-
-def _detect_basic_harmonic_on_1h(symbol: str) -> dict:
-    """
-    ماسح هارمونيك مبسط جدًا على فريم 1 ساعة.
-    لا يدّعى دقة احترافية، فقط يلتقط حركات تشبه ABCD / Bat تقريبيًا.
-    """
-    klines = _fetch_binance_klines(symbol, "1h", limit=60)
-    if not klines or len(klines) < 10:
-        return {"active": False, "pattern": None, "label": "لا توجد بنية هارمونيك واضحة حاليًا."}
-
-    closes = [float(k[4]) for k in klines]
-
-    swing_highs = []
-    swing_lows = []
-    for i in range(2, len(closes) - 2):
-        c = closes[i]
-        if c > closes[i - 1] and c > closes[i - 2] and c > closes[i + 1] and c > closes[i + 2]:
-            swing_highs.append((i, c))
-        if c < closes[i - 1] and c < closes[i - 2] and c < closes[i + 1] and c < closes[i + 2]:
-            swing_lows.append((i, c))
-
-    swings = sorted(swing_highs + swing_lows, key=lambda x: x[0])
-    if len(swings) < 4:
-        return {"active": False, "pattern": None, "label": "لا توجد موجة كاملة كفاية لقراءة هارمونيك."}
-
-    last_four = swings[-4:]
-    (x_i, x), (a_i, a), (b_i, b), (c_i, c) = last_four
-
-    def _ratio(p1, p2, p3):
-        denom = p1 - p2
-        if denom == 0:
-            return 0.0
-        return (p3 - p2) / denom
-
-    xa = a - x
-    ab = b - a
-    bc = c - b
-    if xa == 0 or ab == 0:
-        return {"active": False, "pattern": None, "label": "لا توجد نسب واضحة للهارمونيك."}
-
-    r_ab = abs(ab / xa)
-    r_bc = abs(bc / ab)
-
-    pattern = None
-    if 0.5 <= r_ab <= 0.886 and 0.382 <= r_bc <= 0.886:
-        pattern = "Potential ABCD / Gartley-like"
-    elif 0.3 <= r_ab <= 0.52 and 0.382 <= r_bc <= 0.886:
-        pattern = "Potential Bat-like structure"
-
-    if not pattern:
-        return {"active": False, "pattern": None, "label": "لا توجد بنية هارمونيك متناسقة بما يكفى حاليًا."}
-
-    return {
-        "active": True,
-        "pattern": pattern,
-        "label": f"تم رصد بنية هارمونيك تقريبية على فريم 1 ساعة: {pattern} (قراءة تعليمية وليست إشارة دخول مباشرة).",
-    }
-
-
-def _detect_basic_elliott_on_1h(symbol: str) -> dict:
-    """
-    محاولة مبسطة جدًا لتمييز ما إذا كانت الحركة الأخيرة أشبه بموجة دافعة (5 موجات)
-    أو تصحيح ثلاثى، بناءً على عدد القمم/القيعان المتتابعة.
-    """
-    klines = _fetch_binance_klines(symbol, "1h", limit=80)
-    if not klines or len(klines) < 20:
-        return {"label": "لا توجد بيانات كافية لقراءة موجات إليوت.", "structure": None, "confidence": 0.0}
-
-    closes = [float(k[4]) for k in klines]
-
-    pivots = []
-    for i in range(2, len(closes) - 2):
-        c = closes[i]
-        if c > closes[i - 1] and c > closes[i - 2] and c > closes[i + 1] and c > closes[i + 2]:
-            pivots.append(("H", i, c))
-        elif c < closes[i - 1] and c < closes[i - 2] and c < closes[i + 1] and c < closes[i + 2]:
-            pivots.append(("L", i, c))
-
-    if len(pivots) < 5:
-        return {"label": "الحركة الحالية أقرب لموجات صغيرة متداخلة بدون هيكل 5 موجات واضح.", "structure": None, "confidence": 0.0}
-
-    last_pivots = pivots[-7:]
-    ups = sum(1 for t, _, _ in last_pivots if t == "H")
-    downs = sum(1 for t, _, _ in last_pivots if t == "L")
-
-    net_move = closes[-1] - closes[-20]
-    impulsive_up = net_move > 0 and ups >= 3
-    impulsive_down = net_move < 0 and downs >= 3
-
-    if impulsive_up or impulsive_down:
-        structure = "impulsive_up" if impulsive_up else "impulsive_down"
-        direction_text = "صاعدة" if impulsive_up else "هابطة"
-        label = (
-            f"الحركة الأخيرة تشبه موجة دافعة {direction_text} (5 موجات تقريبية) "
-            "على فريم 1 ساعة — قراءة تقريبية وليست ترقيم إليوت احترافى."
-        )
-        confidence = 65.0
-    else:
-        structure = "corrective"
-        label = (
-            "الحركة الأخيرة أقرب لموجة تصحيحية/جانبية على فريم 1 ساعة، "
-            "بدون هيكل 5 موجات واضح."
-        )
-        confidence = 55.0
-
-    return {
-        "label": label,
-        "structure": structure,
-        "confidence": confidence,
-    }
-
-
-def _build_liquidity_map_v12(metrics: dict, zones: dict) -> dict:
-    """
-    خريطة سيولة بسيطة فوق/تحت السعر الحالى باستخدام:
-      - هاى ولو اليوم
-      - مناطق الزونز المحسوبة سابقًا
-    """
-    price = float(metrics.get("price") or 0.0)
-    high = float(metrics.get("high") or 0.0)
-    low = float(metrics.get("low") or 0.0)
-
-    dz1_low, dz1_high = zones.get("downside_zone_1", (price * 0.97, price * 0.99))
-    dz2_low, dz2_high = zones.get("downside_zone_2", (price * 0.94, price * 0.97))
-    uz1_low, uz1_high = zones.get("upside_zone_1", (price * 1.01, price * 1.03))
-    uz2_low, uz2_high = zones.get("upside_zone_2", (price * 1.03, price * 1.06))
-
-    liquidity_above = sorted(
-        [lvl for lvl in [high, uz1_low, uz1_high, uz2_low, uz2_high] if lvl > price]
-    )
-    liquidity_below = sorted(
-        [lvl for lvl in [low, dz1_low, dz1_high, dz2_low, dz2_high] if lvl < price],
-        reverse=True,
-    )
-
-    return {
-        "price": price,
-        "day_high": high,
-        "day_low": low,
-        "above": liquidity_above,
-        "below": liquidity_below,
-    }
-
-
-def _compute_trend_strength_v12(fusion: dict, mtf_views: list[dict]) -> dict:
-    """
-    قوة الاتجاه النهائية بناءً على:
-      - bias من Fusion Brain
-      - توافق الفريمات (1m–5m–15m–1h–4h–1d)
-    """
-    bias = fusion.get("bias") or "neutral"
-
-    bullish = 0
-    bearish = 0
-    side = 0
-    for tf in mtf_views:
-        d = tf.get("direction")
-        if d == "bullish":
-            bullish += 1
-        elif d == "bearish":
-            bearish += 1
-        else:
-            side += 1
-
-    total = max(1, bullish + bearish + side)
-    align_score = (max(bullish, bearish) / total) * 100.0
-
-    if bias.startswith("strong_bullish") or bias == "bullish":
-        dir_core = "bullish"
-    elif bias.startswith("strong_bearish") or bias == "bearish":
-        dir_core = "bearish"
-    else:
-        dir_core = "sideways"
-
-    if dir_core == "bullish" and bullish >= bearish:
-        trend_score = min(100.0, 60.0 + align_score * 0.4)
-        label = "اتجاه صاعد قوى نسبيًا مع توافق فريمات جيد."
-    elif dir_core == "bearish" and bearish >= bullish:
-        trend_score = min(100.0, 60.0 + align_score * 0.4)
-        label = "اتجاه هابط قوى نسبيًا مع توافق فريمات جيد."
-    elif align_score <= 40.0:
-        trend_score = 35.0
-        label = "لا يوجد اتجاه واضح — الفريمات متعارضة إلى حد كبير."
-    else:
-        trend_score = 50.0
-        label = "اتجاه متوسط القوة مع اختلاف بين بعض الفريمات."
-
-    return {
-        "trend_score": round(trend_score, 1),
-        "alignment": round(align_score, 1),
-        "label": label,
-        "fusion_bias": bias,
-        "counts": {"bullish": bullish, "bearish": bearish, "sideways": side},
-    }
-
-
-def _compute_sentiment_block_v12(metrics: dict, risk: dict) -> dict:
-    """
-    تكوين مزاج السوق التقريبى (خوف / حذر / تفاؤل / جشع) من:
-      - نسبة التغير
-      - مستوى التقلب
-      - مستوى المخاطر
-    """
-    change = float(metrics.get("change_pct") or 0.0)
-    vol = float(metrics.get("volatility_score") or 0.0)
-    risk_level = risk.get("level")
-
-    sentiment = "حذر"
-    emoji = "😐"
-    note = "السوق يميل إلى الحذر العام مع غياب مزاج متطرف."
-
-    if change <= -4 and vol >= 60:
-        sentiment = "خوف / ذعر"
-        emoji = "😨"
-        note = "حركة هابطة قوية مع تقلب عالى → مزاج خوف واضح بين المشاركين."
-    elif change <= -2 and vol >= 45:
-        sentiment = "خوف"
-        emoji = "😟"
-        note = "ضغوط بيعية ملحوظة تجعل المتداولين أكثر حذرًا."
-    elif change >= 4 and vol >= 60:
-        sentiment = "جشع / نشوة"
-        emoji = "🤩"
-        note = "صعود حاد مع تقلب عالى → مزاج جشع واضح وخطر فقاعة قصيرة."
-    elif change >= 2:
-        sentiment = "تفاؤل"
-        emoji = "😊"
-        note = "صعود ملموس يعكس تفاؤلًا متزايدًا فى السوق."
-    elif abs(change) < 1 and vol < 25:
-        sentiment = "هدوء / ترقّب"
-        emoji = "😴"
-        note = "حركة هادئة نسبيًا مع انتظار محفزات جديدة."
-
-    if risk_level == "high" and sentiment in ("تفاؤل", "جشع / نشوة"):
-        note += " ⚠️ مع ذلك، محرك المخاطر يشير إلى مستوى عالى، ما يزيد احتمالية التصحيحات المفاجئة."
-
-    return {
-        "sentiment": sentiment,
-        "emoji": emoji,
-        "note": note,
-    }
-
-
-def compute_ultra_market_v12_snapshot() -> dict | None:
-    """
-    سناب شوت كامل V12:
-      - نفس العناصر الأساسية (metrics/risk/pulse/alert/zones/early/fusion)
-      - + Multi-Timeframe Views
-      - + ICT / Harmonic / Elliott
-      - + Liquidity Map
-      - + Trend Strength
-      - + Sentiment Block
-    """
-    base = compute_ultra_smart_market_snapshot()
-    if not base:
+        return all_data
+    except Exception as e:
+        config.logger.exception("Error in compute_multi_timeframe_structure: %s", e)
         return None
 
-    metrics = base["metrics"]
-    risk = base["risk"]
-    zones = base["zones"]
-    fusion = base.get("fusion") or fusion_ai_brain(metrics, risk)
 
-    symbol = "BTCUSDT"
-
-    intervals = ["1m", "5m", "15m", "1h", "4h", "1d"]
-    mtf_views: list[dict] = []
-    for iv in intervals:
-        try:
-            mtf_views.append(_build_timeframe_view(symbol, iv, limit=80))
-        except Exception:
-            mtf_views.append(
-                {
-                    "interval": iv,
-                    "direction": "neutral",
-                    "rsi": 50.0,
-                    "candle_note": "تعذر حساب هذا الفريم حاليًا.",
-                }
-            )
-
-    ict = _detect_ict_model_on_short_tf(symbol)
-    harmonic = _detect_basic_harmonic_on_1h(symbol)
-    elliott = _detect_basic_elliott_on_1h(symbol)
-    liq_map = _build_liquidity_map_v12(metrics, zones)
-    trend_strength = _compute_trend_strength_v12(fusion, mtf_views)
-    sentiment_block = _compute_sentiment_block_v12(metrics, risk)
-
-    snap = dict(base)
-    snap.update(
-        {
-            "mtf_views": mtf_views,
-            "ict": ict,
-            "harmonic": harmonic,
-            "elliott": elliott,
-            "liquidity_map": liq_map,
-            "trend_strength_v12": trend_strength,
-            "sentiment_v12": sentiment_block,
-            "fusion": fusion,
-        }
-    )
-    return snap
-
-
-def format_ultra_market_v12_alert() -> str:
+def format_multi_timeframe_block(symbol: str = "BTCUSDT") -> str:
     """
-    رسالة Ultra Market Engine V12 جاهزة للإرسال مباشرة (يمكن ربطها بأمر /ultra_v12 مثلاً).
-    تحتوى على:
-      - ملخص V12
-      - ثم بلوك Ultra PRO Alert الحالى كمرحلة أخيرة.
+    صياغة بلوك نصى مختصر لـ Multi-Timeframe Engine
+    يُستخدم داخل Ultra PRO Alert V12.
     """
-    snap = compute_ultra_market_v12_snapshot()
-    if not snap:
+    data = compute_multi_timeframe_structure(symbol)
+    if not data:
+        return "تعذّر جلب قراءة الــ Multi-Timeframe من المزود فى هذه اللحظة."
+
+    def _trend_label(trend: str) -> str:
+        if trend == "strong_up":
+            return "صعود قوى"
+        if trend == "up":
+            return "صعود"
+        if trend == "strong_down":
+            return "هبوط قوى"
+        if trend == "down":
+            return "هبوط"
+        if trend == "sideways":
+            return "تذبذب جانبى"
+        return "غير واضح"
+
+    # نفصلها لثلاث طبقات: Intraday / Session / Higher Timeframe
+    intraday_tfs = ["1m", "5m", "15m"]
+    session_tfs = ["1h", "4h"]
+    higher_tfs = ["1d"]
+
+    def _summarise_group(tfs):
+        trends = []
+        texts = []
+        for tf in tfs:
+            tf_data = data.get(tf) or {}
+            t = tf_data.get("trend", "unknown")
+            trends.append(t)
+            patterns = tf_data.get("patterns") or []
+            if patterns:
+                texts.append(f"{tf}: " + "، ".join(patterns))
+        # شوف أكتر ترند متكرر
+        if not trends:
+            return "لا توجد بيانات كافية.", "لا توجد أنماط شموع مميزة."
+        main_trend = max(set(trends), key=trends.count)
+        trend_text = _trend_label(main_trend)
+        patterns_text = " / ".join(texts) if texts else "لا توجد نماذج شموع قوية واضحة."
+        return trend_text, patterns_text
+
+    intraday_trend, intraday_patterns = _summarise_group(intraday_tfs)
+    session_trend, session_patterns = _summarise_group(session_tfs)
+    higher_trend, higher_patterns = _summarise_group(higher_tfs)
+
+    # ICT / Harmonic / Elliott / Liquidity من 1H/4H/1D
+    ict_notes = []
+    harmonic_notes = []
+    elliott_notes = []
+    liq_notes = []
+
+    for tf in ("1h", "4h", "1d"):
+        tf_data = data.get(tf) or {}
+        ict = tf_data.get("ict_signals") or []
+        if ict:
+            ict_notes.append(f"{tf}: " + " / ".join(ict))
+
+        harm = tf_data.get("harmonic")
+        if harm:
+            harmonic_notes.append(f"{tf}: {harm}")
+
+        ell = tf_data.get("elliott")
+        if ell:
+            elliott_notes.append(f"{tf}: {ell}")
+
+        lmap = tf_data.get("liquidity_map")
+        if lmap and isinstance(lmap, dict):
+            above = lmap.get("above") or []
+            below = lmap.get("below") or []
+            if above or below:
+                liq_notes.append(
+                    f"{tf}: سيولة فوق الأسعار حوالى: {', '.join(str(x) for x in above) if above else 'لا يوجد'} | "
+                    f"سيولة أسفل الأسعار حوالى: {', '.join(str(x) for x in below) if below else 'لا يوجد'}"
+                )
+
+    ict_text = " / ".join(ict_notes) if ict_notes else "لا توجد إشارات ICT قوية مكتملة حاليًا على الفريمات الكبيرة."
+    harmonic_text = " / ".join(harmonic_notes) if harmonic_notes else "لا يوجد نموذج هارمونيك مكتمل واضح حاليًا، فقط حركات نسبية عادية."
+    elliott_text = " / ".join(elliott_notes) if elliott_notes else "لا توجد موجة إليوت دافعة مكتملة بوضوح الآن، الحركة أقرب لتصحيح/تذبذب."
+    liq_text = " / ".join(liq_notes) if liq_notes else "خريطة السيولة لا تُظهر تجمعات استثنائية قريبة جدًا من السعر الحالى."
+
+    block = f"""
+🧭 <b>Ultra Market Engine V12 – Multi-Timeframe View ({symbol})</b>
+
+<b>Intraday (1m–5m–15m):</b>
+• الاتجاه الغالب: <b>{intraday_trend}</b>
+• نماذج الشموع الأهم: {intraday_patterns}
+
+<b>Session (1H–4H):</b>
+• الاتجاه الغالب: <b>{session_trend}</b>
+• نماذج الشموع الأهم: {session_patterns}
+
+<b>Higher Timeframe (1D):</b>
+• الاتجاه الغالب: <b>{higher_trend}</b>
+• نماذج الشموع الأهم: {higher_patterns}
+
+<b>ICT Models (أسواق السيولة والمؤسسات):</b>
+{ict_text}
+
+<b>Harmonic Scanner (ABCD Basic):</b>
+{harmonic_text}
+
+<b>Elliott Waves (Basic Detection):</b>
+{elliott_text}
+
+<b>Liquidity Map (خريطة السيولة):</b>
+{liq_text}
+""".strip()
+
+    return block
+
+
+# ==============================
+#   Ultra PRO Alert V12 (Final)
+# ==============================
+
+def format_ultra_pro_alert():
+    """
+    النسخة النهائية من Ultra PRO Alert ضمن Ultra Market Engine V12.
+    تعتمد على:
+      - Hybrid PRO Core (الاتجاه + الأهداف + الاحتمالات)
+      - Multi-Timeframe Engine (1m–1D)
+      - ICT / Harmonic / Elliott / Liquidity Map (مبسّط)
+      - Institutional C-Level Block
+      - Directional Targets Block
+    """
+    core = compute_hybrid_pro_core()
+    if not core:
         return (
-            "⚠️ تعذّر إنشاء Ultra Market Engine V12 Snapshot حاليًا بسبب مشكلة فى جلب بيانات السوق.\n"
+            "⚠️ تعذّر إنشاء Ultra PRO Alert حاليًا بسبب مشكلة فى جلب بيانات السوق.\n"
             "حاول مرة أخرى بعد قليل."
         )
 
-    metrics = snap["metrics"]
-    trend_strength = snap["trend_strength_v12"]
-    sentiment_block = snap["sentiment_v12"]
-    mtf_views = snap["mtf_views"]
-    ict = snap["ict"]
-    harmonic = snap["harmonic"]
-    elliott = snap["elliott"]
-    liq_map = snap["liquidity_map"]
-    fusion = snap["fusion"]
+    try:
+        price = core.get("price", 0.0)
+        change = core.get("change", 0.0)
+        range_pct = core.get("range_pct", 0.0)
+        vol = core.get("volatility_score", 0.0)
+        shock = core.get("shock_score", 0.0)
+        level = core.get("level")
 
-    price = metrics["price"]
-    change = metrics["change_pct"]
-    vol = metrics["volatility_score"]
-    range_pct = metrics["range_pct"]
+        trend_word = core.get("trend_word", "غير محدد")
+        trend_sentence = core.get("trend_sentence", "")
 
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        momentum_note = core.get("momentum_note", "")
+        liquidity_note = core.get("liquidity_note", "")
+        liquidity_pressure = core.get("liquidity_pressure", 0.0)
 
-    tf_lines = []
-    for tf in mtf_views:
-        iv = tf["interval"]
-        d = tf["direction"]
-        rsi = tf["rsi"]
-        note = tf.get("candle_note", "")
-        if d == "bullish":
-            d_txt = "صاعد"
-        elif d == "bearish":
-            d_txt = "هابط"
+        speed_idx = core.get("speed_index", 0.0)
+        accel_idx = core.get("accel_index", 0.0)
+
+        strength_label = core.get("strength_label", "")
+        liquidity_pulse = core.get("liquidity_pulse", "")
+        reason_short = core.get("reason_short", "")
+        expected_direction_strong = core.get("expected_direction_strong", "")
+
+        prob_up = int(round(core.get("prob_up", 0)))
+        prob_down = int(round(core.get("prob_down", 0)))
+        prob_side = int(round(core.get("prob_side", 0)))
+
+        dz1_low, dz1_high = core.get("down_zone_1", (price * 0.97, price * 0.99))
+        dz2_low, dz2_high = core.get("down_zone_2", (price * 0.94, price * 0.97))
+        uz1_low, uz1_high = core.get("up_zone_1", (price * 1.01, price * 1.03))
+        uz2_low, uz2_high = core.get("up_zone_2", (price * 1.03, price * 1.06))
+
+        d1_mid = round((dz1_low + dz1_high) / 2, 2)
+        d2_mid = round((dz2_low + dz2_high) / 2, 2)
+        u1_mid = round((uz1_low + uz1_high) / 2, 2)
+        u2_mid = round((uz2_low + uz2_high) / 2, 2)
+
+        if level == "critical":
+            level_label = "حرِج جدًا"
+        elif level == "high":
+            level_label = "مرتفع"
+        elif level == "medium":
+            level_label = "متوسط"
+        elif level == "low":
+            level_label = "مراقبة هادئة"
         else:
-            d_txt = "عرضى / متذبذب"
-        tf_lines.append(
-            f"- {iv}: اتجاه {d_txt} | RSI ≈ {rsi:.1f} | {note}"
-        )
+            level_label = "طبيعى"
 
-    ict_line = ict.get("label") if ict.get("active") else "لا توجد إشارة ICT قوية حاليًا (فريم 5 دقائق)."
-    harm_line = harmonic.get("label")
-    elliott_line = elliott.get("label")
+        c_level_block = build_c_level_institutional_block(core)
+        multi_tf_block = format_multi_timeframe_block("BTCUSDT")
 
-    liq_above = ", ".join(f"{lvl:,.0f}$" for lvl in liq_map.get("above", [])[:4]) or "لا توجد مستويات قريبة فوق السعر."
-    liq_below = ", ".join(f"{lvl:,.0f}$" for lvl in liq_map.get("below", [])[:4]) or "لا توجد مستويات قريبة تحت السعر."
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
 
-    trend_line = trend_strength.get("label")
-    trend_score = trend_strength.get("trend_score")
-    align = trend_strength.get("alignment")
+        msg = f"""
+🚨 <b>Ultra Market Engine V12 — Final Ultra PRO Alert</b>
 
-    sentiment_label = sentiment_block.get("sentiment")
-    sentiment_emoji = sentiment_block.get("emoji")
-    sentiment_note = sentiment_block.get("note")
-
-    fusion_bias = fusion.get("bias_text", "")
-    fusion_smc = fusion.get("smc_view", "")
-    fusion_wyckoff = fusion.get("wyckoff_phase", "")
-
-    header_msg = f"""
-🧬 <b>Ultra Market Engine V12 — Multi-Timeframe Smart Snapshot</b>
 📅 <b>التاريخ:</b> {today_str}
-
-💰 <b>سعر البيتكوين الآن:</b> {price:,.0f}$
+💰 <b>السعر الحالى للبيتكوين:</b> {price:,.0f}$
 📉 <b>تغير 24 ساعة:</b> %{change:+.2f}
 📊 <b>مدى الحركة اليومى:</b> {range_pct:.2f}% — التقلب: {vol:.1f} / 100
+⚡ <b>سرعة الزخم اللحظى:</b> {speed_idx:.1f} / 100
+🏃 <b>تسارع الحركة:</b> {accel_idx:.1f}
+💧 <b>ضغط السيولة التقديرى:</b> {liquidity_pressure:.1f} / 100
 
-🧭 <b>قوة الاتجاه (Trend Strength Engine):</b>
-- {trend_line}
-- درجة قوة الاتجاه: <b>{trend_score:.1f}/100</b>
-- درجة توافق الفريمات: <b>{align:.1f}%</b>
+<b>🎯 الخلاصة المباشرة:</b>
+• الاتجاه الأقوى الآن: <b>{trend_word}</b>
+• السبب الرئيسى: {reason_short}
+• مستوى حالة السوق: <b>{level_label}</b> (Shock Score ≈ {shock:.1f}/100)
 
-😶‍🌫️ <b>مزاج السوق (Sentiment & Volatility):</b>
-- الحالة العامة: {sentiment_emoji} <b>{sentiment_label}</b>
-- {sentiment_note}
+━━━━━━━━━━━━━━━━━━
+📉 <b>لو استمر سيناريو الهبوط:</b>
+• الهدف الأول: <b>{d1_mid:,.0f}$</b>
+• الهدف الثانى: <b>{d2_mid:,.0f}$</b>
+• نطاق الهبوط المتوقع: {dz1_low:,.0f}$ → {dz2_high:,.0f}$
 
-🕒 <b>قراءة Multi-Timeframe (1m–5m–15m–1h–4h–1d):</b>
-{chr(10).join(tf_lines)}
+📈 <b>لو حدث انعكاس وصعود:</b>
+• الهدف الأول: <b>{u1_mid:,.0f}$</b>
+• الهدف الثانى: <b>{u2_mid:,.0f}$</b>
+• نطاق الصعود المتوقع: {uz1_low:,.0f}$ → {uz2_high:,.0f}$
 
-🎯 <b>مدرسة ICT (فريم 5 دقائق):</b>
-- {ict_line}
+━━━━━━━━━━━━━━━━━━
+📊 <b>توزيع الاحتمالات (24–72 ساعة):</b>
+• صعود: <b>{prob_up}%</b>
+• تماسك: <b>{prob_side}%</b>
+• هبوط: <b>{prob_down}%</b>
 
-🎼 <b>هارمونيك:</b>
-- {harm_line}
+━━━━━━━━━━━━━━━━━━
+🧠 <b>قراءة IN CRYPTO Ai:</b>
+• قوة الحركة: {strength_label}
+• نبض السيولة: {liquidity_pulse}
+• تحليل السيولة: {liquidity_note}
+• تحليل الزخم: {momentum_note}
 
-📐 <b>موجات إليوت (قراءة مبسطة):</b>
-- {elliott_line}
+<b>🔍 توقع الذكاء الاصطناعى:</b>
+{expected_direction_strong}
 
-💧 <b>خريطة السيولة (Liquidity Map):</b>
-- أقرب مستويات سيولة فوق السعر: {liq_above}
-- أقرب مستويات سيولة تحت السعر: {liq_below}
+━━━━━━━━━━━━━━━━━━
+{c_level_block}
+━━━━━━━━━━━━━━━━━━
+{multi_tf_block}
+━━━━━━━━━━━━━━━━━━
 
-🧠 <b>ملخص IN CRYPTO Ai (SMC + Wyckoff):</b>
-- الاتجاه: {fusion_bias}
-- SMC: {fusion_smc}
-- مرحلة وايكوف الحالية: {fusion_wyckoff}
+⚠️ <b>ملاحظة:</b>
+هذا التحذير تعليمى يعتمد على الذكاء الاصطناعى (V12 Multi-Timeframe + ICT + Harmonic + Elliott + Liquidity Map)
+وليس توصية تداول مباشرة.
+
+<b>IN CRYPTO Ai 🤖 — Ultra Market Engine V12</b>
 """.strip()
 
-    ultra_pro_text = format_ultra_pro_alert()
+        targets_block = _build_directional_targets_block(core)
+        if targets_block:
+            msg = msg + "\n━━━━━━━━━━━━━━━━━━\n" + targets_block
 
-    full_msg = header_msg + "\n━━━━━━━━━━━━━━━━━━\n" + ultra_pro_text
-    return _shrink_text_preserve_content(full_msg, limit=3900)
+        return _shrink_text_preserve_content(msg, limit=3800)
+
+    except Exception as e:
+        config.logger.exception("Error in Ultra PRO Alert V12: %s", e)
+        return f"⚠️ حدث خطأ أثناء إنشاء Ultra PRO Alert V12: {e}"
