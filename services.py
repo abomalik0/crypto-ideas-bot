@@ -7,6 +7,7 @@ import requests
 from telegram import Bot, ParseMode
 
 import config
+from config import ADMIN_CHAT_ID
 from analysis_engine import (
     format_analysis,
     format_market_report,
@@ -33,13 +34,13 @@ STARTUP_BROADCAST_DELAY_SECONDS: int = 5
 
 def _startup_broadcast_message() -> str:
     """
-    نص رسالة الافتتاح اللى هتتبعت لكل الشاتات بعد تشغيل السيرفر.
+    نص رسالة الافتتاح اللى هتتبعت للـ OWNER بعد تشغيل السيرفر.
     """
     return (
         "🤖 <b>IN CRYPTO AI عاد للعمل</b>\n"
-        "🚀 النظام متصل الآن ويعمل بكامل طاقته.\n"
+        "🚀 السيرفر اشتغل وكل المحركات (Real-Time / Smart Alert / Weekly) تعمل الآن.\n"
         "📡 سيتم إرسال التنبيهات تلقائيًا عند ظهور أى حركة قوية فى السوق.\n\n"
-        "✅ لا تحتاج لكتابة /start مرة أخرى، سيصلك كل شيء تلقائيًا."
+        "هذه الرسالة مرسلة للـ Owner فقط كتنبيه بأن النظام Online ✅"
     )
 
 
@@ -47,8 +48,8 @@ def run_startup_broadcast():
     """
     بعد تشغيل كل الثريدات وخلال أول ثوانى من التشغيل:
       - ننتظر STARTUP_BROADCAST_DELAY_SECONDS
-      - نبعت رسالة افتتاحية لكل الشاتات المعروفة KNOWN_CHAT_IDS
-      - من غير ما نلمس أى لوجيك تانى أو نمسح أى شغل.
+      - نبعت رسالة افتتاحية للـ OWNER فقط (ADMIN_CHAT_ID)
+      - من غير أى Broadcast لباقى الشاتات أو الأدمنات الإضافية.
     """
     global _STARTUP_BROADCAST_DONE
 
@@ -60,29 +61,27 @@ def run_startup_broadcast():
         # تأخير بسيط علشان نتأكد إن كل حاجة اشتغلت (Webhook + Threads)
         time.sleep(STARTUP_BROADCAST_DELAY_SECONDS)
 
-        from config import KNOWN_CHAT_IDS
-
         text = _startup_broadcast_message()
 
-        sent = 0
-        # نبعت لكل الشاتات المسجلة
-        for cid in list(KNOWN_CHAT_IDS):
-            try:
-                config.send_message(
-                    chat_id=cid,
-                    text=text,
-                    parse_mode="HTML",
-                    silent=False,
-                )
-                sent += 1
-            except Exception as e:
-                logger.exception("Startup broadcast failed for chat %s: %s", cid, e)
+        try:
+            config.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=text,
+                parse_mode="HTML",
+                silent=False,
+            )
+            logger.info(
+                "Startup broadcast sent to OWNER only (chat_id=%s).",
+                ADMIN_CHAT_ID,
+            )
+        except Exception as e:
+            logger.exception(
+                "Startup broadcast failed for OWNER chat %s: %s",
+                ADMIN_CHAT_ID,
+                e,
+            )
 
         _STARTUP_BROADCAST_DONE = True
-        logger.info(
-            "Startup broadcast sent to %d known chats (including admin).",
-            sent,
-        )
 
     except Exception as e:
         # حتى لو حصل خطأ، منحبّش نكرر المحاولة بلا نهاية
@@ -1334,7 +1333,7 @@ def start_background_threads(force: bool = False):
       - Watchdog
       - Keep-Alive (Anti-Sleep)
       - Supervisor (IMMORTAL MODE)
-      - Startup Broadcast (رسالة افتتاح بعد الريستارت)
+      - Startup Broadcast (رسالة افتتاح بعد الريستارت — OWNER فقط)
     """
     if getattr(config, "THREADS_STARTED", False) and not force:
         logger.info("Background threads already started, skipping.")
@@ -1387,7 +1386,7 @@ def start_background_threads(force: bool = False):
     )
     supervisor_thread.start()
 
-    # 🔔 Startup broadcast بعد تشغيل كل الثريدات (يتبعت مرة واحدة بس بعد ثوانى)
+    # 🔔 Startup broadcast بعد تشغيل كل الثريدات (يتبعت مرة واحدة بس بعد ثوانى) — OWNER فقط
     startup_thread = threading.Thread(
         target=run_startup_broadcast,
         name="startup_broadcast",
