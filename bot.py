@@ -33,6 +33,52 @@ import services
 
 app = Flask(__name__)
 
+# مجموعة الأوامر المعروفة حتى لا تتداخل مع أوامر الرموز (/btcusdt ...)
+KNOWN_COMMANDS = {
+    "/start",
+    "/btc",
+    "/vai",
+    "/market",
+    "/risk_test",
+    "/alert",
+    "/test_smart",
+    "/status",
+    "/weekly_now",
+    "/add_admin",
+    "/remove_admin",
+    "/school",
+}
+
+# لوحة Inline لمدارس التحليل
+SCHOOL_INLINE_KEYBOARD = {
+    "inline_keyboard": [
+        [
+            {"text": "📘 ICT", "callback_data": "school_ict"},
+            {"text": "🎯 SMC", "callback_data": "school_smc"},
+        ],
+        [
+            {"text": "📚 Wyckoff", "callback_data": "school_wyckoff"},
+            {"text": "🌀 Harmonic", "callback_data": "school_harmonic"},
+        ],
+        [
+            {"text": "🌊 Elliott Waves", "callback_data": "school_elliott"},
+            {"text": "⏱ Time Analysis", "callback_data": "school_time"},
+        ],
+        [
+            {"text": "📈 Price Action", "callback_data": "school_price_action"},
+            {"text": "📦 Supply & Demand", "callback_data": "school_sd"},
+        ],
+        [
+            {"text": "🏛 Classical TA", "callback_data": "school_classic"},
+            {"text": "💧 Liquidity Map", "callback_data": "school_liquidity"},
+        ],
+        [
+            {"text": "🧬 Market Structure", "callback_data": "school_structure"},
+            {"text": "🧭 Multi-Timeframe", "callback_data": "school_multi"},
+        ],
+    ]
+}
+
 
 # ==============================
 #   Helpers صغيرة لـ Smart Alert Test
@@ -199,6 +245,32 @@ def _format_smart_snapshot(snapshot: dict, title: str) -> str:
     return "\n".join(lines)
 
 
+def _format_school_header(code: str) -> str:
+    """
+    مجرد عنوان فوق تحليل المدرسة – التحليل نفسه ييجى من المحرك V16.
+    """
+    mapping = {
+        "ict": "مدرسة ICT – Smart Money Concepts",
+        "smc": "مدرسة SMC – Smart Money",
+        "wyckoff": "مدرسة Wyckoff – مراحل التجميع والتصريف",
+        "harmonic": "مدرسة Harmonic Patterns – نماذج توافقيّة",
+        "elliott": "مدرسة Elliott Waves – موجات إليوت",
+        "time": "المدرسة الزمنية – Time Cycles & Timing",
+        "price_action": "مدرسة Price Action – سلوك السعر",
+        "sd": "مدرسة Supply & Demand – مناطق العرض والطلب",
+        "classic": "المدرسة الكلاسيكية – ترندات ونماذج",
+        "liquidity": "Liquidity Map – خريطة السيولة",
+        "structure": "Market Structure – هيكل السوق",
+        "multi": "Multi-Timeframe Engine – تعدد الفريمات",
+    }
+    title = mapping.get(code, "مدرسة تحليل")
+    return (
+        f"📚 <b>{title}</b>\n"
+        "هذا التحليل تعليمى يعتمد على محرك V16 الكامل (ICT + SMC + Wyckoff + Harmonic + Elliott + Time + Supply/Demand ...)\n"
+        "النتيجة مبنية على BTCUSDT حاليًا، ويمكن توسيعها لاحقًا لعملات أخرى.\n\n"
+    )
+
+
 # ==============================
 #   مسارات أساسية / Webhook
 # ==============================
@@ -239,6 +311,7 @@ def webhook():
         if callback_id:
             answer_callback_query(callback_id)
 
+        # تفاصيل التحذير
         if data == "alert_details":
             if from_id != config.ADMIN_CHAT_ID:
                 if chat_id:
@@ -247,6 +320,24 @@ def webhook():
 
             details = format_ai_alert_details()
             send_message(chat_id, details)
+            return jsonify(ok=True)
+
+        # مدارس التحليل – Inline Keyboard
+        if data and data.startswith("school_"):
+            code = data.split("school_", 1)[1]
+            try:
+                header = _format_school_header(code)
+            except Exception:
+                header = "📚 تحليل مدرسة.\n\n"
+
+            try:
+                # حالياً نستخدم BTCUSDT كمحرك رئيسى
+                body = format_analysis("BTCUSDT")
+            except Exception as e:
+                config.logger.exception("Error in school callback analysis: %s", e)
+                body = "⚠️ حدث خطأ أثناء توليد التحليل من المحرك."
+
+            send_message(chat_id, header + body)
             return jsonify(ok=True)
 
         return jsonify(ok=True)
@@ -280,10 +371,11 @@ def webhook():
             "منظومة <b>ذكاء اصطناعى</b> تتابع حركة <b>البيتكوين</b> والسوق لحظيًا "
             "وتقدّم لك رؤية واضحة بدون تعقيد.\n\n"
             "📌 <b>أوامر المستخدم:</b>\n"
-            "• <code>/btc</code> — تحليل لحظى للبيتكوين\n"
-            "• <code>/coin btc</code> — تحليل أى عملة (مثال: <code>/coin sol</code> أو <code>/coin eth</code>)\n"
+            "• <code>/btc</code> — تحليل لحظى للبيتكوين (BTCUSDT)\n"
+            "• اكتب أى زوج بالشكل: <code>/btcusdt</code>، <code>/ethusdt</code>، <code>/cfxusdt</code>\n"
             "• <code>/market</code> — نظرة عامة على حالة السوق اليوم\n"
-            "• <code>/risk_test</code> — اختبار بسيط لإدارة المخاطر\n\n"
+            "• <code>/risk_test</code> — اختبار بسيط لإدارة المخاطر\n"
+            "• <code>/school</code> — فتح لوحة مدارس التحليل (ICT / Wyckoff / Harmonic / Elliott / Time ...)\n\n"
             "💡 <b>ملاحظة مهمة:</b>\n"
             "كل التحليلات تعليمية ومساعدة لاتخاذ القرار، وليست توصية مباشرة بالشراء أو البيع.\n"
         )
@@ -293,7 +385,7 @@ def webhook():
         if is_admin:
             admin_block = (
                 "\n📌 <b>أوامر الإدارة:</b>\n"
-                "• <code>/alert</code> — إرسال تنبيه Ultra PRO (اختبار للأدمن فقط)\n"
+                "• <code>/alert</code> — إرسال تحذير Ultra PRO V16 (اختبار كامل لنظام التحذير)\n"
                 "• <code>/test_smart</code> — فحص Smart Alert Snapshot اللحظى\n"
                 "• <code>/status</code> — حالة النظام (APIs / Threads / مخاطر)\n"
                 "• <code>/weekly_now</code> — إرسال التقرير الأسبوعى الآن لكل الشاتات\n"
@@ -395,7 +487,7 @@ def webhook():
     # ==============================
 
     if lower_text == "/btc":
-        # التحليل الأساسى من المحرك القديم (مع كاش)
+        # التحليل الأساسى من المحرك القديم (مع كاش) – BTCUSDT
         base_text = services.get_cached_response(
             "btc_analysis", lambda: format_analysis("BTCUSDT")
         )
@@ -468,20 +560,14 @@ def webhook():
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    if lower_text.startswith("/coin"):
-        parts = lower_text.split()
-        if len(parts) < 2:
-            send_message(
-                chat_id,
-                "⚠️ استخدم الأمر هكذا:\n"
-                "<code>/coin btc</code>\n"
-                "<code>/coin btcusdt</code>\n"
-                "<code>/coin sol</code>\n"
-                "<code>/coin eth</code>",
-            )
-        else:
-            reply = format_analysis(parts[1])
-            send_message(chat_id, reply)
+    # لوحة مدارس التحليل
+    if lower_text == "/school":
+        send_message(
+            chat_id,
+            "📚 اختر مدرسة التحليل التى تريدها.\n"
+            "حالياً كل المدارس تعمل على BTCUSDT بمحرك V16 الكامل.",
+            reply_markup=SCHOOL_INLINE_KEYBOARD,
+        )
         return jsonify(ok=True)
 
     # ==============================
@@ -503,7 +589,7 @@ def webhook():
         if not alert_text:
             alert_text = services.get_cached_response("alert_text", format_ai_alert)
 
-        # إرسال فقط فى شات الأدمن اللى نفّذ الأمر (اختبار)
+        # إرسال فقط فى شات الأدمن اللى نفّذ الأمر (اختبار كامل لنظام التحذير)
         try:
             send_message(chat_id, alert_text)
         except Exception as e:
@@ -602,6 +688,27 @@ def webhook():
 
         services.handle_admin_weekly_now_command(chat_id)
         return jsonify(ok=True)
+
+    # ==============================
+    #   أوامر الرموز العامة: /btcusdt /ethusdt /cfxusdt ...
+    # ==============================
+    if text.startswith("/"):
+        # ناخد أول كلمة فى الرسالة، ونحوّلها لسيمبل
+        first_part = text.split()[0]
+        cmd_lower = first_part.lower()
+
+        if cmd_lower not in KNOWN_COMMANDS:
+            symbol = first_part[1:].upper()  # شيل "/" وخلى الباقى كابتل
+            # نسمح حاليًا فقط بأزواج USDT عشان ما نتخبطش فى أوامر تانية
+            if symbol.endswith("USDT") and len(symbol) > 5:
+                try:
+                    reply = format_analysis(symbol)
+                except Exception as e:
+                    config.logger.exception("Error in generic symbol analysis: %s", e)
+                    reply = f"⚠️ حدث خطأ أثناء تحليل <b>{symbol}</b>."
+
+                send_message(chat_id, reply)
+                return jsonify(ok=True)
 
     # أى رسالة أخرى حالياً نتجاهلها / أو ممكن تضيف معالجة بعدين
     return jsonify(ok=True)
