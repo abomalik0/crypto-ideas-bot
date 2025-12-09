@@ -2604,8 +2604,8 @@ def _build_liquidity_map_basic(klines):
     if not klines:
         return {"above": [], "below": []}
 
-    highs = [(k["high"], k.get("time", idx)) for idx, k in enumerate(klines)]
-    lows = [(k["low"], k.get("time", idx)) for idx, k in enumerate(klines)]
+    highs = [(k["high"], k["time"]) for k in klines]
+    lows = [(k["low"], k["time"]) for k in klines]
     last_price = klines[-1]["close"]
 
     above = sorted([h for h in highs if h[0] > last_price], key=lambda x: x[0])[:3]
