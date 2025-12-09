@@ -576,7 +576,7 @@ def realtime_engine_loop():
 
 
 # =====================================================
-#   Smart Alert Engine (Auto Ultra PRO)
+#   Smart Alert Engine (Auto Ultra PRO) — V11
 # =====================================================
 
 
@@ -607,88 +607,17 @@ def _append_alert_history(price, change, level, shock_score, immediate: bool):
     logger.info("Smart alert history appended: %s", entry)
 
 
-def _compute_structural_risk(events: dict, metrics: dict, risk: dict) -> float:
-    """
-    قياس مخاطر هيكلية (On-chain + Macro + Funding + Volatility)
-    من غير ما نكسر أى حاجة لو بعض المفاتيح مش موجودة.
-    """
-
-    whale_inflows = bool(
-        events.get("whale_inflows")
-        or events.get("whales_to_cex")
-        or events.get("whale_spike")
-    )
-    exch_inflows = bool(
-        events.get("exchange_inflows_spike")
-        or events.get("cex_inflows_high")
-        or events.get("cex_inflow_ratio_high")
-    )
-    funding_risk = bool(
-        events.get("funding_risk_long")
-        or events.get("funding_risk_short")
-        or events.get("funding_extreme")
-    )
-    macro_window = bool(
-        events.get("macro_event_window")
-        or events.get("fed_event_window")
-        or events.get("high_impact_news_window")
-    )
-    vol_squeeze = bool(
-        events.get("volatility_squeeze")
-        or events.get("bb_squeeze")
-    )
-    liq_cluster = bool(
-        events.get("liquidation_cluster_up")
-        or events.get("liquidation_cluster_down")
-    )
-
-    # RSI لو متوفر من المحرك
-    rsi_14 = float(metrics.get("rsi_14") or 0.0)
-    rsi_4h = float(metrics.get("rsi_4h") or 0.0)
-
-    structural_risk_score = 0.0
-
-    if whale_inflows:
-        structural_risk_score += 30.0
-    if exch_inflows:
-        structural_risk_score += 25.0
-    if funding_risk:
-        structural_risk_score += 20.0
-    if macro_window:
-        structural_risk_score += 25.0
-    if vol_squeeze:
-        structural_risk_score += 15.0
-    if liq_cluster:
-        structural_risk_score += 10.0
-
-    # تشبع شرائى/بيعى قوى
-    if rsi_14 >= 75 or rsi_4h >= 75:
-        structural_risk_score += 15.0
-    if rsi_14 <= 25 or rsi_4h <= 25:
-        structural_risk_score += 15.0
-
-    # نضيف جزء بسيط من risk score العام إن وجد
-    try:
-        base_risk = float(risk.get("score") or 0.0)
-        structural_risk_score += base_risk * 0.15
-    except Exception:
-        pass
-
-    return structural_risk_score
-
-
 def smart_alert_loop():
     """
-    لوب التحذير الذكى (Ultra PRO Auto) — MILITARY MODE v3.2:
-      - يقرأ snapshot من compute_smart_market_snapshot
-      - مدارس متعددة:
-          * حركة سعرية وزخم (change, shock, speed, accel)
-          * Volatility + Range
-          * On-Chain / حيتان / تدفقات بورصات
-          * Funding / Macro Events / Volatility Squeeze
-          * Early Warning + Momentum + Macro Risk
+    لوب التحذير الذكى (Ultra PRO Auto) — V11 ULTRA:
+      - مبنى على منطق V3/V10 + طبقة "Voting Engine V11".
+      - محرّكات التصويت:
+          * shock / speed / risk / early / momentum / direction_conf / real_move
+          * harmonic / wave / ict (لو متاحة من snapshot)
+      - لو فى توافق ≥ 3 محركات قوية → Alert حتى لو level = None.
+      - إضافة Failsafe لحركة فعلية عنيفة (change كبير + مدى كبير).
     """
-    logger.info("Smart alert loop started.")
+    logger.info("Smart alert loop started (V11 ULTRA).")
     _ = _ensure_bot()  # نتأكد إن البوت جاهز
 
     while True:
@@ -708,6 +637,24 @@ def smart_alert_loop():
             pulse = snapshot["pulse"]
             events = snapshot.get("events") or {}
 
+            # إشارات إضافية (هارمونيك / موجى / ICT) لو التحليل بيطلّعها
+            harmonic = (
+                snapshot.get("harmonic")
+                or snapshot.get("harmonic_signal")
+                or {}
+            )
+            wave = (
+                snapshot.get("wave")
+                or snapshot.get("wave_signal")
+                or snapshot.get("elliott")
+                or {}
+            )
+            ict = (
+                snapshot.get("ict")
+                or snapshot.get("ict_signal")
+                or {}
+            )
+
             price = metrics["price"]
             change = metrics["change_pct"]
             range_pct = metrics["range_pct"]
@@ -721,30 +668,10 @@ def smart_alert_loop():
             direction_conf = float(pulse.get("direction_confidence", 0.0))
 
             risk_score = float(risk.get("score") or 0.0)
-
-            # ===== مخاطر هيكلية (On-chain + Macro + Funding + Vol) =====
-            structural_risk_score = _compute_structural_risk(events, metrics, risk)
-
-            # لو السوق هادى (مدى صغير + فوليوم متوسط) ندى وزن أكبر للمخاطر الهيكلية
-            if abs(change) < 1.0 and range_pct < 4.0 and vol < 5.0:
-                structural_risk_score += 10.0
-
-            # نحاول نجيب early_signal لو الدالة موجودة
-            early_signal = None
-            try:
-                from analysis_engine import detect_early_movement_signal
-
-                early_signal = detect_early_movement_signal(
-                    metrics,
-                    pulse,
-                    events,
-                    risk,
-                )
-            except Exception:
-                early_signal = None
+            structural_risk = float(risk.get("structural_risk", 0.0) or 0.0)
 
             logger.info(
-                "SmartAlert snapshot: price=%.2f chg=%.3f range=%.2f vol=%.1f "
+                "SmartAlert V11 snapshot: price=%s chg=%.3f range=%.2f vol=%.1f "
                 "level=%s shock=%.1f speed=%.1f accel=%.2f conf=%.1f "
                 "risk_score=%.1f structural_risk=%.1f",
                 price,
@@ -757,10 +684,25 @@ def smart_alert_loop():
                 accel_idx,
                 direction_conf,
                 risk_score,
-                structural_risk_score,
+                structural_risk,
             )
 
-            # ========== FORCE TEST ULTRA PRO (One-Shot) ==========
+            # -----------------------------
+            #   V11: composite & move intensity
+            # -----------------------------
+            composite_intensity = (
+                0.4 * shock_score
+                + 0.3 * speed_idx
+                + 0.3 * abs(accel_idx) * 100.0 / 3.0
+            )
+
+            # مؤشر "حركة فعلية" من التغير + مدى اليوم
+            move_intensity = (
+                abs(change) * 8.0  # مثلا 2% → 16 نقطة
+                + max(range_pct, 0.1) * 2.0
+            )
+
+            # ====== FORCE TEST ULTRA PRO (One-Shot, Full Path) ======
             if getattr(config, "FORCE_TEST_ULTRA_PRO", False):
                 try:
                     text = format_ultra_pro_alert()
@@ -773,6 +715,7 @@ def smart_alert_loop():
                         except Exception:
                             pass
 
+                        # فى test mode نبعت بصوت واضح (بدون Silent)
                         sent_count = broadcast_ultra_pro_to_all_chats(text, silent=False)
 
                         now_ts = time.time()
@@ -817,7 +760,7 @@ def smart_alert_loop():
             # ================================================================
 
             # -----------------------------
-            #   منطق اتخاذ القرار
+            #   منطق اتخاذ القرار الأساسى (زى V10 تقريبًا)
             # -----------------------------
             now_ts = time.time()
             last_alert_ts = getattr(config, "LAST_SMART_ALERT_TS", 0.0) or 0.0
@@ -828,13 +771,6 @@ def smart_alert_loop():
                 snapshot.get("adaptive_interval", base_interval_min)
             )
             adaptive_interval_min = max(0.5, adaptive_interval_min)
-
-            # مؤشر مركب لشدة الحركة السعرية اللحظية
-            composite_intensity = (
-                0.4 * shock_score
-                + 0.3 * speed_idx
-                + 0.3 * abs(accel_idx) * 100.0 / 3.0
-            )
 
             # 1) super_critical: حالة انهيار/اندفاع عنيف جدًا
             super_critical = (
@@ -847,7 +783,7 @@ def smart_alert_loop():
             # 2) حالة حرجة قوية لكن ليست قصوى
             immediate_condition = (
                 level in ("high", "critical")
-                and composite_intensity >= 65
+                and composite_intensity >= 70
             ) or (
                 risk_score >= 75
                 and shock_score >= 60
@@ -855,13 +791,26 @@ def smart_alert_loop():
             )
 
             # 3) Early warning قوى قبل الحركة بدقائق
+            early_signal = None
             early_condition = False
-            if (
-                early_signal
-                and early_signal.get("active")
-                and float(early_signal.get("score", 0.0)) >= config.EARLY_WARNING_THRESHOLD
-            ):
-                early_condition = True
+            try:
+                from analysis_engine import detect_early_movement_signal
+
+                early_signal = detect_early_movement_signal(
+                    metrics,
+                    pulse,
+                    events,
+                    risk,
+                )
+                if (
+                    early_signal
+                    and early_signal.get("active")
+                    and float(early_signal.get("score", 0.0)) >= config.EARLY_WARNING_THRESHOLD
+                ):
+                    early_condition = True
+            except Exception:
+                early_signal = None
+                early_condition = False
 
             # 4) نبض حركة عنيفة حتى لو level لسه medium
             momentum_condition = False
@@ -874,19 +823,58 @@ def smart_alert_loop():
             ):
                 momentum_condition = True
 
-            # 5) Macro / Structural Risk حتى لو الحركة السعرية هادية
-            macro_risk_condition = (
-                structural_risk_score >= 55.0
-                and risk_score >= 60.0
-                and abs(change) < 1.5
-            )
+            # -----------------------------
+            #   V11 Voting Engine — Harmonic / Wave / ICT + باقى المحركات
+            # -----------------------------
+            # Harmonic vote
+            harmonic_active = False
+            try:
+                h_score = float(harmonic.get("score", 0.0) or 0.0)
+                harmonic_active = bool(harmonic.get("active")) or h_score >= 70.0
+            except Exception:
+                harmonic_active = False
+
+            # Wave / Elliott vote
+            wave_active = False
+            try:
+                w_score = float(wave.get("score", 0.0) or 0.0)
+                wave_active = bool(wave.get("active")) or w_score >= 70.0
+            except Exception:
+                wave_active = False
+
+            # ICT vote (killzones / liquidity zones / displacement)
+            ict_active = False
+            try:
+                i_score = float(ict.get("score", 0.0) or 0.0)
+                ict_active = (
+                    bool(ict.get("active"))
+                    or bool(ict.get("killzone_alert"))
+                    or i_score >= 65.0
+                )
+            except Exception:
+                ict_active = False
+
+            v11_votes = {
+                "shock": shock_score >= 60,
+                "speed": (speed_idx >= 55 and abs(accel_idx) >= 0.6),
+                "risk": risk_score >= 70 or structural_risk >= 60,
+                "early": early_condition,
+                "momentum": momentum_condition,
+                "direction_conf": abs(direction_conf) >= 65.0,
+                # حركة فعلية أعلى من threshold محترم
+                "real_move": (move_intensity >= 25.0),
+                "harmonic": harmonic_active,
+                "wave": wave_active,
+                "ict": ict_active,
+            }
+            v11_agree_count = sum(1 for v in v11_votes.values() if v)
 
             # -----------------------------
             #   تحديد نوع التنبيه + الفجوة الزمنية
             # -----------------------------
             send_immediate = False
             send_normal = False
-            alert_flavor = None  # super_critical / immediate / early / momentum / macro_risk / normal
+            alert_flavor = None  # super_critical / immediate / early / momentum / normal / v11_consensus / failsafe_move
 
             # الفاصل الزمني للحالات الحرجة (أقصر)
             critical_gap = max(180.0, adaptive_interval_min * 60 * 0.4)  # ~3 دقائق كحد أدنى
@@ -932,16 +920,6 @@ def smart_alert_loop():
                             "Momentum condition detected but within momentum gap (%.1fs), skip.",
                             normal_gap / 2,
                         )
-                elif macro_risk_condition:
-                    # تحذير هيكلى (On-chain + Macro) — يسمح بتكرار أقل
-                    if (now_ts - last_alert_ts) >= normal_gap:
-                        send_immediate = True
-                        alert_flavor = "macro_risk"
-                    else:
-                        logger.info(
-                            "Macro risk condition detected but within macro gap (%.1fs), skip.",
-                            normal_gap,
-                        )
                 else:
                     # مفيش conditions قوية لكن المستوى العام medium/high
                     if level in ("medium", "high", "critical") and (
@@ -949,6 +927,37 @@ def smart_alert_loop():
                     ) >= normal_gap:
                         send_normal = True
                         alert_flavor = "normal"
+
+            # 👇 V11: توافق عالى بين المحركات حتى لو level = None
+            if not (send_immediate or send_normal):
+                if v11_agree_count >= 3 and (composite_intensity >= 60 or move_intensity >= 30):
+                    # نمنع السبام برضه بفاصل زمنى معقول
+                    if (now_ts - last_alert_ts) >= normal_gap / 2:
+                        send_immediate = True
+                        alert_flavor = "v11_consensus"
+                        logger.info(
+                            "V11 consensus alert fired: votes=%d, composite=%.1f, move_intensity=%.1f",
+                            v11_agree_count,
+                            composite_intensity,
+                            move_intensity,
+                        )
+                    else:
+                        logger.info(
+                            "V11 consensus detected but within gap (%.1fs), skip.",
+                            normal_gap / 2,
+                        )
+
+            # 👇 failsafe: لو الحركة عنيفة جداً بغض النظر عن level
+            if not (send_immediate or send_normal):
+                if abs(change) >= 3.0 and move_intensity >= 35.0:
+                    if (now_ts - last_alert_ts) >= normal_gap:
+                        send_immediate = True
+                        alert_flavor = "failsafe_move"
+                        logger.info(
+                            "Failsafe move alert fired: change=%.2f move_intensity=%.1f",
+                            change,
+                            move_intensity,
+                        )
 
             # -----------------------------
             #   إرسال التنبيه (Ultra PRO Alert)
@@ -981,18 +990,20 @@ def smart_alert_loop():
                             "🔥 <b>زخم قوى جارٍ الآن فى السوق</b>\n"
                             "هناك اندفاع واضح على البيتكوين قد يتطور لحركة أكبر."
                         )
-                    elif alert_flavor == "macro_risk":
-                        header_lines.append(
-                            "🧠⚠️ <b>تحذير مخاطر هيكلية (On-Chain + Macro)</b>\n"
-                            "السوق حاليًا لا يظهر انفجارًا سعريًا مباشرًا، لكن بيانات الحيتان "
-                            "وتدفّقات البورصات، ومخاطر الفاندنج، والأحداث الاقتصادية القوية "
-                            "تشير إلى <b>احتمال هبوط حاد أو تذبذب عنيف</b> فى أى لحظة.\n"
-                            "يفضّل تجنّب المضاربة المتهورة حتى تتضح الصورة بعد الأخبار الرئيسية "
-                            "أو ظهور إيجابية فنية واضحة."
-                        )
                     elif alert_flavor == "normal":
                         header_lines.append(
                             "📡 <b>تنبيه من IN CRYPTO Ai — السوق نشط حاليًا</b>"
+                        )
+                    elif alert_flavor == "v11_consensus":
+                        header_lines.append(
+                            "🧠⚡ <b>تحذير V11 — توافق قوى بين محرّكات الذكاء الاصطناعى</b>\n"
+                            "أكثر من محرّك داخلى متفق على وجود حركة خطرة تستحق التنبيه الآن."
+                        )
+                    elif alert_flavor == "failsafe_move":
+                        header_lines.append(
+                            "🚨 <b>تحذير تلقائى — حركة سعرية عنيفة مكتملة</b>\n"
+                            "تم تفعيل هذا التحذير لأن الحركة الحالية على البيتكوين تعدّت حدود الأمان الفعلية "
+                            "حتى لو مؤشرات أخرى ماكتملتش بالكامل."
                         )
 
                     # Hint للاتجاه (شراء/بيع)
@@ -1034,15 +1045,25 @@ def smart_alert_loop():
                         except Exception:
                             pass
 
+                    # V11: نعرض المحركات اللى كانت On فى اللوج للمستخدم
+                    try:
+                        active_engines = [k for k, v in v11_votes.items() if v]
+                        if active_engines:
+                            engines_txt = ", ".join(active_engines)
+                            header_lines.append(
+                                f"🧪 <b>المحرّكات المتفقة فى هذا التحذير:</b> {engines_txt}"
+                            )
+                    except Exception:
+                        pass
+
                     if header_lines:
                         header_text = "\n\n".join(header_lines)
                         text = f"{header_text}\n\n━━━━━━━━━━\n{text}"
 
                     # تحديد Silent أو لا حسب نوع التحذير
-                    if alert_flavor in ("super_critical", "immediate"):
+                    if alert_flavor in ("super_critical", "immediate", "v11_consensus", "failsafe_move"):
                         silent_flag = False
-                    elif alert_flavor in ("early", "momentum", "macro_risk", "normal"):
-                        # تحذيرات معلوماتية / استباقية → غالبًا صامتة
+                    elif alert_flavor in ("early", "momentum", "normal"):
                         silent_flag = True
                     else:
                         silent_flag = True
@@ -1051,17 +1072,20 @@ def smart_alert_loop():
                     sent_count = broadcast_ultra_pro_to_all_chats(text, silent=silent_flag)
 
                     config.LAST_SMART_ALERT_TS = now_ts
-                    if alert_flavor in ("super_critical", "immediate"):
+                    if alert_flavor in ("super_critical", "immediate", "v11_consensus", "failsafe_move"):
                         config.LAST_CRITICAL_ALERT_TS = now_ts
 
-                    reason_text = alert_flavor or "unknown"
+                    if alert_flavor is None:
+                        reason_text = "unknown"
+                    else:
+                        reason_text = alert_flavor
 
                     _append_alert_history(
                         price=price,
                         change=change,
                         level=level,
                         shock_score=shock_score,
-                        immediate=(alert_flavor in ("super_critical", "immediate")),
+                        immediate=(alert_flavor in ("super_critical", "immediate", "v11_consensus", "failsafe_move")),
                     )
 
                     # تحديث حالة LAST_SMART_ALERT_INFO للـ dashboard
@@ -1074,6 +1098,10 @@ def smart_alert_loop():
                             "risk_level": risk.get("level"),
                             "sent_to": getattr(config, "ALERT_TARGET_CHAT_ID", 0),
                             "sent_to_count": sent_count,
+                            "votes": v11_votes,
+                            "composite_intensity": composite_intensity,
+                            "move_intensity": move_intensity,
+                            "structural_risk": structural_risk,
                         }
                     except Exception:
                         pass
@@ -1086,18 +1114,18 @@ def smart_alert_loop():
                 or immediate_condition
                 or early_condition
                 or momentum_condition
-                or macro_risk_condition
+                or (v11_agree_count >= 3)
             ):
-                # فى الأجواء الساخنة أو المخاطر العالية نتابع أسرع
+                # فى الأجواء الساخنة أو توافق محركات عالى نتابع أسرع
                 sleep_seconds = max(15.0, adaptive_interval_min * 60 * 0.3)
             else:
                 sleep_seconds = max(60.0, adaptive_interval_min * 60 * 0.7)
 
-            logger.debug("Smart alert loop sleep: %.1fs", sleep_seconds)
+            logger.debug("Smart alert V11 loop sleep: %.1fs", sleep_seconds)
             time.sleep(sleep_seconds)
 
         except Exception as e:
-            logger.exception("Error in smart_alert_loop: %s", e)
+            logger.exception("Error in smart_alert_loop (V11): %s", e)
             # فى حالة خطأ، نريح شوية وبعدين نرجع نحاول
             time.sleep(60)
 
@@ -1363,7 +1391,6 @@ def supervisor_loop():
     لوب مراقبة مركزى:
       - يتابع نبض كل اللوپس (Ticks)
       - لو فيه Loop واقف (مفيش Heartbeat) → يسجل تحذير واضح فى اللوج.
-      - يقدر يعيد استدعاء start_background_threads(force=True) لو حبيت مستقبلاً.
     """
     logger.info("Supervisor loop started.")
     # thresholds بالثوانى (قيمة عالية شوية علشان مايبقاش Aggressive قوى)
@@ -1434,7 +1461,7 @@ def start_background_threads(force: bool = False):
     تشغيل كل اللوپس الخلفية:
       - Weekly Scheduler
       - Realtime Engine
-      - Smart Alert
+      - Smart Alert (V11)
       - Watchdog
       - Keep-Alive (Anti-Sleep)
       - Supervisor (IMMORTAL MODE)
