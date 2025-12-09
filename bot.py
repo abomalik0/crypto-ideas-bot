@@ -562,11 +562,11 @@ def webhook():
 
     # لوحة مدارس التحليل
     if lower_text == "/school":
-        send_message(
+        send_message_with_keyboard(
             chat_id,
             "📚 اختر مدرسة التحليل التى تريدها.\n"
             "حالياً كل المدارس تعمل على BTCUSDT بمحرك V16 الكامل.",
-            reply_markup=SCHOOL_INLINE_KEYBOARD,
+            SCHOOL_INLINE_KEYBOARD,
         )
         return jsonify(ok=True)
 
