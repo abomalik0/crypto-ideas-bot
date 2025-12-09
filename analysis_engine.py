@@ -3621,3 +3621,285 @@ def format_v14_ultra_alert() -> str:
 
     return _shrink_text_preserve_content(msg, limit=3800)
 
+
+
+# ==============================
+#   V16 - Time School & per‑school reports
+# ==============================
+
+def _compute_time_school_view(symbol: str = "BTCUSDT") -> dict:
+    """
+    مدرسة زمنية مبسطة:
+    - تقسيم اليوم إلى جلسات (آسيا، تداخلات، نيويورك، آخر اليوم).
+    - حساب متوسط الحركة والتذبذب لكل جلسة من آخر 4–5 أيام تقريباً.
+    - قراءة سريعة لاتجاه ومدى الحركة على أطر 24h / 3d / 1w / 1m.
+    - إحصائيات بسيطة لأيام الأسبوع من بيانات الإغلاق اليومية.
+    """
+    try:
+        kl_1h = _fetch_binance_klines(symbol, "1h", limit=120)
+        kl_4h = _fetch_binance_klines(symbol, "4h", limit=90)
+        kl_1d = _fetch_binance_klines(symbol, "1d", limit=60)
+    except Exception as e:
+        logger.exception("Error in _compute_time_school_view: %s", e)
+        return {"error": str(e)}
+
+    if not kl_1h or not kl_4h or not kl_1d:
+        return {"error": "no_klines"}
+
+    def _session_for_hour(h: int) -> str:
+        # تقسيم تقريبى حسب UTC
+        if 0 <= h < 7:
+            return "asia"
+        if 7 <= h < 12:
+            return "asia_london"
+        if 12 <= h < 16:
+            return "london_newyork"
+        if 16 <= h < 21:
+            return "newyork"
+        return "late_us"
+
+    # إحصائيات الجلسات من فريم الساعة
+    session_stats: dict = {}
+    for k in kl_1h:
+        ts_raw = k.get("time", 0)
+        if ts_raw > 10**12:
+            ts_raw = ts_raw / 1000.0
+        try:
+            ts = datetime.utcfromtimestamp(ts_raw)
+        except Exception:
+            continue
+        h = ts.hour
+        sess = _session_for_hour(h)
+        try:
+            o = float(k["open"])
+            c = float(k["close"])
+            hi = float(k["high"])
+            lo = float(k["low"])
+        except Exception:
+            continue
+        if o <= 0:
+            continue
+        move = abs(c - o) / o * 100.0
+        vol = (hi - lo) / o * 100.0
+        st = session_stats.setdefault(sess, {"count": 0, "move": 0.0, "vol": 0.0})
+        st["count"] += 1
+        st["move"] += move
+        st["vol"] += vol
+
+    for st in session_stats.values():
+        if st["count"]:
+            st["move_avg"] = st["move"] / st["count"]
+            st["vol_avg"] = st["vol"] / st["count"]
+        else:
+            st["move_avg"] = 0.0
+            st["vol_avg"] = 0.0
+
+    # الشمعة الحالية على فريم الساعة
+    current_info = {}
+    last = kl_1h[-1] if kl_1h else None
+    if last:
+        ts_raw = last.get("time", 0)
+        if ts_raw > 10**12:
+            ts_raw = ts_raw / 1000.0
+        try:
+            ts = datetime.utcfromtimestamp(ts_raw)
+            h = ts.hour
+            sess = _session_for_hour(h)
+        except Exception:
+            h = None
+            sess = None
+        try:
+            o = float(last["open"])
+            c = float(last["close"])
+            hi = float(last["high"])
+            lo = float(last["low"])
+        except Exception:
+            o = c = hi = lo = 0.0
+        move = abs(c - o) / o * 100.0 if o > 0 else 0.0
+        vol = (hi - lo) / o * 100.0 if o > 0 else 0.0
+        current_info = {
+            "hour": h,
+            "session": sess,
+            "move": move,
+            "vol": vol,
+        }
+
+    def _swing_stats(kl, window: int):
+        if not kl or len(kl) < window:
+            return None
+        sub = kl[-window:]
+        try:
+            closes = [float(k["close"]) for k in sub]
+            highs = [float(k["high"]) for k in sub]
+            lows = [float(k["low"]) for k in sub]
+        except Exception:
+            return None
+        hi = max(highs)
+        lo = min(lows)
+        mid = (hi + lo) / 2.0 if hi + lo != 0 else 0.0
+        rng_pct = (hi - lo) / mid * 100.0 if mid > 0 else 0.0
+        drift = closes[-1] - closes[0]
+        if drift > 0:
+            bias = "bullish"
+        elif drift < 0:
+            bias = "bearish"
+        else:
+            bias = "sideways"
+        return {
+            "range_pct": rng_pct,
+            "bias": bias,
+            "start": closes[0],
+            "end": closes[-1],
+        }
+
+    swings = {
+        "24h": _swing_stats(kl_1h, 24),
+        "3d": _swing_stats(kl_4h, 18),
+        "1w": _swing_stats(kl_4h, 42),
+        "1m": _swing_stats(kl_1d, 30),
+    }
+
+    # إحصائيات بسيطة لأيام الأسبوع من بيانات اليومى
+    dow_stats: dict = {}
+    for k in kl_1d:
+        ts_raw = k.get("time", 0)
+        if ts_raw > 10**12:
+            ts_raw = ts_raw / 1000.0
+        try:
+            ts = datetime.utcfromtimestamp(ts_raw)
+        except Exception:
+            continue
+        dow = ts.weekday()  # 0 = Monday
+        try:
+            o = float(k["open"])
+            c = float(k["close"])
+            hi = float(k["high"])
+            lo = float(k["low"])
+        except Exception:
+            continue
+        if o <= 0:
+            continue
+        rng = (hi - lo) / o * 100.0
+        st = dow_stats.setdefault(dow, {"count": 0, "up": 0, "down": 0, "rng": 0.0})
+        st["count"] += 1
+        if c > o:
+            st["up"] += 1
+        elif c < o:
+            st["down"] += 1
+        st["rng"] += rng
+
+    for st in dow_stats.values():
+        if st["count"]:
+            st["rng_avg"] = st["rng"] / st["count"]
+        else:
+            st["rng_avg"] = 0.0
+
+    return {
+        "session_stats": session_stats,
+        "current": current_info,
+        "swings": swings,
+        "dow_stats": dow_stats,
+    }
+
+
+def format_time_school_report(symbol: str = "BTCUSDT") -> str:
+    """
+    تقرير مستقل للمدرسة الزمنية يمكن ربطه بأمر /time_school مثلاً.
+    """
+    tv = _compute_time_school_view(symbol)
+    if not tv or tv.get("error"):
+        return (
+            "⏱ <b>المدرسة الزمنية (Time School)</b>\n"
+            "⚠️ تعذّر حساب التحليل الزمنى حالياً (بيانات غير كافية أو خطأ فى الاتصال)."
+        )
+
+    session_names = {
+        "asia": "جلسة آسيا (طوكيو/هونج كونج)",
+        "asia_london": "تداخل آسيا + لندن",
+        "london_newyork": "تداخل لندن + نيويورك",
+        "newyork": "جلسة نيويورك",
+        "late_us": "آخر اليوم / الجلسة الأمريكية المتأخرة",
+    }
+
+    lines = []
+    lines.append("⏱ <b>المدرسة الزمنية الكاملة – Time School V16</b>")
+    lines.append("")
+    cur = tv.get("current") or {}
+    if cur:
+        sess_label = session_names.get(cur.get("session"), str(cur.get("session")))
+        h = cur.get("hour")
+        lines.append(f"🕒 الشمعة الحالية: ساعة <b>{h}</b> – {sess_label}")
+        lines.append(
+            f"• حركة السعر فى هذه الساعة ≈ <b>{cur.get('move', 0):.2f}%</b> "
+            f"/ مدى التذبذب ≈ <b>{cur.get('vol', 0):.2f}%</b>"
+        )
+        lines.append("")
+
+    lines.append("📊 <b>متوسط سلوك الجلسات (من آخر الأيام):</b>")
+    session_stats = tv.get("session_stats") or {}
+    for key, st in session_stats.items():
+        label = session_names.get(key, key)
+        move = st.get("move_avg", 0.0)
+        vol = st.get("vol_avg", 0.0)
+        lines.append(
+            f"• {label}: حركة متوسطة ≈ <b>{move:.2f}%</b> / تذبذب ≈ <b>{vol:.2f}%</b> لكل ساعة."
+        )
+
+    lines.append("")
+    lines.append("📈 <b>سلوك السعر زمنيًا (Swings):</b>")
+    swings = tv.get("swings") or {}
+    label_map = {
+        "24h": "آخر 24 ساعة",
+        "3d": "آخر 3 أيام",
+        "1w": "آخر أسبوع تقريباً",
+        "1m": "آخر شهر تقريباً",
+    }
+    for key, sw in swings.items():
+        if not sw:
+            continue
+        bias = sw.get("bias")
+        bias_txt = {
+            "bullish": "ميل صاعد",
+            "bearish": "ميل هابط",
+            "sideways": "حركة عرضية",
+        }.get(bias, bias)
+        rng = sw.get("range_pct", 0.0)
+        lines.append(f"• {label_map.get(key, key)}: {bias_txt} / مدى حركة ≈ <b>{rng:.2f}%</b>.")
+
+    # إحصائيات أيام الأسبوع – مفيدة لتوقع سلوك كل يوم
+    dow_labels = {
+        0: "الاثنين",
+        1: "الثلاثاء",
+        2: "الأربعاء",
+        3: "الخميس",
+        4: "الجمعة",
+        5: "السبت",
+        6: "الأحد",
+    }
+    dow_stats = tv.get("dow_stats") or {}
+    if dow_stats:
+        lines.append("")
+        lines.append("📅 <b>سلوك كل يوم فى الأسبوع (من الفريم اليومى):</b>")
+        for dow in sorted(dow_stats.keys()):
+            st = dow_stats[dow]
+            label = dow_labels.get(dow, str(dow))
+            c = st.get("count", 0)
+            if not c:
+                continue
+            up = st.get("up", 0)
+            down = st.get("down", 0)
+            rng = st.get("rng_avg", 0.0)
+            lines.append(
+                f"• {label}: {up} يوم صعود / {down} يوم هبوط / متوسط مدى ≈ <b>{rng:.2f}%</b>."
+            )
+
+    lines.append("")
+    lines.append(
+        "🧠 <i>ملاحظة:</i> هذه المدرسة الزمنية لا تتوقع السعر وحدها، لكنها توضح "
+        "متى يميل السوق للحركة القوية ومتى يغلب عليه الهدوء. "
+        "ادمجها مع المدارس الأخرى (ICT, SMC, Harmonic, Elliott, الكلاسيكى، العرض والطلب) "
+        "لأفضل قراءة ممكنة."
+    )
+
+    return "\n".join(lines)
+
