@@ -78,6 +78,10 @@ SCHOOL_INLINE_KEYBOARD = {
             {"text": "🧭 Multi-Timeframe", "callback_data": "school_multi"},
         ],
         [
+            {"text": "📊 Volume & Volatility", "callback_data": "school_volume"},
+            {"text": "🧮 Risk & Position", "callback_data": "school_risk"},
+        ],
+        [
             {"text": "🧠 ALL SCHOOLS", "callback_data": "school_all"},
         ],
     ]
@@ -266,6 +270,8 @@ def _format_school_header(code: str) -> str:
         "liquidity": "Liquidity Map – خريطة السيولة",
         "structure": "Market Structure – هيكل السوق",
         "multi": "Multi-Timeframe Engine – تعدد الفريمات",
+        "volume": "Volume & Volatility – الحجم والتقلب",
+        "risk": "Risk & Position – إدارة المخاطر وحجم الصفقة",
     }
     title = mapping.get(code, "مدرسة تحليل")
     return (
@@ -605,6 +611,12 @@ def webhook():
             "ms": "structure",
             "multi": "multi",
             "mtf": "multi",
+            "volume": "volume",
+            "vol": "volume",
+            "volatility": "volume",
+            "risk": "risk",
+            "risk_position": "risk",
+            "rm": "risk",
             "all": "all",
         }
 
