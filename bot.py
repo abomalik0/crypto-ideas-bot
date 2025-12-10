@@ -612,9 +612,7 @@ def webhook():
         try:
             header = _format_school_header(code)
         except Exception:
-            header = "📚 تحليل مدرسة.
-
-"
+    header = "📚 تحليل مدرسة."
 
         try:
             body = format_school_report(code, symbol=sym)
