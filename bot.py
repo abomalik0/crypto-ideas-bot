@@ -567,7 +567,7 @@ def webhook():
     # لوحة مدارس التحليل
     if lower_text.startswith("/school"):
         # شكل 1: /school  → يفتح لوحة المدارس على BTCUSDT
-        parts = message.get("text", "").split()
+        parts = text.split()
         if len(parts) == 1:
             send_message_with_keyboard(
                 chat_id,
@@ -607,27 +607,31 @@ def webhook():
             "mtf": "multi",
             "all": "all",
         }
+
         # حدد الكود النهائي للمدرسة من الـ aliases
-code = aliases.get(school_raw, school_raw)
+        code = aliases.get(school_raw, school_raw)
 
-# هيدر الرسالة
-try:
-    header = _format_school_header(code)
-except Exception as e:
-    config.logger.exception("Error building _format_school_header: %s", e)
-    header = "📚 تحليل مدرسة."
+        # هيدر الرسالة
+        try:
+            header = _format_school_header(code)
+        except Exception as e:
+            config.logger.exception("Error building _format_school_header: %s", e)
+            header = "📚 تحليل مدرسة.\n\n"
 
-# جسم الرسالة
-try:
-    body = format_school_report(code, symbol=sym)
-except Exception as e:
-    config.logger.exception("Error in /school direct command: %s", e)
-    body = "⚠️ حدث خطأ أثناء توليد تحليل المدرسة.\n🔁 جرّب اختيار المدرسة مرة أخرى من /school."
+        # جسم الرسالة
+        try:
+            body = format_school_report(code, symbol=sym)
+        except Exception as e:
+            config.logger.exception("Error in /school direct command: %s", e)
+            body = (
+                "⚠️ حدث خطأ أثناء توليد تحليل المدرسة.\n"
+                "🔁 جرّب اختيار المدرسة مرة أخرى من /school."
+            )
 
-send_message(chat_id, header + body)
-return jsonify(ok=True)
+        send_message(chat_id, header + body)
+        return jsonify(ok=True)
 
-    # ==============================
+# ==============================
     #      أوامر الإدارة (Admin)
     # ==============================
 
