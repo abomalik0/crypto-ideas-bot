@@ -618,9 +618,7 @@ def webhook():
             body = format_school_report(code, symbol=sym)
         except Exception as e:
             config.logger.exception("Error in /school direct command: %s", e)
-            body = "⚠️ حدث خطأ أثناء توليد تحليل المدرسة.
-حاول مرة أخرى أو استخدم /school لاختيار المدرسة من اللوحة."
-
+            body = "⚠️ حدث خطأ أثناء توليد تحليل المدرسة.\n🌐 جرّب اختيار المدرسة مرة أخرى من /school."
         send_message(chat_id, header + body)
         return jsonify(ok=True)
 
