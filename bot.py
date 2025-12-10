@@ -27,7 +27,8 @@ from analysis_engine import (
     compute_smart_market_snapshot,
     format_ultra_pro_alert,
     fusion_ai_brain,
-    compute_hybrid_pro_core,
+    compute_hybrid_pro_core,,
+    format_school_report,
 )
 import services
 
@@ -332,7 +333,7 @@ def webhook():
 
             try:
                 # حالياً نستخدم BTCUSDT كمحرك رئيسى
-                body = format_analysis("BTCUSDT")
+                body = format_school_report(code, symbol="BTCUSDT")
             except Exception as e:
                 config.logger.exception("Error in school callback analysis: %s", e)
                 body = "⚠️ حدث خطأ أثناء توليد التحليل من المحرك."
