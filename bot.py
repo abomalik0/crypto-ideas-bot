@@ -27,7 +27,7 @@ from analysis_engine import (
     compute_smart_market_snapshot,
     format_ultra_pro_alert,
     fusion_ai_brain,
-    compute_hybrid_pro_core,
+    compute_hybrid_pro_core,,
     format_school_report,
 )
 import services
@@ -76,6 +76,9 @@ SCHOOL_INLINE_KEYBOARD = {
         [
             {"text": "🧬 Market Structure", "callback_data": "school_structure"},
             {"text": "🧭 Multi-Timeframe", "callback_data": "school_multi"},
+        ],
+        [
+            {"text": "🧠 ALL SCHOOLS", "callback_data": "school_all"},
         ],
     ]
 }
@@ -332,7 +335,7 @@ def webhook():
                 header = "📚 تحليل مدرسة.\n\n"
 
             try:
-                # حالياً نستخدم BTCUSDT كمحرك رئيسى
+                # حالياً نستخدم BTCUSDT كمحرك رئيسى للمدارس
                 body = format_school_report(code, symbol="BTCUSDT")
             except Exception as e:
                 config.logger.exception("Error in school callback analysis: %s", e)
@@ -562,13 +565,65 @@ def webhook():
         return jsonify(ok=True)
 
     # لوحة مدارس التحليل
-    if lower_text == "/school":
-        send_message_with_keyboard(
-            chat_id,
-            "📚 اختر مدرسة التحليل التى تريدها.\n"
-            "حالياً كل المدارس تعمل على BTCUSDT بمحرك V16 الكامل.",
-            SCHOOL_INLINE_KEYBOARD,
-        )
+    if lower_text.startswith("/school"):
+        # شكل 1: /school  → يفتح لوحة المدارس على BTCUSDT
+        parts = message.get("text", "").split()
+        if len(parts) == 1:
+            send_message_with_keyboard(
+                chat_id,
+                "📚 اختر مدرسة التحليل التى تريدها.\n"
+                "الضغط على زر مدرسة يعطى تحليل مفصل لها على BTCUSDT.\n\n"
+                "💡 متقدم: يمكنك كتابة أمر مباشر بالشكل:\n"
+                "<code>/school ict btc</code> أو <code>/school smc ethusdt</code>",
+                SCHOOL_INLINE_KEYBOARD,
+            )
+            return jsonify(ok=True)
+
+        # شكل 2: /school ict btcusdt  → تحليل مدرسة + عملة مباشرة
+        school_raw = parts[1].lower()
+        sym = parts[2] if len(parts) >= 3 else "BTCUSDT"
+
+        aliases = {
+            "ict": "ict",
+            "smc": "smc",
+            "wyckoff": "wyckoff",
+            "harmonic": "harmonic",
+            "elliott": "elliott",
+            "eliott": "elliott",
+            "time": "time",
+            "time_analysis": "time",
+            "pa": "price_action",
+            "price": "price_action",
+            "price_action": "price_action",
+            "sd": "sd",
+            "supply": "sd",
+            "classic": "classic",
+            "ta": "classic",
+            "liquidity": "liquidity",
+            "liq": "liquidity",
+            "structure": "structure",
+            "ms": "structure",
+            "multi": "multi",
+            "mtf": "multi",
+            "all": "all",
+        }
+        code = aliases.get(school_raw, school_raw)
+
+        try:
+            header = _format_school_header(code)
+        except Exception:
+            header = "📚 تحليل مدرسة.
+
+"
+
+        try:
+            body = format_school_report(code, symbol=sym)
+        except Exception as e:
+            config.logger.exception("Error in /school direct command: %s", e)
+            body = "⚠️ حدث خطأ أثناء توليد تحليل المدرسة.
+حاول مرة أخرى أو استخدم /school لاختيار المدرسة من اللوحة."
+
+        send_message(chat_id, header + body)
         return jsonify(ok=True)
 
     # ==============================
