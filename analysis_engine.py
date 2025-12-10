@@ -3903,3 +3903,429 @@ def format_time_school_report(symbol: str = "BTCUSDT") -> str:
 
     return "\n".join(lines)
 
+# ==============================
+#   V17 – Per‑school detailed reports
+# ==============================
+
+def _fmt_school_price(v):
+    try:
+        v = float(v)
+        if v >= 1000:
+            return f"{v:,.0f}"
+        if v >= 1:
+            return f"{v:,.2f}"
+        return f"{v:.6f}"
+    except Exception:
+        return str(v)
+
+
+def _fmt_school_num(v):
+    try:
+        return f"{float(v):.2f}"
+    except Exception:
+        return str(v)
+
+
+def _fmt_school_pct(v):
+    try:
+        return f"{float(v):+.2f}٪"
+    except Exception:
+        return str(v)
+
+
+def format_school_report(code: str, symbol: str = "BTCUSDT") -> str:
+    """
+    تقرير مفصّل لكل مدرسة من مدارس /school.
+    يعتمد على:
+      - get_market_metrics_cached + evaluate_risk_level + update_market_pulse
+      - fusion_ai_brain (الاتجاه + وايكوف + السيولة)
+      - compute_v14_ultra_snapshot (مدارس ICT/SMC/Harmonic/Elliott/PA/SD/Classical/Indicators/Liquidity)
+      - format_time_school_report + format_multi_timeframe_block لبعض المدارس
+    """
+    code = (code or "").strip().lower()
+
+    metrics = get_market_metrics_cached()
+    if not metrics:
+        return (
+            "⚠️ تعذّر تحميل بيانات السوق اللحظية الآن.\n"
+            "حاول مرة أخرى بعد دقائق، أو تأكد من اتصال مزود الأسعار."
+        )
+
+    # قلب قراءة السوق
+    change = metrics.get("change_pct", 0.0)
+    price = metrics.get("price", 0.0)
+    high = metrics.get("high", 0.0)
+    low = metrics.get("low", 0.0)
+    range_pct = metrics.get("range_pct", 0.0)
+    vol = metrics.get("volatility_score", 0.0)
+    strength_label = metrics.get("strength_label", "")
+    liquidity_pulse = metrics.get("liquidity_pulse", "")
+
+    risk = evaluate_risk_level(change, vol)
+    risk_level = risk.get("level", "")
+    risk_emoji = risk.get("emoji", "")
+    risk_message = risk.get("message", "")
+
+    pulse = update_market_pulse(metrics)
+    regime = pulse.get("regime")
+    speed_index = pulse.get("speed_index")
+    accel_index = pulse.get("accel_index")
+    liquidity_pressure = pulse.get("liquidity_pressure")
+
+    zones = compute_potential_zones(metrics, pulse, risk)
+
+    # ذكاء اصطناعى مدمج
+    fusion = fusion_ai_brain(metrics, risk)
+    bias = fusion.get("bias")
+    bias_text = fusion.get("bias_text", "")
+    wyckoff_phase = fusion.get("wyckoff_phase", "")
+    smc_view = fusion.get("smc_view", "")
+    risk_comment = fusion.get("risk_comment", "")
+    p_up = fusion.get("p_up", 0)
+    p_side = fusion.get("p_side", 0)
+    p_down = fusion.get("p_down", 0)
+    ai_summary = fusion.get("ai_summary", "")
+
+    # محاولة جلب لقطة V14 المتقدمة (Multi‑School)
+    try:
+        v14 = compute_v14_ultra_snapshot() or {}
+    except Exception:
+        v14 = {}
+
+    smc_view_v14 = v14.get("smc_view") or smc_view
+    ict_view_v14 = v14.get("ict_view") or bias_text
+    harmonic_text = v14.get("harmonic") or ""
+    elliott_text = v14.get("elliott") or ""
+    pa_text = v14.get("price_action") or ""
+    sd_text = v14.get("supply_demand") or ""
+    classical_text = v14.get("classical") or ""
+    indicator_pack = v14.get("indicator_pack") or {}
+    liq_map = v14.get("liquidity_map") or {}
+    mtf = v14.get("mtf") or {}
+
+    # ---------------- Core Market Block ----------------
+    core_lines: list[str] = []
+    core_lines.append("🧪 <b>Core Market Snapshot — BTCUSDT الآن</b>")
+    core_lines.append("")
+    core_lines.append(
+        f"• السعر الحالى: <b>${_fmt_school_price(price)}</b> ({_fmt_school_pct(change)})"
+    )
+    core_lines.append(
+        f"• مدى اليوم ≈ {_fmt_school_num(range_pct)}٪ / التقلب الكلى ≈ {_fmt_school_num(vol)} / 100"
+    )
+    core_lines.append(
+        f"• قوة الحركة: {strength_label or '-'}"
+    )
+    core_lines.append(
+        f"• نبض السيولة: {liquidity_pulse or '-'} / ضغط السيولة ≈ {_fmt_school_num(liquidity_pressure)} / 100"
+    )
+    core_lines.append(
+        f"• وضع التقلب (Volatility Regime): {regime or '-'} "
+        f"/ سرعة الزخم ≈ {_fmt_school_num(speed_index)} / 100 "
+        f"/ تسارع الحركة ≈ {_fmt_school_num(accel_index)}"
+    )
+    core_lines.append(
+        f"• مستوى المخاطر العام: {risk_emoji} {risk_message} (المستوى: {risk_level})"
+    )
+
+    core_lines.append("")
+    core_lines.append("🤖 <b>نظرة الذكاء الاصطناعى العامة:</b>")
+    core_lines.append(f"• اتجاه الدمج النهائى (Bias): {bias_text or '-'}")
+    core_lines.append(f"• مرحلة وايكوف الحالية تقريبياً: {wyckoff_phase or '-'}")
+    core_lines.append(f"• سلوك السيولة المؤسسية (SMC View): {smc_view or '-'}")
+    core_lines.append(f"• تعليق المخاطر الدينامى: {risk_comment or '-'}")
+    if ai_summary:
+        core_lines.append(f"• ملخص سريع للحالة: {ai_summary}")
+
+    # ---------------- سيناريوهات الأسعار ----------------
+    dz1_low, dz1_high = zones.get("downside_zone_1", (None, None))
+    dz2_low, dz2_high = zones.get("downside_zone_2", (None, None))
+    uz1_low, uz1_high = zones.get("upside_zone_1", (None, None))
+    uz2_low, uz2_high = zones.get("upside_zone_2", (None, None))
+
+    d1_mid = zones.get("downside_mid_1") or (
+        (dz1_low + dz1_high) / 2 if dz1_low and dz1_high else None
+    )
+    d2_mid = zones.get("downside_mid_2") or (
+        (dz2_low + dz2_high) / 2 if dz2_low and dz2_high else None
+    )
+    u1_mid = zones.get("upside_mid_1") or (
+        (uz1_low + uz1_high) / 2 if uz1_low and uz1_high else None
+    )
+    u2_mid = zones.get("upside_mid_2") or (
+        (uz2_low + uz2_high) / 2 if uz2_low and uz2_high else None
+    )
+
+    scenarios_lines: list[str] = []
+    scenarios_lines.append("━━━━━━━━━━━━━━━━━━")
+    scenarios_lines.append("📌 <b>سيناريوهات الحركة المحتملة (24–72 ساعة):</b>")
+
+    bull_line = "• <b>السيناريو الصاعد:</b> استكمال موجة صعودية إذا استمر الزخم الحالى."
+    if u1_mid and u2_mid:
+        bull_line += (
+            f" مناطق اهتمام تقريبية أعلى السعر الحالى حول: "
+            f"<b>{_fmt_school_price(u1_mid)}$</b> ثم <b>{_fmt_school_price(u2_mid)}$</b>."
+        )
+    bull_line += f" (تقدير احتمال الصعود ≈ {_fmt_school_num(p_up)}٪)"
+    scenarios_lines.append(bull_line)
+
+    bear_line = "• <b>السيناريو الهابط:</b> امتداد موجة تصحيحية أو هبوط أعمق."
+    if d1_mid and d2_mid:
+        bear_line += (
+            f" مناطق اهتمام هابطة تقريبية حول: "
+            f"<b>{_fmt_school_price(d1_mid)}$</b> ثم <b>{_fmt_school_price(d2_mid)}$</b>."
+        )
+    bear_line += f" (تقدير احتمال الهبوط ≈ {_fmt_school_num(p_down)}٪)"
+    scenarios_lines.append(bear_line)
+
+    side_line = (
+        "• <b>سيناريو التماسك/التحرك الجانبى:</b> بقاء السعر داخل نطاق محدود بدون اتجاه حاسم، "
+        "مع فرص صغيرة لصفقات قصيرة المدى داخل النطاق."
+    )
+    side_line += f" (تقدير احتمال التذبذب ≈ {_fmt_school_num(p_side)}٪)"
+    scenarios_lines.append(side_line)
+
+    # ---------------- محتوى المدارس ----------------
+    school_lines: list[str] = []
+
+    # ICT – Smart Money / Institutional Concepts
+    if code == "ict":
+        school_lines.append("🎓 <b>مدرسة ICT – Smart Money Concepts</b>")
+        school_lines.append("")
+        school_lines.append("🔍 <b>قراءة ICT اللحظية:</b>")
+        school_lines.append(ict_view_v14 or bias_text or "لا توجد قراءة ICT واضحة حالياً.")
+        school_lines.append("")
+        school_lines.append("💧 <b>السيولة والأوامر المؤسسية:</b>")
+        school_lines.append(smc_view_v14 or smc_view or "لم يتم رصد سلوك مؤسسى قوى فى هذه اللحظة.")
+        school_lines.append(
+            "فى منهج ICT نبحث عن مناطق Premium/Discount، كسر القمم والقيعان (Liquidity), "
+            "ومناطق FVG / OB التى تُستخدم كنقاط دخول أو إعادة اختبار."
+        )
+        school_lines.append("")
+        school_lines.append("🧱 <b>ملخص هيكلة السوق من منظور ICT:</b>")
+        if "strong_bullish" in (bias or ""):
+            school_lines.append(
+                "السوق أقرب إلى <b>تجميع صاعد مائل للاندفاع</b> مع احتمالية استهداف قمم وسيولة أعلى."
+            )
+        elif "strong_bearish" in (bias or ""):
+            school_lines.append(
+                "السوق أقرب إلى <b>تصفية بيعية</b> مع احتمالية امتداد حركات كسر قيعان وتجميع سيولة أسفل."
+            )
+        elif "bullish" in (bias or ""):
+            school_lines.append(
+                "الاتجاه العام يميل للصعود لكن مع إمكانية حدوث سحبات قصيرة لأخذ سيولة قبل الاستكمال."
+            )
+        elif "bearish" in (bias or ""):
+            school_lines.append(
+                "الاتجاه العام يميل للهبوط لكن هناك مساحات محتملة لارتدادات قصيرة داخل مناطق طلب."
+            )
+        else:
+            school_lines.append(
+                "الصورة الحالية أقرب إلى <b>توازن مؤقت</b> بين المشترين والبائعين بدون اتجاه ICT واضح."
+            )
+
+    # SMC Pro
+    elif code == "smc":
+        school_lines.append("🎯 <b>مدرسة SMC Pro – Smart Money Concepts المتقدمة</b>")
+        school_lines.append("")
+        school_lines.append("🧭 <b>قراءة SMC اللحظية:</b>")
+        school_lines.append(smc_view_v14 or smc_view or "لم يتم رصد نموذج SMC واضح حالياً.")
+        school_lines.append("")
+        school_lines.append("🧱 <b>Change of Character / BOS:</b>")
+        school_lines.append(
+            "تُراقِب مدرسة SMC تغيّر الهيكل (CHoCH) وكسر القمم/القيعان (BOS) لتحديد "
+            "بداية موجة جديدة. يتم الربط بين قوة الكسر والتقلب الحالى وحجم التذبذب."
+        )
+        school_lines.append(
+            "كلما زاد التقلب مع كسر واضح لقمم أو قيعان، زادت أهمية إشارة SMC على أن هناك "
+            "مالاً ذكيًا يعيد تموضعه فى السوق."
+        )
+
+    # Wyckoff
+    elif code == "wyckoff":
+        school_lines.append("📚 <b>مدرسة Wyckoff – مراحل التجميع والتصريف</b>")
+        school_lines.append("")
+        school_lines.append("🧱 <b>المرحلة الحالية تقريبيًا:</b>")
+        school_lines.append(wyckoff_phase or "تعذّر تحديد مرحلة وايكوف من البيانات الحالية.")
+        school_lines.append("")
+        school_lines.append("🔍 <b>منطق وايكوف المختصر:</b>")
+        school_lines.append(
+            "تركّز هذه المدرسة على ما إذا كان السوق فى حالة تجميع (Accumulation)، "
+            "أو تصريف (Distribution)، أو مرحلة صعود/هبوط اندفاعى (Mark-Up / Mark-Down)."
+        )
+        school_lines.append(
+            "يُعتبر تزايد التقلب مع كسور واضحة للقاع/القمة إشارات انتقال بين المراحل "
+            "مع ظهور مناطق SOS / LPS / UTAD / Spring تعليمياً."
+        )
+
+    # Harmonic – تعليمى مع ربط بالحالة الحالية
+    elif code == "harmonic":
+        school_lines.append("🌀 <b>مدرسة Harmonic Patterns – النماذج التوافقية</b>")
+        school_lines.append("")
+        if harmonic_text:
+            school_lines.append("🔎 <b>قراءة Harmonic المبنية على بيانات الفريم المتوسط:</b>")
+            school_lines.append(harmonic_text)
+            school_lines.append("")
+        school_lines.append(
+            "تعتمد النماذج التوافقية على نسب فيبوناتشى دقيقة (Gartley / Bat / Crab / Butterfly / Cypher / AB=CD). "
+            "لا يقوم هذا المحرك حالياً برسم النموذج آليًا على الشارت، لكنه يعطيك تصوراً عن "
+            "مناطق الانعكاس المحتملة (PRZ) طبقاً لتذبذب السعر والمسافات النسبية بين القمم والقيعان."
+        )
+
+    # Elliott Waves – تعليمى + مستوحى من الحركة
+    elif code == "elliott":
+        school_lines.append("🌊 <b>مدرسة Elliott Waves – الموجات إليوت</b>")
+        school_lines.append("")
+        if elliott_text:
+            school_lines.append("🔎 <b>قراءة موجية تقريبية من الفريم المتوسط:</b>")
+            school_lines.append(elliott_text)
+            school_lines.append("")
+        school_lines.append(
+            "منظومة إليوت تقسم الحركة إلى موجات دافعة 1–5 وموجات تصحيحية A–B–C. "
+            "المحرك هنا لا يعدّ الموجات بدقة كاملة، لكنه يستفيد من اتجاه الترند وقوة التذبذب "
+            "لتقدير ما إذا كانت الحركة الحالية أقرب لموجة دافعة أو تصحيحية."
+        )
+
+    # Time Analysis – المدرسة الزمنية
+    elif code == "time":
+        school_lines.append("⏱ <b>المدرسة الزمنية الكاملة – Time Analysis</b>")
+        school_lines.append("")
+        time_block = format_time_school_report(symbol)
+        school_lines.append(time_block)
+
+    # Price Action
+    elif code == "price_action":
+        school_lines.append("📈 <b>مدرسة Price Action – السلوك السعرى</b>")
+        school_lines.append("")
+        if pa_text:
+            school_lines.append("🔎 <b>قراءة برايس أكشن مبنية على الفريمات 15m / 1H / 4H:</b>")
+            school_lines.append(pa_text)
+            school_lines.append("")
+        school_lines.append(
+            "يركّز هذا الجزء على شكل القمم والقيعان، الشموع القوية أو الرافضة، "
+            "والنماذج الكلاسيكية البسيطة (قنوات، مثلثات، قمم مزدوجة...)."
+        )
+
+    # Supply & Demand
+    elif code == "sd":
+        school_lines.append("📦 <b>مدرسة Supply & Demand – مناطق العرض والطلب</b>")
+        school_lines.append("")
+        if sd_text:
+            school_lines.append("🔎 <b>قراءة مناطق العرض والطلب من الفريمات الرئيسية:</b>")
+            school_lines.append(sd_text)
+            school_lines.append("")
+        school_lines.append(
+            "يتم التركيز على الشموع التى انطلق منها السعر بقوة (مناطق طلب/عرض مؤسسية)، "
+            "ومراقبة عودة السعر لاختبار تلك المناطق لتقييم قوة الانعكاس أو الكسر."
+        )
+
+    # Classical TA
+    elif code == "classic":
+        school_lines.append("🏛 <b>المدرسة الكلاسيكية – مؤشرات وترندات</b>")
+        school_lines.append("")
+        if classical_text:
+            school_lines.append("🔎 <b>قراءة فنية كلاسيكية:</b>")
+            school_lines.append(classical_text)
+            school_lines.append("")
+        ind_block = ""
+        if indicator_pack:
+            ind_block = (
+                f"• EMA20 ≈ {indicator_pack.get('ema20')} / "
+                f"EMA50 ≈ {indicator_pack.get('ema50')}.\n"
+                f"• ATR14 ≈ {indicator_pack.get('atr14')}.\n"
+                f"• اتجاه المتوسطات: {indicator_pack.get('trend_signal')}.\n"
+                f"• حالة التشبع النسبية: {indicator_pack.get('stoch_state')}."
+            )
+        if ind_block:
+            school_lines.append("📊 <b>حزمة المؤشرات الفنية الأساسية:</b>")
+            school_lines.append(ind_block)
+
+    # Liquidity Map
+    elif code == "liquidity":
+        school_lines.append("💧 <b>Liquidity Map – خريطة السيولة</b>")
+        school_lines.append("")
+        school_lines.append(
+            "توضح خريطة السيولة أين تتركز أوامر الإيقاف المحتملة أعلى القمم وأسفل القيعان "
+            "على الفريمات المختلفة."
+        )
+        # نبنى ملخص بسيط من liq_map إن وُجد
+        if isinstance(liq_map, dict) and liq_map:
+            lines = []
+            for tf, info in liq_map.items():
+                highs = info.get("swing_highs") or []
+                lows = info.get("swing_lows") or []
+                if not highs and not lows:
+                    continue
+                tf_label = tf.upper()
+                parts = []
+                if highs:
+                    parts.append(f"{len(highs)} قمم سيولة تقريبية أعلى السعر.")
+                if lows:
+                    parts.append(f"{len(lows)} قيعان سيولة تقريبية أسفل السعر.")
+                lines.append(f"• فريم {tf_label}: " + " ".join(parts))
+            if lines:
+                school_lines.append("🔎 <b>ملخص خريطة السيولة من عدة فريمات:</b>")
+                school_lines.extend(lines)
+
+    # Market Structure
+    elif code == "structure":
+        school_lines.append("🧬 <b>Market Structure – هيكل السوق</b>")
+        school_lines.append("")
+        school_lines.append(
+            "يعتمد هيكل السوق على تسلسل القمم والقيعان (HH / HL / LH / LL) "
+            "وتحوّل هذا التسلسل عند بداية موجة جديدة."
+        )
+        school_lines.append(
+            "من خلال اتجاه الدمج النهائى (Bias) ومرحلة وايكوف الحالية يمكن تقدير ما إذا كان "
+            "الهيكل يدعم سيناريو استمرار الترند أم بداية تصحيح أعمق."
+        )
+        school_lines.append(f"🔎 <b>القراءة الحالية للهيكل (من الدمج):</b> {bias_text or '-'}")
+
+    # Multi‑Timeframe
+    elif code == "multi":
+        school_lines.append("🧭 <b>Multi‑Timeframe Engine – تعدد الأطر الزمنية</b>")
+        school_lines.append("")
+        try:
+            multi_block = format_multi_timeframe_block(symbol)
+        except Exception:
+            multi_block = (
+                "تعذّر جلب قراءة Multi‑Timeframe كاملة من المزود فى هذه اللحظة، "
+                "لكن الاتجاه العام من دمج البيانات تم عرضه فى القسم الأساسى."
+            )
+        school_lines.append(multi_block)
+
+    # افتراضى: نجمع من V14 لو الكود غير معروف
+    else:
+        school_lines.append("📚 <b>مدرسة تحليل عامة – دمج أكثر من مدرسة</b>")
+        school_lines.append("")
+        if ict_view_v14:
+            school_lines.append(f"• ICT View: {ict_view_v14}")
+        if smc_view_v14:
+            school_lines.append(f"• SMC View: {smc_view_v14}")
+        if pa_text:
+            school_lines.append(f"• Price Action: {pa_text}")
+        if sd_text:
+            school_lines.append(f"• Supply & Demand: {sd_text}")
+        if classical_text:
+            school_lines.append(f"• Classical: {classical_text}")
+
+    # ---------------- خاتمة وتنبيه مخاطر ----------------
+    risk_footer = (
+        "⚠️ <b>تنويه مهم:</b>\n"
+        "كل ما سبق عبارة عن قراءة تعليمية متقدمة تعتمد على محركات ذكاء اصطناعى وتحليل إحصائى "
+        "ومتوسطات سعرية، لكنها ليست توصية مباشرة بالشراء أو البيع.\n"
+        "يجب دائمًا دمج هذه القراءات مع خطة إدارة مخاطر صارمة، واستخدام وقف خسارة مناسب، "
+        "وتجنّب المخاطرة برأس مال لا يمكنك تحمّل خسارته.\n\n"
+        "<b>IN CRYPTO Ai 🤖 — Multi‑School Engine V17</b>"
+    )
+
+    parts: list[str] = []
+    parts.append("\n".join(core_lines))
+    if school_lines:
+        parts.append("\n".join(school_lines))
+    if scenarios_lines:
+        parts.append("\n".join(scenarios_lines))
+    parts.append(risk_footer)
+
+    msg = "\n\n".join(parts)
+    return _shrink_text_preserve_content(msg, limit=3800)
