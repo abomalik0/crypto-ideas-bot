@@ -27,7 +27,7 @@ from analysis_engine import (
     compute_smart_market_snapshot,
     format_ultra_pro_alert,
     fusion_ai_brain,
-    compute_hybrid_pro_core,,
+    compute_hybrid_pro_core,
     format_school_report,
 )
 import services
