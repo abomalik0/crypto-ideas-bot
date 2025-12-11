@@ -343,14 +343,12 @@ def webhook():
             try:
                 # حالياً نستخدم BTCUSDT كمحرك رئيسى للمدارس
                 body = format_school_report(code, symbol="BTCUSDT")
+                if body is None:
+                    body = "⚠️ لا يوجد تحليل متاح حاليًا لهذه المدرسة."
             except Exception as e:
                 config.logger.exception("Error in school callback analysis: %s", e)
                 body = "⚠️ حدث خطأ أثناء توليد التحليل من المحرك."
 
-            if header is None:
-                header = "📚 تحليل مدرسة.\n\n"
-            if body is None:
-                body = "⚠️ لا يوجد تحليل متاح حاليًا لهذه المدرسة."
             send_message(chat_id, header + body)
             return jsonify(ok=True)
 
@@ -503,10 +501,10 @@ def webhook():
     if lower_text == "/btc":
         # التحليل الأساسى من المحرك القديم (مع كاش) – BTCUSDT
         base_text = services.get_cached_response(
-        if base_text is None:
-            base_text = ""
             "btc_analysis", lambda: format_analysis("BTCUSDT")
         )
+        if base_text is None:
+            base_text = ""
 
         header = ""
         try:
@@ -564,27 +562,32 @@ def webhook():
     if lower_text == "/vai":
         reply = format_analysis("VAIUSDT")
         if reply is None:
-            reply = ("⚠️ تعذر توليد تحليل VAI حاليًا، ربما الرمز غير متاح أو توجد مشكلة بيانات."
-                     "\n🔁 حاول مرة أخرى بعد دقائق.")
+            reply = (
+                "⚠️ تعذر توليد تحليل VAI حاليًا، ربما الرمز غير متاح على المصدر.\n"
+                "📌 تأكد من الرمز أو جرّب عملة أخرى."
+            )
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
     if lower_text == "/market":
         reply = services.get_cached_response("market_report", format_market_report)
         if reply is None:
-            reply = ("⚠️ تعذر توليد تقرير السوق فى الوقت الحالى."
-                     "\n🔁 حاول مرة أخرى بعد دقائق، أو تأكد أن بيانات السوق متاحة.")
+            reply = (
+                "⚠️ تعذر توليد تقرير السوق فى الوقت الحالى.\n"
+                "🔁 حاول مرة أخرى بعد دقائق، أو تأكد أن بيانات السوق متاحة."
+            )
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
     if lower_text == "/risk_test":
         reply = services.get_cached_response("risk_test", format_risk_test)
         if reply is None:
-            reply = ("⚠️ تعذر تشغيل اختبار إدارة المخاطر حاليًا."
-                     "\n🔁 حاول مرة أخرى بعد قليل.")
+            reply = (
+                "⚠️ تعذر تشغيل اختبار إدارة المخاطر حاليًا.\n"
+                "🔁 حاول مرة أخرى بعد قليل."
+            )
         send_message(chat_id, reply)
         return jsonify(ok=True)
-
 
     # لوحة مدارس التحليل
     if lower_text.startswith("/school"):
@@ -649,6 +652,11 @@ def webhook():
         # جسم الرسالة
         try:
             body = format_school_report(code, symbol=sym)
+            if body is None:
+                body = (
+                    "⚠️ لا يوجد تحليل متاح حاليًا لهذه المدرسة على الرمز المطلوب.\n"
+                    "🔁 جرّب اختيار المدرسة مرة أخرى أو استخدم BTCUSDT افتراضيًا."
+                )
         except Exception as e:
             config.logger.exception("Error in /school direct command: %s", e)
             body = (
@@ -656,13 +664,6 @@ def webhook():
                 "🔁 جرّب اختيار المدرسة مرة أخرى من /school."
             )
 
-        if header is None:
-            header = "📚 تحليل مدرسة.\n\n"
-        if body is None:
-            body = (
-                "⚠️ لا يوجد تحليل متاح حاليًا لهذه المدرسة على الرمز المطلوب.\n"
-                "🔁 جرّب اختيار المدرسة مرة أخرى أو استخدم BTCUSDT افتراضيًا."
-            )
         send_message(chat_id, header + body)
         return jsonify(ok=True)
 
@@ -803,10 +804,6 @@ def webhook():
                     config.logger.exception("Error in generic symbol analysis: %s", e)
                     reply = f"⚠️ حدث خطأ أثناء تحليل <b>{symbol}</b>."
 
-                if reply is None:
-                    reply = (
-                        f"⚠️ تعذر توليد تحليل <b>{symbol}</b> حاليًا.",
-                    )
                 send_message(chat_id, reply)
                 return jsonify(ok=True)
 
