@@ -255,34 +255,30 @@ def _format_smart_snapshot(snapshot: dict, title: str) -> str:
 
 def _format_school_header(code: str) -> str:
     """
-    عنوان بسيط لكل مدرسة تحليل.
+    مجرد عنوان فوق تحليل المدرسة – التحليل نفسه ييجى من المحرك V16.
     """
     mapping = {
-        "ict": "مدرسة ICT – الذكاء المؤسسى",
-        "smc": "مدرسة SMC Pro – Smart Money Concepts",
+        "ict": "مدرسة ICT – Smart Money Concepts",
+        "smc": "مدرسة SMC – Smart Money",
         "wyckoff": "مدرسة Wyckoff – مراحل التجميع والتصريف",
-        "harmonic": "مدرسة Harmonic Patterns – النماذج التوافقية",
+        "harmonic": "مدرسة Harmonic Patterns – نماذج توافقيّة",
         "elliott": "مدرسة Elliott Waves – موجات إليوت",
         "time": "المدرسة الزمنية – Time Cycles & Timing",
         "price_action": "مدرسة Price Action – سلوك السعر",
-        "sd": "مدرسة Supply & Demand – العرض والطلب",
-        "classic": "المدرسة الكلاسيكية – المؤشرات والنماذج",
-        "liquidity": "مدرسة Liquidity Map – خريطة السيولة",
-        "structure": "مدرسة Market Structure – هيكل السوق",
-        "multi": "مدرسة Multi-Timeframe – تعدد الفريمات",
-        "volume": "مدرسة Volume & Volatility – الحجم والتقلب",
-        "risk": "مدرسة Risk & Position – إدارة المخاطر",
-        "digital": "مدرسة Digital Cycles – التحليل الرقمى",
-        "all": "تحليل شامل لكل المدارس",
+        "sd": "مدرسة Supply & Demand – مناطق العرض والطلب",
+        "classic": "المدرسة الكلاسيكية – ترندات ونماذج",
+        "liquidity": "Liquidity Map – خريطة السيولة",
+        "structure": "Market Structure – هيكل السوق",
+        "multi": "Multi-Timeframe Engine – تعدد الفريمات",
+        "volume": "Volume & Volatility – الحجم والتقلب",
+        "risk": "Risk & Position – إدارة المخاطر وحجم الصفقة",
     }
     title = mapping.get(code, "مدرسة تحليل")
-
     return (
         f"📚 <b>{title}</b>\n"
-        "هذا التحليل تعليمى يركّز على المدرسة المختارة فقط ويهدف لتوضيح الصورة الفنية.\n"
-        "لا يُعتبر توصية مباشرة بالشراء أو البيع، بل أداة تساعدك فى اتخاذ قرارك بنفسك.\n\n"
+        "هذا التحليل تعليمى يعتمد على محرك V16 الكامل (ICT + SMC + Wyckoff + Harmonic + Elliott + Time + Supply/Demand ...)\n"
+        "النتيجة مبنية على BTCUSDT حاليًا، ويمكن توسيعها لاحقًا لعملات أخرى.\n\n"
     )
-
 
 
 # ==============================
@@ -351,6 +347,10 @@ def webhook():
                 config.logger.exception("Error in school callback analysis: %s", e)
                 body = "⚠️ حدث خطأ أثناء توليد التحليل من المحرك."
 
+            if header is None:
+                header = "📚 تحليل مدرسة.\n\n"
+            if body is None:
+                body = "⚠️ لا يوجد تحليل متاح حاليًا لهذه المدرسة."
             send_message(chat_id, header + body)
             return jsonify(ok=True)
 
@@ -503,6 +503,8 @@ def webhook():
     if lower_text == "/btc":
         # التحليل الأساسى من المحرك القديم (مع كاش) – BTCUSDT
         base_text = services.get_cached_response(
+        if base_text is None:
+            base_text = ""
             "btc_analysis", lambda: format_analysis("BTCUSDT")
         )
 
@@ -561,18 +563,28 @@ def webhook():
 
     if lower_text == "/vai":
         reply = format_analysis("VAIUSDT")
+        if reply is None:
+            reply = ("⚠️ تعذر توليد تحليل VAI حاليًا، ربما الرمز غير متاح أو توجد مشكلة بيانات."
+                     "\n🔁 حاول مرة أخرى بعد دقائق.")
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
     if lower_text == "/market":
         reply = services.get_cached_response("market_report", format_market_report)
+        if reply is None:
+            reply = ("⚠️ تعذر توليد تقرير السوق فى الوقت الحالى."
+                     "\n🔁 حاول مرة أخرى بعد دقائق، أو تأكد أن بيانات السوق متاحة.")
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
     if lower_text == "/risk_test":
         reply = services.get_cached_response("risk_test", format_risk_test)
+        if reply is None:
+            reply = ("⚠️ تعذر تشغيل اختبار إدارة المخاطر حاليًا."
+                     "\n🔁 حاول مرة أخرى بعد قليل.")
         send_message(chat_id, reply)
         return jsonify(ok=True)
+
 
     # لوحة مدارس التحليل
     if lower_text.startswith("/school"):
@@ -644,6 +656,13 @@ def webhook():
                 "🔁 جرّب اختيار المدرسة مرة أخرى من /school."
             )
 
+        if header is None:
+            header = "📚 تحليل مدرسة.\n\n"
+        if body is None:
+            body = (
+                "⚠️ لا يوجد تحليل متاح حاليًا لهذه المدرسة على الرمز المطلوب.\n"
+                "🔁 جرّب اختيار المدرسة مرة أخرى أو استخدم BTCUSDT افتراضيًا."
+            )
         send_message(chat_id, header + body)
         return jsonify(ok=True)
 
@@ -784,6 +803,10 @@ def webhook():
                     config.logger.exception("Error in generic symbol analysis: %s", e)
                     reply = f"⚠️ حدث خطأ أثناء تحليل <b>{symbol}</b>."
 
+                if reply is None:
+                    reply = (
+                        f"⚠️ تعذر توليد تحليل <b>{symbol}</b> حاليًا.",
+                    )
                 send_message(chat_id, reply)
                 return jsonify(ok=True)
 
