@@ -34,6 +34,33 @@ import services
 
 app = Flask(__name__)
 
+# ==============================
+#   Safety wrappers (بدون حذف أى شغل قديم)
+# ==============================
+# بعض الدوال قد ترجع None فى ظروف معينة (مثلاً body فى تحليل مدرسة)،
+# وده كان بيكسر الـ webhook عند عمل (header + body) أو عند إرسال None.
+# هنا بنضيف غطاء أمان بسيط بدون تغيير منطق الشغل القديم.
+
+_ORIG_SEND_MESSAGE = send_message
+_ORIG_SEND_MESSAGE_WITH_KEYBOARD = send_message_with_keyboard
+
+
+def send_message(chat_id, text, *args, **kwargs):
+    # تحويل None إلى نص فاضى لتفادى أخطاء runtime
+    if text is None:
+        text = ""
+    else:
+        text = str(text)
+    return _ORIG_SEND_MESSAGE(chat_id, text, *args, **kwargs)
+
+
+def send_message_with_keyboard(chat_id, text, keyboard, *args, **kwargs):
+    if text is None:
+        text = ""
+    else:
+        text = str(text)
+    return _ORIG_SEND_MESSAGE_WITH_KEYBOARD(chat_id, text, keyboard, *args, **kwargs)
+
 # مجموعة الأوامر المعروفة حتى لا تتداخل مع أوامر الرموز (/btcusdt ...)
 KNOWN_COMMANDS = {
     "/start",
@@ -286,13 +313,11 @@ def _format_school_header(code: str) -> str:
 # ==============================
 
 @app.route("/", methods=["GET"])
-@app.route("//", methods=["GET"])
 def index():
     return "IN CRYPTO Ai bot is running.", 200
 
 
 @app.route("/webhook", methods=["POST"])
-@app.route("//webhook", methods=["POST"])
 def webhook():
     update = request.get_json(force=True, silent=True) or {}
     config.LAST_WEBHOOK_TICK = time.time()
@@ -349,7 +374,7 @@ def webhook():
                 config.logger.exception("Error in school callback analysis: %s", e)
                 body = "⚠️ حدث خطأ أثناء توليد التحليل من المحرك."
 
-            send_message(chat_id, header + body)
+            send_message(chat_id, header + (body or ""))
             return jsonify(ok=True)
 
         return jsonify(ok=True)
@@ -642,7 +667,7 @@ def webhook():
                 "🔁 جرّب اختيار المدرسة مرة أخرى من /school."
             )
 
-        send_message(chat_id, header + body)
+        send_message(chat_id, header + (body or ""))
         return jsonify(ok=True)
 
 # ==============================
@@ -1034,8 +1059,7 @@ def status_api():
 # ==============================
 
 def setup_webhook():
-    base_url = (config.APP_BASE_URL or "").rstrip("/")
-    webhook_url = f"{base_url}/webhook"
+    webhook_url = f"{config.APP_BASE_URL}/webhook"
     try:
         r = HTTP_SESSION.get(
             f"{TELEGRAM_API}/setWebhook",
