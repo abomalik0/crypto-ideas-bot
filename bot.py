@@ -2805,8 +2805,8 @@ def process_request_async(chat_id, school_code, symbol):
 # WEBHOOK ROUTE (FAST ACK + SAFE PROCESSING)
 # ============================================================
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
+@app.route("/webhook_old", methods=["POST"], endpoint="webhook_old")
+def webhook_old():
     update = request.get_json(force=True, silent=True) or {}
 
     # FAST ACK for callback buttons
