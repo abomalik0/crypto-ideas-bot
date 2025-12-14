@@ -2802,303 +2802,69 @@ def process_request_async(chat_id, school_code, symbol):
         except:
             pass
 # ============================================================
-# WEBHOOK ROUTE PATCH (FAST ACK + SAFE JOIN + MENU)  [NO DUPLICATE ROUTES]
+# WEBHOOK ROUTE (FAST ACK + SAFE PROCESSING)
 # ============================================================
 
-# IMPORTANT:
-# - DO NOT register a new @app.route("/webhook") here.
-# - Your file already has webhook() route earlier.
-# - We will PATCH/REPLACE the existing endpoint implementation safely
-#   via app.view_functions['webhook'] to avoid Flask AssertionError.
-
-USER_STATE = globals().get("USER_STATE", {})  # keep if already exists
-
-
-def _ensure_str(x):
-    try:
-        if x is None:
-            return ""
-        if isinstance(x, str):
-            return x
-        return str(x)
-    except:
-        return ""
-
-
-def _quick_ack(chat_id, text="⏳ جاري التحليل..."):
-    # fast user feedback (best-effort)
-    try:
-        send_message(chat_id, text)
-    except:
-        pass
-
-
-def build_school_keyboard():
-    # لو عندك نفس الدالة فوق، سيبها هناك — هنا نسخة احتياطية
-    try:
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    except:
-        InlineKeyboardButton = None
-        InlineKeyboardMarkup = None
-
-    if not InlineKeyboardButton:
-        return None
-
-    rows = [
-        [InlineKeyboardButton("Liquidity Map — خريطة السيولة", callback_data="SCHOOL|LIQ")],
-        [InlineKeyboardButton("ICT — Smart Money Concepts", callback_data="SCHOOL|ICT")],
-        [InlineKeyboardButton("SMC — Smart Money", callback_data="SCHOOL|SMC")],
-        [InlineKeyboardButton("Classical TA — المدرسة الكلاسيكية", callback_data="SCHOOL|TA")],
-        [InlineKeyboardButton("Harmonic — التوافقي", callback_data="SCHOOL|HARM")],
-        [InlineKeyboardButton("Wyckoff — وايكوف", callback_data="SCHOOL|WYCK")],
-        [InlineKeyboardButton("Elliott — موجات إليوت", callback_data="SCHOOL|ELLIOTT")],
-        [InlineKeyboardButton("Supply/Demand — عرض/طلب", callback_data="SCHOOL|SD")],
-        [InlineKeyboardButton("Time Master — التحليل الزمني", callback_data="SCHOOL|TIME")],
-        [InlineKeyboardButton("Digital — التحليل الرقمي", callback_data="SCHOOL|DIGI")],
-        [InlineKeyboardButton("Volume — التحليل الحجمي", callback_data="SCHOOL|VOL")],
-        [InlineKeyboardButton("ALL-IN-ONE — التحليل الشامل", callback_data="SCHOOL|MASTER")],
-    ]
-    return InlineKeyboardMarkup(rows)
-
-
-def build_symbol_keyboard():
-    # اختيار سريع + خيار كتابة يدوي
-    try:
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    except:
-        InlineKeyboardButton = None
-        InlineKeyboardMarkup = None
-
-    if not InlineKeyboardButton:
-        return None
-
-    rows = [
-        [InlineKeyboardButton("BTCUSDT", callback_data="SYM|BTCUSDT"),
-         InlineKeyboardButton("ETHUSDT", callback_data="SYM|ETHUSDT")],
-        [InlineKeyboardButton("BNBUSDT", callback_data="SYM|BNBUSDT"),
-         InlineKeyboardButton("SOLUSDT", callback_data="SYM|SOLUSDT")],
-        [InlineKeyboardButton("اكتب العملة يدويًا ✍️", callback_data="SYM|CUSTOM")],
-    ]
-    return InlineKeyboardMarkup(rows)
-
-
-def handle_user_message(chat_id, text):
-    t = (_ensure_str(text)).strip().upper()
-
-    # start / menu
-    if t in ("/START", "START", "MENU", "القائمة", "مدرسة", "SCHOOLS"):
-        USER_STATE[chat_id] = {"school": None, "symbol": None, "await_symbol": False}
-        send_message(chat_id, "📌 اختر المدرسة أولاً:", reply_markup=build_school_keyboard())
-        return
-
-    st = USER_STATE.get(chat_id, {})
-
-    # awaiting custom symbol
-    if st.get("await_symbol"):
-        sym = t.replace(" ", "")
-        if not sym.endswith("USDT") and len(sym) < 4:
-            send_message(chat_id, "⚠️ اكتب الرمز بالشكل الصحيح (مثال: BTCUSDT)")
-            return
-
-        st["symbol"] = sym
-        st["await_symbol"] = False
-        USER_STATE[chat_id] = st
-
-        school = st.get("school") or "MASTER"
-        _quick_ack(chat_id, "⏳ جاري بناء التحليل الآن...")
-        # شغل التحليل في Thread عشان مايعطلش webhook
-        try:
-            import threading
-            threading.Thread(target=process_request_async, args=(chat_id, school, sym), daemon=True).start()
-        except Exception as e:
-            send_message(chat_id, f"⚠️ خطأ في تشغيل التحليل: {_ensure_str(e)}")
-        return
-
-    # لو كتب رمز مباشرة BTCUSDT
-    if len(t) >= 6 and t.endswith("USDT"):
-        sym = t.replace(" ", "")
-        school = st.get("school") or "MASTER"
-        _quick_ack(chat_id, "⏳ جاري بناء التحليل الآن...")
-        try:
-            import threading
-            threading.Thread(target=process_request_async, args=(chat_id, school, sym), daemon=True).start()
-        except Exception as e:
-            send_message(chat_id, f"⚠️ خطأ في تشغيل التحليل: {_ensure_str(e)}")
-        return
-
-    send_message(chat_id, "🧠 اكتب /start ثم اختر المدرسة ثم اختر العملة (أو اكتب BTCUSDT مباشرة).")
-
-
-def handle_callback(chat_id, data, callback_query_id=None):
-    try:
-        if not data:
-            return
-
-        parts = data.split("|", 1)
-        if len(parts) != 2:
-            return
-
-        kind, val = parts[0], parts[1]
-        st = USER_STATE.get(chat_id, {"school": None, "symbol": None, "await_symbol": False})
-
-        # اختيار مدرسة
-        if kind == "SCHOOL":
-            st["school"] = val
-            st["symbol"] = None
-            st["await_symbol"] = False
-            USER_STATE[chat_id] = st
-
-            try:
-                if callback_query_id:
-                    answer_callback_query(callback_query_id, "✅ تم اختيار المدرسة")
-            except:
-                pass
-
-            send_message(chat_id, "📌 اختر العملة (أو اكتبها):", reply_markup=build_symbol_keyboard())
-            return
-
-        # اختيار عملة
-        if kind == "SYM":
-            if val == "CUSTOM":
-                st["await_symbol"] = True
-                USER_STATE[chat_id] = st
-                send_message(chat_id, "✍️ اكتب رمز العملة الآن (مثال: BTCUSDT):")
-                return
-
-            sym = val
-            st["symbol"] = sym
-            st["await_symbol"] = False
-            USER_STATE[chat_id] = st
-
-            school = st.get("school") or "MASTER"
-            _quick_ack(chat_id, "⏳ جاري بناء التحليل الآن...")
-            try:
-                import threading
-                threading.Thread(target=process_request_async, args=(chat_id, school, sym), daemon=True).start()
-            except Exception as e:
-                send_message(chat_id, f"⚠️ خطأ في تشغيل التحليل: {_ensure_str(e)}")
-            return
-
-    except Exception as e:
-        try:
-            send_message(chat_id, f"⚠️ خطأ في معالجة الاختيار: {_ensure_str(e)}")
-        except:
-            pass
-
-
-def webhook_v2():
-    """
-    Patched webhook:
-    - fast ACK 200
-    - handles callback_query + message quickly
-    - no heavy work here (analysis runs async)
-    """
+@app.route("/webhook", methods=["POST"])
+def webhook():
     update = request.get_json(force=True, silent=True) or {}
 
+    # FAST ACK for callback buttons
     try:
-        # callback query
         if "callback_query" in update:
-            cq = update["callback_query"]
-            msg = cq.get("message") or {}
-            chat = msg.get("chat") or {}
-            chat_id = chat.get("id")
-            data = cq.get("data")
-            callback_query_id = cq.get("id")
+            cq = update.get("callback_query", {})
+            cq_id = cq.get("id")
+            if cq_id:
+                answer_callback_query(cq_id, "⏳")
+    except Exception:
+        pass
 
-            # fast ACK to telegram
-            try:
-                if callback_query_id:
-                    answer_callback_query(callback_query_id, "⏳")
-            except:
-                pass
+    threading.Thread(
+        target=process_update_async,
+        args=(update,),
+        daemon=True
+    ).start()
 
-            if chat_id:
-                handle_callback(chat_id, data, callback_query_id)
-            return "OK", 200
+    return jsonify({"ok": True}), 200
 
-        # normal message
+
+def process_update_async(update):
+    try:
         if "message" in update:
             msg = update["message"]
             chat_id = msg["chat"]["id"]
             text = msg.get("text", "")
             handle_user_message(chat_id, text)
-            return "OK", 200
+            return
+
+        if "callback_query" in update:
+            cq = update["callback_query"]
+            chat_id = cq["message"]["chat"]["id"]
+            data = cq.get("data")
+            cq_id = cq.get("id")
+            handle_callback(chat_id, data, cq_id)
+            return
 
     except Exception as e:
-        try:
-            config.logger.exception("webhook_v2 error: %s", e)
-        except:
-            pass
-
-    return "OK", 200
+        logger.exception("Update processing error: %s", e)
 
 
-# ✅ PATCH existing /webhook endpoint WITHOUT adding a new route
-try:
-    if hasattr(app, "view_functions") and "webhook" in app.view_functions:
-        app.view_functions["webhook"] = webhook_v2
-    else:
-        # fallback: register if not exists (rare)
-        app.add_url_rule("/webhook", endpoint="webhook", view_func=webhook_v2, methods=["POST"])
-except Exception as e:
-    try:
-        config.logger.exception("Failed to patch webhook endpoint: %s", e)
-    except:
-        pass
-
-
-# ==============================
-#       تفعيل الـ Webhook
-# ==============================
-
-def setup_webhook():
-    webhook_url = f"{config.APP_BASE_URL}/webhook"
-    try:
-        r = HTTP_SESSION.get(
-            f"{TELEGRAM_API}/setWebhook",
-            params={"url": webhook_url},
-            timeout=10,
-        )
-        config.logger.info("Webhook response: %s - %s", r.status_code, r.text)
-    except Exception as e:
-        config.logger.exception("Error while setting webhook: %s", e)
-
-
-def set_webhook_on_startup():
-    setup_webhook()
-
-
-# =====================================
-# تشغيل البوت — Main Runner
-# =====================================
+# ============================================================
+# MAIN RUNNER
+# ============================================================
 
 if __name__ == "__main__":
-    import os
-    import logging
+    import logging, os
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
-    # تحميل السناك شوت (لو متفعّل)
     try:
-        services.load_snapshot()
+        set_webhook()
     except Exception as e:
-        logging.exception("Snapshot load failed on startup: %s", e)
+        logger.exception("Webhook setup failed: %s", e)
 
-    # ضبط الويب هوك
-    try:
-        set_webhook_on_startup()
-    except Exception as e:
-        logging.exception("Failed to set webhook on startup: %s", e)
-
-    # تشغيل كل الثريدات من services
-    try:
-        services.start_background_threads()
-    except Exception as e:
-        logging.exception("Failed to start background threads: %s", e)
-
-    # تشغيل Flask (PORT من Koyeb)
-    port = int(os.getenv("PORT", "8080"))
+    port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
