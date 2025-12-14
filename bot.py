@@ -2809,8 +2809,8 @@ from flask import request, jsonify
 import os
 import logging
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
+@app.route("/webhook", methods=["POST"], endpoint="telegram_webhook_v2")
+def telegram_webhook_v2():
     """
     هدفها:
     - ترجع 200 بسرعة جدا (Fast ACK) عشان تليجرام مايعيدش نفس التحديثات
