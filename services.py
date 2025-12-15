@@ -1593,3 +1593,87 @@ def get_school_cached_response(
         _school_cache_set(cache_key, text)
 
     return text
+# =====================================================
+#   SCHOOL 1: Classical TA — ULTRA
+# =====================================================
+
+def generate_classical_ta_school(symbol: str, timeframe: str) -> str:
+    """
+    Classical Technical Analysis — Ultra Expanded
+    يعتمد على الاتجاه، الزخم، المتوسطات، الدعوم والمقاومات، النماذج.
+    """
+    try:
+        from analysis_engine import get_market_metrics_cached
+
+        metrics = get_market_metrics_cached(symbol=symbol, timeframe=timeframe)
+        if not metrics:
+            return "⚠️ تعذّر جلب بيانات التحليل الفني الكلاسيكي حاليًا."
+
+        trend = metrics.get("trend", "غير واضح")
+        price = metrics.get("price")
+        change = metrics.get("change_pct")
+
+        ema50 = metrics.get("ema50")
+        ema200 = metrics.get("ema200")
+        rsi = metrics.get("rsi")
+        macd = metrics.get("macd_signal")
+
+        support = metrics.get("support")
+        resistance = metrics.get("resistance")
+
+        trend_comment = (
+            "اتجاه صاعد" if ema50 and ema200 and ema50 > ema200 else
+            "اتجاه هابط" if ema50 and ema200 and ema50 < ema200 else
+            "اتجاه عرضي"
+        )
+
+        rsi_state = (
+            "تشبع شرائي" if rsi and rsi >= 70 else
+            "تشبع بيعي" if rsi and rsi <= 30 else
+            "حيادي"
+        )
+
+        macd_state = "إيجابي" if macd == "bullish" else "سلبي" if macd == "bearish" else "محايد"
+
+        return f"""
+📘 <b>Classical TA — التحليل الفني الكلاسيكي (Ultra)</b>
+━━━━━━━━━━━━━━━━━━
+🔍 <b>العملة:</b> {symbol}
+⏱ <b>الإطار الزمني:</b> {timeframe}
+
+📈 <b>الاتجاه العام:</b>
+• الاتجاه: <b>{trend}</b>
+• توصيف الاتجاه: <b>{trend_comment}</b>
+
+📊 <b>الزخم:</b>
+• RSI: <b>{rsi}</b> ({rsi_state})
+• MACD: <b>{macd_state}</b>
+
+📐 <b>المتوسطات المتحركة:</b>
+• EMA50: {ema50}
+• EMA200: {ema200}
+
+📉 <b>الدعوم والمقاومات:</b>
+• دعم مهم: <b>{support}</b>
+• مقاومة مهمة: <b>{resistance}</b>
+
+⚠️ <b>ملاحظة:</b>
+التحليل الكلاسيكي يعتمد على السياق العام ويُفضّل دمجه مع مدارس أخرى.
+
+📌 <b>IN CRYPTO AI — Classical TA Engine</b>
+""".strip()
+
+    except Exception as e:
+        logger.exception("Error in Classical TA school: %s", e)
+        return "⚠️ حدث خطأ أثناء توليد التحليل الفني الكلاسيكي."
+
+
+def get_classical_ta_school(symbol: str, timeframe: str) -> str:
+    """
+    واجهة الكاش لمدرسة Classical TA
+    """
+    return get_school_cached_response(
+        school_name="classical_ta",
+        symbol=f"{symbol}:{timeframe}",
+        generator=lambda: generate_classical_ta_school(symbol, timeframe),
+)
