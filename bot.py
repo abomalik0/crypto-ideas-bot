@@ -34,6 +34,33 @@ import services
 
 app = Flask(__name__)
 
+# ==============================
+#   Safety wrappers (بدون حذف أى شغل قديم)
+# ==============================
+# بعض الدوال قد ترجع None فى ظروف معينة (مثلاً body فى تحليل مدرسة)،
+# وده كان بيكسر الـ webhook عند عمل (header + body) أو عند إرسال None.
+# هنا بنضيف غطاء أمان بسيط بدون تغيير منطق الشغل القديم.
+
+_ORIG_SEND_MESSAGE = send_message
+_ORIG_SEND_MESSAGE_WITH_KEYBOARD = send_message_with_keyboard
+
+
+def send_message(chat_id, text, *args, **kwargs):
+    # تحويل None إلى نص فاضى لتفادى أخطاء runtime
+    if text is None:
+        text = ""
+    else:
+        text = str(text)
+    return _ORIG_SEND_MESSAGE(chat_id, text, *args, **kwargs)
+
+
+def send_message_with_keyboard(chat_id, text, keyboard, *args, **kwargs):
+    if text is None:
+        text = ""
+    else:
+        text = str(text)
+    return _ORIG_SEND_MESSAGE_WITH_KEYBOARD(chat_id, text, keyboard, *args, **kwargs)
+
 # مجموعة الأوامر المعروفة حتى لا تتداخل مع أوامر الرموز (/btcusdt ...)
 KNOWN_COMMANDS = {
     "/start",
@@ -253,10 +280,9 @@ def _format_smart_snapshot(snapshot: dict, title: str) -> str:
     return "\n".join(lines)
 
 
-
 def _format_school_header(code: str) -> str:
     """
-    عنوان قصير فوق تحليل المدرسة (تعليمي فقط).
+    مجرد عنوان فوق تحليل المدرسة – التحليل نفسه ييجى من المحرك V16.
     """
     mapping = {
         "ict": "مدرسة ICT – Smart Money Concepts",
@@ -276,265 +302,22 @@ def _format_school_header(code: str) -> str:
     }
     title = mapping.get(code, "مدرسة تحليل")
     return (
-        f"📘 <b>{title}</b>\n"
-        "⚠️ هذا التحليل تعليمي فقط وليس توصية مباشرة بالشراء أو البيع.\n\n"
+        f"📚 <b>{title}</b>\n"
+        "هذا التحليل تعليمى يعتمد على محرك V16 الكامل (ICT + SMC + Wyckoff + Harmonic + Elliott + Time + Supply/Demand ...)\n"
+        "النتيجة مبنية على BTCUSDT حاليًا، ويمكن توسيعها لاحقًا لعملات أخرى.\n\n"
     )
 
 
-def _get_school_snapshot(symbol: str):
-    """نحاول جلب لقطة ذكية للسوق من محرك SmartAlert إن أمكن."""
-    symbol = symbol.upper()
-    try:
-        # نحاول أولاً تمرير العملة لو الدالة بتدعمها
-        try:
-            snapshot = compute_smart_market_snapshot(symbol)
-        except TypeError:
-            snapshot = compute_smart_market_snapshot()
-    except Exception as e:  # pragma: no cover - دفاعى
-        logger.error(f"Smart snapshot failed for {symbol}: {e}")
-        return None
+# ==============================
+#   مسارات أساسية / Webhook
+# ==============================
 
-    metrics = snapshot.get("metrics", {}) if isinstance(snapshot, dict) else {}
-    risk = snapshot.get("risk", {}) if isinstance(snapshot, dict) else {}
-
-    price = float(metrics.get("price" , 0) or 0)
-    change = float(metrics.get("change_pct", 0) or 0)
-    intraday_range = float(metrics.get("range_pct", 0) or 0)
-    volatility = float(metrics.get("volatility_score", 0) or 0)
-    liquidity = float(metrics.get("liquidity_pulse", 0) or 0)
-    risk_score = float(risk.get("score", 0) or 0)
-    risk_level = str(risk.get("level", "متوسط"))
-
-    # اتجاه تقريبى بناءً على التغير اليومى
-    if change > 1.0:
-        trend = "صاعد"
-    elif change < -1.0:
-        trend = "هابط"
-    else:
-        trend = "عرضى / متذبذب"
-
-    move_type = "اندفاعية" if intraday_range >= 4 else "تصحيحية" if intraday_range >= 1.5 else "حركة هادئة"
-
-    return {
-        "symbol": symbol,
-        "price": price,
-        "change": change,
-        "intraday_range": intraday_range,
-        "volatility": volatility,
-        "liquidity": liquidity,
-        "risk_score": risk_score,
-        "risk_level": risk_level,
-        "trend": trend,
-        "move_type": move_type,
-    }
+@app.route("/", methods=["GET"])
+def index():
+    return "IN CRYPTO Ai bot is running.", 200
 
 
-def _build_smc_report(snapshot):
-    s = snapshot
-    sym = s["symbol"]
-    price = s["price"]
-    # مستويات تقريبية مبنية على الحركة الحالية
-    bos_level = price * (1 + s["intraday_range"] / 200) if price else None
-    choch_level = price * (1 - s["intraday_range"] / 200) if price else None
-    demand_zone_low = price * (1 - 0.03)
-    demand_zone_high = price * (1 - 0.015)
-    supply_zone_low = price * (1 + 0.015)
-    supply_zone_high = price * (1 + 0.03)
-
-    def fmt_level(val):
-        return f"{val:,.0f}$" if val else "غير محدد"
-
-    return (
-        f"📘 مدرسة SMC — تحليل {sym}\n"
-        f"🔍 مقدمة:\n"
-        f"مدرسة SMC تركز على قراءة تدفق السعر وهيكلة السوق (Market Structure) وربطها بمناطق الطلب/العرض وعدم التوازن.\n\n"
-        f"📊 قراءة الهيكلة (Market Structure):\n"
-        f"• اتجاه الهيكلة العام: <b>{s['trend']}</b>\n"
-        f"• قوة الحركة الحالية: {s['move_type']} (مدى يومى ~ {s['intraday_range']:.1f}٪)\n"
-        f"• آخر مناطق كسر محتملة:\n"
-        f"  - BOS تقريبًا عند: {fmt_level(bos_level)}\n"
-        f"  - CHoCH تقريبًا عند: {fmt_level(choch_level)}\n\n"
-        f"📉 عدم التوازن (Imbalance Map):\n"
-        f"• الحركة الحالية تميل إلى: { 'ملء فجوات سعرية متراكمة' if s['intraday_range'] > 3 else 'حركة متوازنة بدون فجوات قوية' }\n"
-        f"• نوع الحركة الآن: {s['move_type']}\n\n"
-        f"🎯 مناطق العرض والطلب (POI):\n"
-        f"• أقوى Demand Zone تعليمية: {fmt_level(demand_zone_low)} → {fmt_level(demand_zone_high)}\n"
-        f"• أقوى Supply Zone تعليمية: {fmt_level(supply_zone_low)} → {fmt_level(supply_zone_high)}\n\n"
-        f"📈 سيناريو صاعد (Bullish SMC):\n"
-        f"• مراقبة Mitigation من منطقة الطلب المذكورة مع ظهور هيكلة صاعدة جديدة.\n"
-        f"• أهداف محتملة مبنية على الحركة الحالية:\n"
-        f"  1) إعادة اختبار منطقة {fmt_level(supply_zone_low)}\n"
-        f"  2) امتداد محتمل نحو {fmt_level(supply_zone_high)}\n\n"
-        f"📉 سيناريو هابط (Bearish SMC):\n"
-        f"• في حالة كسر واضح أسفل {fmt_level(demand_zone_low)} يتحول التركيز إلى حماية رأس المال.\n"
-        f"• أهداف هابطة تعليمية يمكن مراقبتها أسفل هذه المناطق تدريجيًا.\n\n"
-        f"⚠️ إدارة المخاطرة:\n"
-        f"• درجة المخاطرة الحالية من المحرك: <b>{s['risk_level']}</b> (Score ≈ {s['risk_score']:.1f} / 10).\n"
-        f"• يفضّل الدمج مع خطة إدارة رأس مال صارمة وعدم الاعتماد على منطقة واحدة للدخول أو الخروج.\n"
-    )
-
-
-def _build_wyckoff_report(snapshot):
-    s = snapshot
-    sym = s["symbol"]
-    price = s["price"]
-    range_width = s["intraday_range"]
-    # نفترض نطاق تعليمى ±2٪ حول السعر
-    range_low = price * (1 - 0.02)
-    range_high = price * (1 + 0.02)
-
-    if range_width < 1.0:
-        phase = "احتمال تراكُم هادئ داخل نطاق سعرى ضيق."
-    elif s["trend"] == "صاعد":
-        phase = "Re-Accumulation داخل ترند صاعد."
-    elif s["trend"] == "هابط":
-        phase = "Re-Distribution داخل ترند هابط."
-    else:
-        phase = "Trading Range جانبى يحتاج مزيد من التأكيد."
-
-    def fmt_level(v):
-        return f"{v:,.0f}$" if v else "غير محدد"
-
-    return (
-        f"📘 مدرسة Wyckoff — تحليل {sym}\n"
-        f"🔍 مقدمة:\n"
-        f"مدرسة Wyckoff تركز على مراحل السوق (تجميع / تصريف) وكيف تتحرك المؤسسات داخل النطاقات السعرية.\n\n"
-        f"📊 مرحلة السوق الحالية (Market Phase):\n"
-        f"• توصيف تقريبى: {phase}\n"
-        f"• نطاق تعليمى مفترض: {fmt_level(range_low)} → {fmt_level(range_high)}\n"
-        f"• سلوك الحركة اليومى: مدى ~ {range_width:.1f}٪ مع تقلب ≈ {s['volatility']:.1f}/10.\n\n"
-        f"🎭 أحداث Wyckoff (تعليمية):\n"
-        f"• مناطق ضغط/امتصاص محتملة قرب حدود النطاق العلوى والسفلى.\n"
-        f"• يُفضّل مراقبة رد الفعل عند كسر واضح خارج هذا النطاق قبل أى قرار.\n\n"
-        f"📈 سيناريو صاعد (Bullish Wyckoff):\n"
-        f"• اختراق واضح فوق الحد العلوى مع حجم/زخم قوى → إشارة على انتقال من تراكم إلى اتجاه صاعد.\n\n"
-        f"📉 سيناريو هابط (Bearish Wyckoff):\n"
-        f"• كسر قوى أسفل الحد السفلى للنطاق → يميل لصورة تصريف / ضعف مؤسساتى.\n\n"
-        f"⚠️ ملاحظات مهمة:\n"
-        f"• لا يُفضل الدخول من منتصف النطاق، بل من الأطراف مع تأكيد حجم/سلوك السعر.\n"
-        f"• هذا الوصف تعليمى مبنى على بيانات الحركة العامة وليس قراءة كاملة لكل موجة داخلية.\n"
-    )
-
-
-def _build_harmonic_report(snapshot):
-    s = snapshot
-    sym = s["symbol"]
-    price = s["price"]
-    # مناطق تعليمية تقريبية كنسبة من السعر
-    prz_low = price * (1 - 0.025)
-    prz_high = price * (1 - 0.015) if s["trend"] == "صاعد" else price * (1 + 0.015)
-    pattern = "Gartley" if s["trend"] == "صاعد" else "Bat"
-
-    def fmt_level(v):
-        return f"{v:,.0f}$" if v else "غير محدد"
-
-    return (
-        f"📘 مدرسة Harmonic — تحليل {sym}\n"
-        f"🔍 مقدمة:\n"
-        f"التحليل التوافقى يعتمد على تتبع الموجات وفق نسب فيبوناتشى لتكوين نماذج XABCD وتحديد مناطق PRZ.\n\n"
-        f"🎼 النمط الأقرب حاليًا (تعليمى): {pattern}\n"
-        f"• الحركة الحالية تُظهر تقلبًا بدرجة ≈ {s['volatility']:.1f}/10 مع مدى يومى ~ {s['intraday_range']:.1f}٪.\n\n"
-        f"📐 منطقة الانعكاس PRZ (تقريبية):\n"
-        f"• نطاق مراقبة رئيسى: {fmt_level(prz_low)} → {fmt_level(prz_high)}\n"
-        f"• يُفضّل مراقبة سلوك السعر والشموع الانعكاسية داخل هذه المنطقة قبل أى قرار.\n\n"
-        f"📈 سيناريو صاعد:\n"
-        f"• فى حالة رد فعل إيجابى من PRZ مع كسر قمم فرعية → يعزز احتمال اكتمال نموذج توافقى صاعد.\n\n"
-        f"📉 سيناريو هابط:\n"
-        f"• كسر قوى أسفل PRZ بدون ارتداد واضح → إشارة لفشل النموذج واستمرار الاتجاه السابق.\n\n"
-        f"⚠️ ملاحظات المدرسة:\n"
-        f"• النماذج التوافقية وحدها لا تكفى، الأفضل دمجها مع SMC أو Wyckoff لتأكيد مناطق الدخول والخروج.\n"
-    )
-
-
-def _build_time_report(snapshot):
-    s = snapshot
-    sym = s["symbol"]
-    return (
-        f"⏱️ المدرسة الزمنية – تحليل {sym}\n"
-        f"🔍 الفكرة الزمنية:\n"
-        f"نستخدم درجة التقلب والمدى اليومى لتقدير قوة الدورة الحالية واحتمال استمرارها أو تباطؤها.\n\n"
-        f"📊 إيقاع السوق الحالى:\n"
-        f"• درجة التقلب التقريبية: {s['volatility']:.1f} / 10\n"
-        f"• المدى اليومى: ~ {s['intraday_range']:.1f}٪\n"
-        f"• توصيف عام للإيقاع: {s['move_type']} مع ميل هيكلى {s['trend']}.\n\n"
-        f"🧭 فكرة زمنية تعليمية:\n"
-        f"• كلما زاد المدى اليومى مع تقلب عالى → تميل الحركة لمراحل اندفاع / ذروة.\n"
-        f"• كلما هدأ المدى مع تقلب ضعيف → تميل الحركة لمراحل هدوء / تجميع أو تصريف بطئ.\n\n"
-        f"⚠️ استخدام عملى:\n"
-        f"• يُفضل ربط القراءة الزمنية مع الفريمات الأكبر وتأكيدها عبر المدارس الأخرى قبل اتخاذ أى قرار.\n"
-    )
-
-
-def _build_volume_report(snapshot):
-    s = snapshot
-    sym = s["symbol"]
-    return (
-        f"📊 مدرسة الحجم والتقلب – تحليل {sym}\n"
-        f"🔍 نظرة عامة:\n"
-        f"هذه القراءة تركز على مدى اتساع حركة السعر (Range) مع درجة التقلب (Volatility) كمؤشر غير مباشر للنشاط والحجم.\n\n"
-        f"📈 نشاط السوق:\n"
-        f"• المدى اليومى: ~ {s['intraday_range']:.1f}٪\n"
-        f"• درجة التقلب: {s['volatility']:.1f} / 10\n"
-        f"• نبض السيولة التقريبى: {s['liquidity']:.1f} / 10\n\n"
-        f"📌 تفسير تعليمى:\n"
-        f"• مدى كبير + تقلب عالى → نشاط حاد وإعادة تسعير سريعة (تزيد المخاطرة).\n"
-        f"• مدى متوسط + تقلب متوسط → بيئة مناسبة للتداول قصير ومتوسط المدى مع إدارة صارمة للمخاطر.\n"
-        f"• مدى ضعيف + تقلب منخفض → سوق هادئ يميل لصفقات انتقائية أو انتظار كسر واضح.\n\n"
-        f"⚠️ ملاحظة:\n"
-        f"هذه القراءة لا تغنى عن مراقبة حجم التداول الفعلى على المنصات، لكنها تعطى صورة أولية عن قوة الحركة.\n"
-    )
-
-
-def _build_generic_school_report(code: str, snapshot):
-    """تقرير افتراضى لباقى المدارس عندما لا يوجد قالب خاص."""
-    s = snapshot
-    sym = s["symbol"]
-    return (
-        f"📘 تحليل {code.upper()} — {sym}\n"
-        f"• اتجاه عام: {s['trend']}\n"
-        f"• مدى يومى تقريبى: {s['intraday_range']:.1f}٪\n"
-        f"• درجة التقلب: {s['volatility']:.1f} / 10\n"
-        f"• درجة المخاطرة من المحرك: {s['risk_level']} (≈ {s['risk_score']:.1f} / 10).\n\n"
-        f"باقى تفاصيل هذه المدرسة تُعرض بصيغة تعليمية، ويُفضّل دمجها مع التحليل الفنى الخاص بك وخطة إدارة رأس المال.\n"
-    )
-
-
-def _build_school_report(code: str, symbol: str) -> str:
-    """Wrapper فوق format_school_report الأصلى + قوالبنا المتقدمة."""
-    symbol = symbol.upper()
-    if symbol.endswith("USDT") is False and len(symbol) <= 5:
-        # تسهيل: لو كتب btc فقط نحوله BTCUSDT
-        symbol = symbol + "USDT"
-
-    # 1) نحاول استخدام المحرك القديم لو بيرجع نص فعلى
-    try:
-        body = format_school_report(code, symbol)
-        if body:
-            text = str(body).strip()
-            if text and "لا يوجد تحليل متاح" not in text:
-                return text
-    except Exception as e:  # pragma: no cover - دفاعى
-        logger.error(f"format_school_report failed for {code} {symbol}: {e}")
-
-    # 2) لو مافيش، نستخدم القوالب الجديدة المبنية على Smart snapshot
-    snapshot = _get_school_snapshot(symbol)
-    if not snapshot:
-        return "⚠️ لا توجد بيانات كافية لهذه العملة حاليًا من المحرك الرئيسى. حاول مرة أخرى لاحقًا."
-
-    code = code.lower()
-    if code == "smc":
-        return _build_smc_report(snapshot)
-    if code == "wyckoff":
-        return _build_wyckoff_report(snapshot)
-    if code == "harmonic":
-        return _build_harmonic_report(snapshot)
-    if code == "time":
-        return _build_time_report(snapshot)
-    if code in {"volume", "vol"}:
-        return _build_volume_report(snapshot)
-
-    # الافتراضى لباقى المدارس
-    return _build_generic_school_report(code, snapshot)
+@app.route("/webhook", methods=["POST"])
 def webhook():
     update = request.get_json(force=True, silent=True) or {}
     config.LAST_WEBHOOK_TICK = time.time()
@@ -586,12 +369,12 @@ def webhook():
 
             try:
                 # حالياً نستخدم BTCUSDT كمحرك رئيسى للمدارس
-                body = _build_school_report(code, symbol="BTCUSDT")
+                body = format_school_report(code, symbol="BTCUSDT")
             except Exception as e:
                 config.logger.exception("Error in school callback analysis: %s", e)
                 body = "⚠️ حدث خطأ أثناء توليد التحليل من المحرك."
 
-            send_message(chat_id, header + body)
+            send_message(chat_id, header + (body or ""))
             return jsonify(ok=True)
 
         return jsonify(ok=True)
@@ -822,9 +605,9 @@ def webhook():
             send_message_with_keyboard(
                 chat_id,
                 "📚 اختر مدرسة التحليل التى تريدها.\n"
-                "كل مدرسة لها طريقة مختلفة فى قراءة السوق.\n\n"
-                "💡 يمكنك أيضًا طلب تحليل مباشر بالكتابة مثل:\n"
-                "<code>/school smc btc</code> أو <code>/school wyckoff ethusdt</code>",
+                "الضغط على زر مدرسة يعطى تحليل مفصل لها على BTCUSDT.\n\n"
+                "💡 متقدم: يمكنك كتابة أمر مباشر بالشكل:\n"
+                "<code>/school ict btc</code> أو <code>/school smc ethusdt</code>",
                 SCHOOL_INLINE_KEYBOARD,
             )
             return jsonify(ok=True)
@@ -876,7 +659,7 @@ def webhook():
 
         # جسم الرسالة
         try:
-            body = _build_school_report(code, symbol=sym)
+            body = format_school_report(code, symbol=sym)
         except Exception as e:
             config.logger.exception("Error in /school direct command: %s", e)
             body = (
@@ -884,7 +667,7 @@ def webhook():
                 "🔁 جرّب اختيار المدرسة مرة أخرى من /school."
             )
 
-        send_message(chat_id, header + body)
+        send_message(chat_id, header + (body or ""))
         return jsonify(ok=True)
 
 # ==============================
