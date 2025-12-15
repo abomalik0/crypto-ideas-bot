@@ -1528,3 +1528,68 @@ def start_background_threads(force: bool = False):
 
     config.THREADS_STARTED = True
     logger.info("All background threads started (including keep-alive, supervisor & startup broadcast).")
+# ==============================
+#   SCHOOL CACHE (60s)
+# ==============================
+import time
+from typing import Callable, Any
+
+# كاش مستقل للمدارس
+SCHOOL_RESPONSE_CACHE: dict = {}
+SCHOOL_CACHE_TTL: float = 60.0  # ثانية
+
+
+def _now_ts() -> float:
+    return time.time()
+
+
+def _school_cache_get(key: str) -> str | None:
+    """
+    جلب نتيجة مدرسة من الكاش لو صالحة
+    """
+    try:
+        item = SCHOOL_RESPONSE_CACHE.get(key)
+        if not item:
+            return None
+
+        text, ts = item
+        if (_now_ts() - ts) <= SCHOOL_CACHE_TTL:
+            return text
+
+        # انتهت الصلاحية
+        SCHOOL_RESPONSE_CACHE.pop(key, None)
+        return None
+    except Exception:
+        return None
+
+
+def _school_cache_set(key: str, text: str):
+    """
+    تخزين نتيجة مدرسة في الكاش
+    """
+    try:
+        SCHOOL_RESPONSE_CACHE[key] = (text, _now_ts())
+    except Exception:
+        pass
+
+
+def get_school_cached_response(
+    school_name: str,
+    symbol: str,
+    generator: Callable[[], str],
+) -> str:
+    """
+    Wrapper عام لكل مدارس التحليل + ALL SCHOOLS
+    """
+    cache_key = f"school:{school_name}:{symbol}"
+
+    cached = _school_cache_get(cache_key)
+    if cached:
+        return cached
+
+    # توليد جديد
+    text = generator()
+    if text:
+        _school_cache_set(cache_key, text)
+
+    return text
