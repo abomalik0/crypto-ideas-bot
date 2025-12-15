@@ -531,6 +531,33 @@ def _build_school_report(code: str, symbol: str) -> str:
 
 
 # ==============================
+#   School Cache Hook (60s)
+# ==============================
+def _get_school_report_cached(code: str, symbol: str = "BTCUSDT") -> str:
+    """
+    Wrapper آمن لربط مدارس التحليل بالكاش (60 ثانية) — يشمل ALL SCHOOLS.
+    بدون تغيير الاستايل أو إضافة رسائل تحميل.
+    """
+    try:
+        # يفضل استخدام wrapper المخصص لو موجود في services.py
+        if hasattr(services, "get_school_cached_response"):
+            return services.get_school_cached_response(
+                school_name=str(code),
+                symbol=str(symbol),
+                generator=lambda: _build_school_report(code, symbol=symbol),
+            )
+        # fallback لو مش موجود
+        cache_key = f"school:{code}:{symbol}"
+        return services.get_cached_response(cache_key, lambda: _build_school_report(code, symbol=symbol))
+    except Exception as e:
+        try:
+            config.logger.exception("School cache wrapper failed: %s", e)
+        except Exception:
+            pass
+        return _build_school_report(code, symbol=symbol)
+
+
+# ==============================
 #   مسارات أساسية / Webhook
 # ==============================
 
@@ -592,6 +619,7 @@ def webhook():
             try:
                 # حالياً نستخدم BTCUSDT كمحرك رئيسى للمدارس
                 body = _build_school_report(code, symbol="BTCUSDT")
+                body = _get_school_report_cached(code, symbol="BTCUSDT")
             except Exception as e:
                 config.logger.exception("Error in school callback analysis: %s", e)
                 body = "⚠️ حدث خطأ أثناء توليد التحليل من المحرك."
@@ -882,6 +910,7 @@ def webhook():
         # جسم الرسالة
         try:
             body = _build_school_report(code, symbol=sym)
+            body = _get_school_report_cached(code, symbol=sym)
         except Exception as e:
             config.logger.exception("Error in /school direct command: %s", e)
             body = (
@@ -1282,6 +1311,15 @@ def status_api():
 
 def setup_webhook():
     webhook_url = f"{config.APP_BASE_URL}/webhook"
+    # FIX: منع تكرار /webhook/webhook لو APP_BASE_URL فيها /webhook بالفعل
+    try:
+        _base = (config.APP_BASE_URL or "").rstrip("/")
+        if _base.endswith("/webhook"):
+            webhook_url = _base
+        else:
+            webhook_url = _base + "/webhook"
+    except Exception:
+        pass
     try:
         r = HTTP_SESSION.get(
             f"{TELEGRAM_API}/setWebhook",
