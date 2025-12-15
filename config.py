@@ -522,7 +522,56 @@ def check_admin_auth(req) -> bool:
     # pwd = req.headers.get("X-Admin-Password")
     # return pwd == ADMIN_DASH_PASSWORD
     return True
+# ==============================
+#   Telegram Smart Splitter (NO DELETE)
+# ==============================
 
+TELEGRAM_MAX_CHARS = 3900  # أقل من 4096 بهامش أمان للـ HTML
+
+def _split_text_safely(text: str, limit: int = TELEGRAM_MAX_CHARS):
+    """
+    تقسيم آمن للنص الطويل بدون كسر HTML بشكل مزعج.
+    - يقسم على حدود الأسطر أولاً
+    - ثم على مسافات لو لزم
+    """
+    if not text:
+        return [""]
+
+    if len(text) <= limit:
+        return [text]
+
+    parts = []
+    buf = []
+
+    def flush():
+        if buf:
+            parts.append("".join(buf).strip())
+            buf.clear()
+
+    for line in text.splitlines(True):  # يحتفظ بـ \n
+        # لو السطر نفسه أطول من limit → نقطعه
+        if len(line) > limit:
+            flush()
+            chunk = line
+            while len(chunk) > limit:
+                parts.append(chunk[:limit])
+                chunk = chunk[limit:]
+            if chunk:
+                parts.append(chunk)
+            continue
+
+        # لو إضافة السطر هتعدي limit → فلاش
+        current_len = sum(len(x) for x in buf)
+        if current_len + len(line) > limit:
+            flush()
+
+        buf.append(line)
+
+    flush()
+
+    # كمان نضمن مفيش جزء فاضي
+    parts = [p for p in parts if p.strip()]
+    return parts if parts else [text[:limit]]
 # ==============================
 #  إعدادات إضافية لـ services.py
 # ==============================
