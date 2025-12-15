@@ -1200,19 +1200,27 @@ def health():
 def set_webhook_on_startup():
     """
     يضبط الويب هوك تلقائيًا لو WEBHOOK_URL موجود
+    يقبل WEBHOOK_URL سواء كان:
+    - https://xxxx.koyeb.app
+    - https://xxxx.koyeb.app/webhook
     """
     try:
         if not WEBHOOK_URL:
             logger.info("WEBHOOK_URL not set — skipping setWebhook")
             return
 
-        url = WEBHOOK_URL.rstrip("/") + "/webhook"
+        base = WEBHOOK_URL.rstrip("/")
+        # لو المستخدم حاطط /webhook بالفعل، ما نكررش
+        if base.endswith("/webhook"):
+            url = base
+        else:
+            url = base + "/webhook"
+
         payload = {"url": url}
         r = requests.post(f"{API_URL}/setWebhook", json=payload, timeout=8).json()
         logger.info(f"setWebhook response: {r}")
     except Exception as e:
         logger.warning(f"setWebhook failed: {e}")
-
 
 # ============================================================
 # MAIN RUNNER
