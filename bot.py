@@ -258,8 +258,8 @@ def _format_school_header(code: str) -> str:
     عنوان مختصر فوق تحليل المدرسة. التحليل نفسه تعليمى فقط وليس توصية مباشرة.
     """
     mapping = {
-        "ict": "مدرسة ICT – Smart Money Concepts",
-        "smc": "مدرسة SMC – Smart Money",
+        "ict": "مدرسة ICT",
+        "smc": "مدرسة SMC",
         "wyckoff": "مدرسة Wyckoff – مراحل التجميع والتصريف",
         "harmonic": "مدرسة Harmonic Patterns – نماذج توافقية",
         "elliott": "مدرسة Elliott Waves – موجات إليوت",
@@ -358,28 +358,50 @@ def _build_smc_template(s):
     return (
         f"📘 مدرسة SMC — تحليل {sym}\n"
         "🔍 مقدمة:\n"
-        "مدرسة SMC تركز على قراءة الهيكلة (Market Structure) وكسر الاتجاه (BOS / CHoCH) "
-        "ومناطق الطلب/العرض (POI) وعدم التوازن السعرى (Imbalance). الفكرة الأساسية أن السعر يتحرك "
-        "بين مناطق مؤسسية محددة ثم يعود لملء الفراغات قبل استكمال الاتجاه.\n\n"
+        "مدرسة SMC تركز على الهيكلة (Market Structure) وكسر الاتجاه (BOS / CHoCH) "
+        "ومناطق الطلب/العرض (POI) وعدم التوازن (Imbalance). "
+        "⚠️ ملاحظة: SMC هنا مدرسة مستقلة عن ICT.\n\n"
         "📊 قراءة الهيكلة الحالية:\n"
         f"• اتجاه الهيكلة التقريبى: <b>{direction}</b>\n"
         f"• التغير اليومى: ~ <b>{change}%</b> مع مدى حركة حوالى <b>{rng}%</b>\n"
         f"• درجة التقلب: {vol} / 10\n\n"
         "📉 عدم التوازن (Imbalance):\n"
-        "• وجود مناطق سعرية لم تُختبر بالكامل يشير لاحتمال عودة السعر لها قبل استكمال الحركة.\n"
-        "• يُفضل انتظار Mitigation واضح قبل أى دخول قوى.\n\n"
+        "• راقب مناطق لم تُختبر بالكامل لاحتمال الرجوع لها قبل استكمال الاتجاه.\n\n"
         "🎯 مناطق الطلب والعرض (POI):\n"
-        "• ابحث عن آخر مناطق Demand أسفل السعر الجارى، وآخر مناطق Supply أعلى السعر، "
-        "مع ربطها بهيكلة الفريم الأكبر.\n\n"
-        "📈 سيناريو تعليمى صاعد (Bullish SMC):\n"
-        "• انتظار تصحيح إلى منطقة Demand قوية متوافقة مع BOS سابق، ثم ظهور CHoCH صاعد كإشارة تأكيد.\n"
-        "• الأهداف تكون قرب قمم سابقة أو مناطق Imbalance غير مملوءة.\n\n"
-        "📉 سيناريو تعليمى هابط (Bearish SMC):\n"
-        "• كسر واضح لهيكلة الصعود وتحولها إلى LH/LL مع اختبار منطقة Supply أعلى السعر.\n"
-        "• الأهداف قرب القيعان السابقة أو مناطق طلب غير مختبرة.\n\n"
+        "• اعتمد على آخر Demand أسفل السعر، وآخر Supply أعلى السعر مع الفريم الأكبر.\n\n"
         "⚠️ إدارة المخاطرة فى SMC:\n"
         f"• مستوى المخاطرة الحالى: <b>{risk_level}</b> (Score ≈ {risk_score}/10).\n"
-        "• لا تعتمد على منطقة واحدة للدخول؛ لازم توافق بين الهيكلة + POI + سلوك الشموع.\n"
+    )
+
+
+def _build_ict_template(s):
+    f = s["fmt"]
+    sym = s["symbol"]
+    direction = s["trend"]
+    change = f(s["change"])
+    rng = f(s["range_pct"])
+    vol = f(s["volatility"])
+    risk_level = s["risk_level"]
+    risk_score = f(s["risk_score"] or 0)
+
+    return (
+        f"📘 مدرسة ICT — تحليل {sym}\n"
+        "🔍 مقدمة:\n"
+        "ICT تهتم بمفاهيم: السيولة (Liquidity), مناطق القتل (Killzones), الإزاحة (Displacement), "
+        "الفجوات (FVG) و الـ Order Blocks مع سياق الفريمات.\n"
+        "⚠️ ملاحظة: ICT هنا مدرسة مستقلة عن SMC (مش نفس المدرسة).\n\n"
+        "📊 قراءة سريعة:\n"
+        f"• الاتجاه التقريبى: <b>{direction}</b>\n"
+        f"• التغير اليومى: ~ <b>{change}%</b> ومدى حركة حوالى <b>{rng}%</b>\n"
+        f"• درجة التقلب: {vol} / 10\n\n"
+        "💧 السيولة (Liquidity):\n"
+        "• راقب قمم/قيعان قريبة (Equal Highs/Lows) لأنها أهداف سيولة محتملة.\n\n"
+        "🧱 FVG / Displacement:\n"
+        "• بعد شمعة إزاحة قوية، غالبًا السوق يرجع يملأ جزء من الفجوة (FVG) ثم يكمل.\n\n"
+        "⏱ Killzones (تعليمى):\n"
+        "• أوقات سيولة عالية أثناء جلسات لندن/نيويورك قد تُظهر حركات كاذبة قبل الاتجاه الحقيقى.\n\n"
+        "⚠️ إدارة المخاطرة فى ICT:\n"
+        f"• مستوى المخاطرة الحالى: <b>{risk_level}</b> (Score ≈ {risk_score}/10).\n"
     )
 
 
@@ -394,22 +416,11 @@ def _build_wyckoff_template(s):
     return (
         f"📘 مدرسة Wyckoff — تحليل {sym}\n"
         "🔍 مقدمة:\n"
-        "وايكوف تركز على مراحل السوق (Accumulation / Distribution) وكيف تتحرك المؤسسات داخل النطاقات "
-        "السعرية قبل الانطلاق. الهدف هو فهم أين يتم التجميع وأين يحدث التصريف.\n\n"
+        "وايكوف تركز على مراحل السوق (Accumulation / Distribution) وكيف تتحرك المؤسسات داخل النطاقات.\n\n"
         "📊 قراءة المرحلة الحالية (تعليمية):\n"
-        f"• الاتجاه الغالب: <b>{direction}</b> مع تغير يومى يقارب <b>{change}%</b> ومدى حركة ~ <b>{rng}%</b>.\n"
-        "• لو الحركة جانبية مع ذيول قوية عند الأطراف؛ غالبًا نحن داخل Trading Range.\n\n"
-        "🎭 أهم أحداث Wyckoff (SC / AR / ST / Spring / UT):\n"
-        "• راقب القيعان الحادة كـ Selling Climax، ثم الارتداد الأول كـ Automatic Rally، "
-        "ثم إعادة الاختبار ST داخل النطاق.\n"
-        "• ظهور Spring أو Upthrust عند حدود الرينج غالبًا يسبق حركة قوية فى الاتجاه المعاكس.\n\n"
-        "📈 سيناريو صاعد (Accumulation):\n"
-        "• تكوّن نطاق أفقى بعد هبوط، مع زيادة حجم الشراء قرب القاع، ثم اختراق الحد العلوى للرنج وتثبيت السعر فوقه.\n\n"
-        "📉 سيناريو هابط (Distribution):\n"
-        "• نطاق أفقى بعد صعود، مع قمم متقاربة وضعف اختراقات، ثم كسر الحد السفلى للرنج مع زيادة فى الحجم البيعى.\n\n"
+        f"• الاتجاه الغالب: <b>{direction}</b> مع تغير يومى يقارب <b>{change}%</b> ومدى ~ <b>{rng}%</b>.\n\n"
         "⚠️ ملاحظات إدارة المخاطرة:\n"
         f"• مستوى المخاطرة التقريبى: <b>{risk_level}</b>.\n"
-        "• لا يُفضّل الدخول من منتصف الرينج؛ الأفضل من قرب الحدود مع تأكيد حجم التداول.\n"
     )
 
 
@@ -422,20 +433,10 @@ def _build_harmonic_template(s):
     return (
         f"📘 مدرسة Harmonic — تحليل {sym}\n"
         "🔍 مقدمة:\n"
-        "التحليل التوافقى يعتمد على تتبع الموجات وفق نسب فيبوناتشى لتحديد نماذج XABCD "
-        "ومناطق انعكاس محتملة (PRZ).\n\n"
-        "🎼 الفكرة الحالية (تعليمية):\n"
-        f"• الحركة الأخيرة أظهرت تغيرًا يوميًا يقارب <b>{change}%</b> ومدى حوالى <b>{rng}%</b>، "
-        "ويمكن النظر لها كموجة CD محتملة داخل نموذج أكبر.\n\n"
-        "📐 منطقة الانعكاس (PRZ):\n"
-        "• راقب تلاقى مستويات فيبوناتشى للنموذج (مثل 0.786 XA + 1.27 BC + 1.618 CD) لتحديد نطاق ضيق للمراقبة.\n"
-        "• ظهور شموع انعكاسية قوية داخل هذا النطاق يزيد من احتمال نجاح النموذج.\n\n"
-        "📈 سيناريو صاعد:\n"
-        "• اكتمال نموذج Bullish داخل PRZ أسفل السعر الحالى مع رفض قوى للهبوط.\n\n"
-        "📉 سيناريو هابط:\n"
-        "• اكتمال نموذج Bearish أعلى السعر الحالى مع كسور كاذبة ثم عودة داخل النطاق.\n\n"
+        "التحليل التوافقى يعتمد على نسب فيبوناتشى لتحديد نماذج XABCD و PRZ.\n\n"
+        f"• التغير اليومى ~ <b>{change}%</b> ومدى ~ <b>{rng}%</b>.\n\n"
         "⚠️ ملاحظات:\n"
-        "• النماذج التوافقية لا تُستخدم وحدها؛ الأفضل دمجها مع SMC أو Wyckoff أو Price Action.\n"
+        "• الأفضل دمجه مع مدارس أخرى وعدم الاعتماد عليه وحده.\n"
     )
 
 
@@ -448,13 +449,8 @@ def _build_time_template(s):
     return (
         f"⏱ المدرسة الزمنية – تحليل {sym}\n"
         "🔍 الفكرة الأساسية:\n"
-        "المدرسة الزمنية تهتم بإيقاع السوق والدورات الزمنية (Cycles) أكثر من شكل النموذج السعرى نفسه.\n\n"
-        "📊 إيقاع الحركة الحالى:\n"
-        f"• المدى اليومى التقريبى: <b>{rng}%</b> مع درجة تقلب حوالى {vol} / 10.\n"
-        "• يمكن اعتبار ذلك دورة نشاط متوسطة؛ ليست هادئة جدًا ولا عنيفة جدًا.\n\n"
-        "🕒 استخدام التوقيت فى القرارات:\n"
-        "• التركيز على أوقات فتح الجلسات الرئيسية ومواعيد الأخبار عالية التأثير.\n"
-        "• عدم الدخول قبل دقائق قليلة من الأخبار؛ انتظر إغلاق أول شمعة بعدها لتقييم الاتجاه.\n"
+        "المدرسة الزمنية تهتم بالدورات (Cycles) وإيقاع السوق.\n\n"
+        f"• المدى اليومى: <b>{rng}%</b> | التقلب: {vol} / 10.\n"
     )
 
 
@@ -468,14 +464,8 @@ def _build_volume_template(s):
 
     return (
         f"📊 مدرسة الحجم والتقلب – تحليل {sym}\n"
-        "🔍 نظرة عامة:\n"
-        "هذه المدرسة تدمج بين قراءة حجم التداول (Volume) ودرجة التقلب (Volatility) "
-        "لفهم قوة الحركة واحتمال استمرارها.\n\n"
-        "📊 الوضع الحالى:\n"
-        f"• التغير اليومى: <b>{change}%</b> ومدى حركة تقريبى <b>{rng}%</b>.\n"
-        f"• درجة التقلب: {vol} / 10 – نبض السيولة: {liq} / 10 (قيم تقريبية من المحرك).\n\n"
-        "📈 عندما يكون الحجم والتقلب مرتفعين معًا → حركة قوية تحتاج انضباط فى إدارة المخاطر.\n"
-        "📉 عندما يكونان منخفضين → سوق هادئ يميل للتذبذب والرنجات الجانبية.\n"
+        f"• التغير: <b>{change}%</b> | المدى: <b>{rng}%</b>\n"
+        f"• التقلب: {vol} / 10 | نبض السيولة: {liq} / 10\n"
     )
 
 
@@ -485,8 +475,7 @@ def _build_generic_school_template(code: str, s):
     rng = s["fmt"](s["range_pct"])
     return (
         f"📚 تحليل تعليمى لمدرسة {code.upper()} على {sym}.\n"
-        f"التغير اليومى التقريبى: ~ {change}% ضمن مدى ~ {rng}%.\n"
-        "استخدم قواعد هذه المدرسة فى قراءة الاتجاه والمناطق مع احترام إدارة رأس المال.\n"
+        f"التغير اليومى: ~ {change}% | المدى: ~ {rng}%.\n"
     )
 
 
@@ -516,6 +505,8 @@ def _build_school_report(code: str, symbol: str) -> str:
             "حاول استخدام رمز مختلف أو مدرسة أخرى."
         )
 
+    if code == "ict":
+        return _build_ict_template(snapshot)
     if code == "smc":
         return _build_smc_template(snapshot)
     if code == "wyckoff":
@@ -536,17 +527,14 @@ def _build_school_report(code: str, symbol: str) -> str:
 def _get_school_report_cached(code: str, symbol: str = "BTCUSDT") -> str:
     """
     Wrapper آمن لربط مدارس التحليل بالكاش (60 ثانية) — يشمل ALL SCHOOLS.
-    بدون تغيير الاستايل أو إضافة رسائل تحميل.
     """
     try:
-        # يفضل استخدام wrapper المخصص لو موجود في services.py
         if hasattr(services, "get_school_cached_response"):
             return services.get_school_cached_response(
                 school_name=str(code),
                 symbol=str(symbol),
                 generator=lambda: _build_school_report(code, symbol=symbol),
             )
-        # fallback لو مش موجود
         cache_key = f"school:{code}:{symbol}"
         return services.get_cached_response(cache_key, lambda: _build_school_report(code, symbol=symbol))
     except Exception as e:
@@ -617,8 +605,6 @@ def webhook():
                 header = "📚 تحليل مدرسة.\n\n"
 
             try:
-                # حالياً نستخدم BTCUSDT كمحرك رئيسى للمدارس
-                body = _build_school_report(code, symbol="BTCUSDT")
                 body = _get_school_report_cached(code, symbol="BTCUSDT")
             except Exception as e:
                 config.logger.exception("Error in school callback analysis: %s", e)
@@ -652,42 +638,38 @@ def webhook():
     #           /start
     # ==============================
     if lower_text == "/start":
-        # رسالة المستخدم الأساسية
         user_block = (
             "👋✨ أهلاً بك فى <b>IN CRYPTO Ai</b>.\n"
-            "منظومة <b>ذكاء اصطناعى</b> تتابع حركة <b>البيتكوين</b> والسوق لحظيًا "
-            "وتقدّم لك رؤية واضحة بدون تعقيد.\n\n"
+            "منظومة <b>ذكاء اصطناعى</b> تتابع حركة <b>البيتكوين</b> والسوق لحظيًا.\n\n"
             "📌 <b>أوامر المستخدم:</b>\n"
             "• <code>/btc</code> — تحليل لحظى للبيتكوين (BTCUSDT)\n"
-            "• اكتب أى زوج بالشكل: <code>/btcusdt</code>، <code>/ethusdt</code>، <code>/cfxusdt</code>\n"
-            "• <code>/market</code> — نظرة عامة على حالة السوق اليوم\n"
-            "• <code>/risk_test</code> — اختبار بسيط لإدارة المخاطر\n"
-            "• <code>/school</code> — فتح لوحة مدارس التحليل (ICT / Wyckoff / Harmonic / Elliott / Time ...)\n\n"
-            "💡 <b>ملاحظة مهمة:</b>\n"
-            "كل التحليلات تعليمية ومساعدة لاتخاذ القرار، وليست توصية مباشرة بالشراء أو البيع.\n"
+            "• اكتب: <code>/btcusdt</code>، <code>/ethusdt</code> ...\n"
+            "• <code>/market</code> — نظرة عامة\n"
+            "• <code>/risk_test</code> — اختبار المخاطر\n"
+            "• <code>/school</code> — مدارس التحليل\n\n"
+            "💡 كل التحليلات تعليمية وليست توصية مباشرة.\n"
         )
 
-        # بلوك أوامر الأدمن يظهر فقط للأدمن / الأونر
         admin_block = ""
         if is_admin:
             admin_block = (
                 "\n📌 <b>أوامر الإدارة:</b>\n"
-                "• <code>/alert</code> — إرسال تحذير Ultra PRO V16 (اختبار كامل لنظام التحذير)\n"
-                "• <code>/test_smart</code> — فحص Smart Alert Snapshot اللحظى\n"
-                "• <code>/status</code> — حالة النظام (APIs / Threads / مخاطر)\n"
-                "• <code>/weekly_now</code> — إرسال التقرير الأسبوعى الآن لكل الشاتات\n"
+                "• <code>/alert</code>\n"
+                "• <code>/test_smart</code>\n"
+                "• <code>/status</code>\n"
+                "• <code>/weekly_now</code>\n"
             )
 
             if is_owner:
                 admin_block += (
-                    "\n<b>إدارة الصلاحيات (Owner فقط):</b>\n"
-                    "• <code>/add_admin &lt;chat_id&gt;</code> — إضافة أدمن جديد\n"
-                    "• <code>/remove_admin &lt;chat_id&gt;</code> — إزالة أدمن حالي\n"
+                    "\n<b>Owner فقط:</b>\n"
+                    "• <code>/add_admin &lt;chat_id&gt;</code>\n"
+                    "• <code>/remove_admin &lt;chat_id&gt;</code>\n"
                 )
 
             admin_block += (
-                "\n<b>لوحة التحكم (Dashboard):</b>\n"
-                "• <a href=\"https://dizzy-bab-incrypto-free-258377c4.koyeb.app//admin/dashboard?pass=ahmed123\">فتح لوحة التحكم من هنا</a>\n"
+                "\n<b>لوحة التحكم:</b>\n"
+                "• <a href=\"https://dizzy-bab-incrypto-free-258377c4.koyeb.app//admin/dashboard?pass=ahmed123\">فتح لوحة التحكم</a>\n"
             )
 
         welcome = user_block + admin_block
@@ -706,8 +688,8 @@ def webhook():
         if len(parts) < 2:
             send_message(
                 chat_id,
-                "⚠️ استخدم الأمر هكذا:\n"
-                "<code>/add_admin 123456789</code> (ضع chat_id المراد إضافته)",
+                "⚠️ استخدم:\n"
+                "<code>/add_admin 123456789</code>",
             )
             return jsonify(ok=True)
 
@@ -729,7 +711,7 @@ def webhook():
         config.EXTRA_ADMINS.add(target_id)
         send_message(
             chat_id,
-            f"✅ تم إضافة <code>{target_id}</code> كأدمن بنجاح (يُطبّق من نفس اللحظة).",
+            f"✅ تم إضافة <code>{target_id}</code> كأدمن.",
         )
         return jsonify(ok=True)
 
@@ -742,8 +724,8 @@ def webhook():
         if len(parts) < 2:
             send_message(
                 chat_id,
-                "⚠️ استخدم الأمر هكذا:\n"
-                "<code>/remove_admin 123456789</code> (ضع chat_id المراد إزالته)",
+                "⚠️ استخدم:\n"
+                "<code>/remove_admin 123456789</code>",
             )
             return jsonify(ok=True)
 
@@ -755,18 +737,15 @@ def webhook():
         target_id = int(target_raw)
 
         if target_id == config.ADMIN_CHAT_ID:
-            send_message(chat_id, "❌ لا يمكن إزالة الـ Owner من قائمة الصلاحيات.")
+            send_message(chat_id, "❌ لا يمكن إزالة الـ Owner.")
             return jsonify(ok=True)
 
         if target_id not in config.EXTRA_ADMINS:
-            send_message(chat_id, "ℹ️ هذا الـ chat_id غير موجود فى قائمة الأدمن حالياً.")
+            send_message(chat_id, "ℹ️ غير موجود فى قائمة الأدمن.")
             return jsonify(ok=True)
 
         config.EXTRA_ADMINS.remove(target_id)
-        send_message(
-            chat_id,
-            f"✅ تم إزالة <code>{target_id}</code> من قائمة الأدمن.",
-        )
+        send_message(chat_id, f"✅ تم إزالة <code>{target_id}</code> من الأدمن.")
         return jsonify(ok=True)
 
     # ==============================
@@ -774,7 +753,6 @@ def webhook():
     # ==============================
 
     if lower_text == "/btc":
-        # التحليل الأساسى من المحرك القديم (مع كاش) – BTCUSDT
         base_text = services.get_cached_response(
             "btc_analysis", lambda: format_analysis("BTCUSDT")
         )
@@ -818,12 +796,12 @@ def webhook():
                     r = float(range_pct or 0.0)
                     header = (
                         "🧭 <b>ملخص سريع لوضع البيتكوين الآن:</b>\n"
-                        f"• السعر اللحظى: <b>${p:,.0f}</b> | تغير 24 ساعة: <b>{ch:+.2f}%</b>\n"
-                        f"• قوة التقلب: <b>{v:.1f}</b> / 100 | مدى اليوم ≈ <b>{r:.2f}%</b>\n"
+                        f"• السعر: <b>${p:,.0f}</b> | 24h: <b>{ch:+.2f}%</b>\n"
+                        f"• التقلب: <b>{v:.1f}</b>/100 | مدى: <b>{r:.2f}%</b>\n"
                         f"• قوة الحركة: {strength_label}\n"
                         f"• نبض السيولة: {liquidity_pulse}\n"
-                        f"• الاتجاه العام حسب الذكاء الاصطناعى: {bias_text}\n"
-                        f"• مستوى المخاطر: {risk_emoji} <b>{risk_name}</b>\n\n"
+                        f"• اتجاه AI: {bias_text}\n"
+                        f"• المخاطر: {risk_emoji} <b>{risk_name}</b>\n\n"
                     )
                 except Exception as e:
                     config.logger.exception("Header format error in /btc: %s", e)
@@ -849,20 +827,17 @@ def webhook():
 
     # لوحة مدارس التحليل
     if lower_text.startswith("/school"):
-        # شكل 1: /school  → يفتح لوحة المدارس على BTCUSDT
         parts = text.split()
         if len(parts) == 1:
             send_message_with_keyboard(
                 chat_id,
-                "📚 اختر مدرسة التحليل التى تريدها.\n"
-                "كل مدرسة لها طريقة مختلفة فى قراءة السوق واتخاذ القرار.\n\n"
-                "💡 يمكنك أيضًا طلب تحليل مباشر بالصيغة:\n"
-                "<code>/school smc btc</code> أو <code>/school wyckoff ethusdt</code>",
+                "📚 اختر مدرسة التحليل.\n\n"
+                "💡 مثال:\n"
+                "<code>/school smc btc</code> أو <code>/school ict ethusdt</code>",
                 SCHOOL_INLINE_KEYBOARD,
             )
             return jsonify(ok=True)
 
-        # شكل 2: /school ict btcusdt  → تحليل مدرسة + عملة مباشرة
         school_raw = parts[1].lower()
         sym = parts[2] if len(parts) >= 3 else "BTCUSDT"
 
@@ -897,35 +872,30 @@ def webhook():
             "all": "all",
         }
 
-        # حدد الكود النهائي للمدرسة من الـ aliases
         code = aliases.get(school_raw, school_raw)
 
-        # هيدر الرسالة
         try:
             header = _format_school_header(code)
         except Exception as e:
             config.logger.exception("Error building _format_school_header: %s", e)
             header = "📚 تحليل مدرسة.\n\n"
 
-        # جسم الرسالة
         try:
-            body = _build_school_report(code, symbol=sym)
             body = _get_school_report_cached(code, symbol=sym)
         except Exception as e:
             config.logger.exception("Error in /school direct command: %s", e)
             body = (
                 "⚠️ حدث خطأ أثناء توليد تحليل المدرسة.\n"
-                "🔁 جرّب اختيار المدرسة مرة أخرى من /school."
+                "جرّب مرة أخرى."
             )
 
         send_message(chat_id, header + (body or ""))
         return jsonify(ok=True)
 
-# ==============================
+    # ==============================
     #      أوامر الإدارة (Admin)
     # ==============================
 
-    # ===== أمر /alert — الآن اختبار Ultra PRO للأدمن فقط =====
     if lower_text == "/alert":
         if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
@@ -940,7 +910,6 @@ def webhook():
         if not alert_text:
             alert_text = services.get_cached_response("alert_text", format_ai_alert)
 
-        # إرسال فقط فى شات الأدمن اللى نفّذ الأمر (اختبار كامل لنظام التحذير)
         try:
             send_message(chat_id, alert_text)
         except Exception as e:
@@ -953,9 +922,6 @@ def webhook():
 
         return jsonify(ok=True)
 
-    # ==============================
-    #   /test_smart — تشخيص Smart Alert (للأدمن فقط)
-    # ==============================
     if lower_text == "/test_smart":
         if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
@@ -967,16 +933,13 @@ def webhook():
             config.logger.exception("Error in /test_smart snapshot: %s", e)
             send_message(
                 chat_id,
-                "⚠️ حدث خطأ أثناء بناء Smart Alert Snapshot.\n"
-                "راجع لوحة التحكم / اللوج لمزيد من التفاصيل.",
+                "⚠️ خطأ أثناء بناء Snapshot.\n"
+                "راجع اللوج.",
             )
             return jsonify(ok=True)
 
         if not snapshot:
-            send_message(
-                chat_id,
-                "⚠️ لم أستطع بناء Snapshot للسوق حالياً (قد تكون مشكلة بيانات أو API).",
-            )
+            send_message(chat_id, "⚠️ لم أستطع بناء Snapshot حاليًا.")
             return jsonify(ok=True)
 
         msg_real = _format_smart_snapshot(snapshot, "Smart Alert — LIVE SNAPSHOT")
@@ -992,9 +955,6 @@ def webhook():
 
         return jsonify(ok=True)
 
-    # ==============================
-    #   /status — حالة النظام (أدمن فقط)
-    # ==============================
     if lower_text == "/status":
         if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
@@ -1006,32 +966,29 @@ def webhook():
             vol = metrics["volatility_score"]
             risk = evaluate_risk_level(change, vol)
             from analysis_engine import _risk_level_ar as _rl_txt
-            risk_text = (
-                f"{risk['emoji']} {_rl_txt(risk['level'])}" if risk else "N/A"
-            )
+            risk_text = f"{risk['emoji']} {_rl_txt(risk['level'])}" if risk else "N/A"
         else:
             risk_text = "N/A"
 
         msg_status = f"""
 🛰 <b>حالة نظام IN CRYPTO Ai</b>
 
-• حالة Binance: {"✅" if config.API_STATUS["binance_ok"] else "⚠️"}
-• حالة KuCoin: {"✅" if config.API_STATUS["kucoin_ok"] else "⚠️"}
-• آخر فحص API: {config.API_STATUS.get("last_api_check")}
+• Binance: {"✅" if config.API_STATUS["binance_ok"] else "⚠️"}
+• KuCoin: {"✅" if config.API_STATUS["kucoin_ok"] else "⚠️"}
+• آخر فحص: {config.API_STATUS.get("last_api_check")}
 
 • آخر تحديث Real-Time: {config.REALTIME_CACHE.get("last_update")}
 • آخر Webhook: {datetime.utcfromtimestamp(config.LAST_WEBHOOK_TICK).isoformat(timespec="seconds") if config.LAST_WEBHOOK_TICK else "لا يوجد"}
 
-• حالة المخاطر العامة: {risk_text}
+• المخاطر العامة: {risk_text}
 
-• عدد الشاتات المسجلة: {len(config.KNOWN_CHAT_IDS)}
-• آخر تقرير أسبوعى مبعوت: {config.LAST_WEEKLY_SENT_DATE}
+• الشاتات المسجلة: {len(config.KNOWN_CHAT_IDS)}
+• آخر تقرير أسبوعى: {config.LAST_WEEKLY_SENT_DATE}
 • آخر Auto Alert (قديم): {config.LAST_AUTO_ALERT_INFO.get("time")} ({config.LAST_AUTO_ALERT_INFO.get("reason")})
 """.strip()
         send_message(chat_id, msg_status)
         return jsonify(ok=True)
 
-    # أمر اختبار /weekly_now للأدمن (من خلال الخدمات الجديدة)
     if lower_text == "/weekly_now":
         if not is_admin:
             send_message(chat_id, "❌ هذا الأمر مخصص للإدارة فقط.")
@@ -1041,16 +998,14 @@ def webhook():
         return jsonify(ok=True)
 
     # ==============================
-    #   أوامر الرموز العامة: /btcusdt /ethusdt /cfxusdt ...
+    #   أوامر الرموز العامة: /btcusdt /ethusdt ...
     # ==============================
     if text.startswith("/"):
-        # ناخد أول كلمة فى الرسالة، ونحوّلها لسيمبل
         first_part = text.split()[0]
         cmd_lower = first_part.lower()
 
         if cmd_lower not in KNOWN_COMMANDS:
-            symbol = first_part[1:].upper()  # شيل "/" وخلى الباقى كابتل
-            # نسمح حاليًا فقط بأزواج USDT عشان ما نتخبطش فى أوامر تانية
+            symbol = first_part[1:].upper()
             if symbol.endswith("USDT") and len(symbol) > 5:
                 try:
                     reply = format_analysis(symbol)
@@ -1061,20 +1016,11 @@ def webhook():
                 send_message(chat_id, reply)
                 return jsonify(ok=True)
 
-    # أى رسالة أخرى حالياً نتجاهلها / أو ممكن تضيف معالجة بعدين
     return jsonify(ok=True)
 
 
-# ==============================
-#   /auto_alert Endpoint (النظام القديم)
-# ==============================
-
 @app.route("/auto_alert", methods=["GET"])
 def auto_alert():
-    """
-    نظام التحذير القديم المعتمد على detect_alert_condition.
-    ما زال موجود للتوافق الخلفى / dashboards قديمة.
-    """
     metrics = get_market_metrics_cached()
     if not metrics:
         config.logger.warning("auto_alert: metrics is None")
@@ -1099,10 +1045,7 @@ def auto_alert():
             "reason": "duplicate_reason",
             "sent": False,
         }
-        return (
-            jsonify(ok=True, alert_sent=False, reason="duplicate_reason"),
-            200,
-        )
+        return jsonify(ok=True, alert_sent=False, reason="duplicate_reason"), 200
 
     text = format_ai_alert()
     send_message(config.ADMIN_CHAT_ID, text)
@@ -1124,10 +1067,6 @@ def auto_alert():
 
     return jsonify(ok=True, alert_sent=True, reason="sent"), 200
 
-
-# ==============================
-#   مسارات اختبار / Admin / Dashboard
-# ==============================
 
 @app.route("/test_alert", methods=["GET"])
 def test_alert():
@@ -1152,9 +1091,7 @@ def dashboard_api():
     if not metrics:
         return jsonify(ok=False, error="metrics_failed"), 200
 
-    risk = evaluate_risk_level(
-        metrics["change_pct"], metrics["volatility_score"]
-    )
+    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
 
     from analysis_engine import _risk_level_ar as _rl_txt
 
@@ -1217,10 +1154,7 @@ def admin_alerts_history():
     if not check_admin_auth(request):
         return jsonify(ok=False, error="unauthorized"), 401
 
-    return jsonify(
-        ok=True,
-        alerts=list(config.ALERTS_HISTORY),
-    )
+    return jsonify(ok=True, alerts=list(config.ALERTS_HISTORY))
 
 
 @app.route("/admin/clear_alerts", methods=["GET"])
@@ -1273,20 +1207,12 @@ def admin_weekly_ai_test():
     report = services.get_cached_response("weekly_report", format_weekly_ai_report)
     send_message(config.ADMIN_CHAT_ID, report)
     config.logger.info("Admin requested weekly AI report test.")
-    return jsonify(
-        ok=True,
-        message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط.",
-    )
+    return jsonify(ok=True, message="تم إرسال التقرير الأسبوعى التجريبى للأدمن فقط.")
 
-
-# ==============================
-#   /status API (للإدارة أو للمراقبة)
-# ==============================
 
 @app.route("/status", methods=["GET"])
 def status_api():
     import threading as _th
-
     threads = [t.name for t in _th.enumerate()]
 
     return jsonify(
@@ -1305,13 +1231,8 @@ def status_api():
     )
 
 
-# ==============================
-#       تفعيل الـ Webhook
-# ==============================
-
 def setup_webhook():
     webhook_url = f"{config.APP_BASE_URL}/webhook"
-    # FIX: منع تكرار /webhook/webhook لو APP_BASE_URL فيها /webhook بالفعل
     try:
         _base = (config.APP_BASE_URL or "").rstrip("/")
         if _base.endswith("/webhook"):
@@ -1335,10 +1256,6 @@ def set_webhook_on_startup():
     setup_webhook()
 
 
-# =====================================
-# تشغيل البوت — Main Runner
-# =====================================
-
 if __name__ == "__main__":
     import logging
 
@@ -1347,23 +1264,19 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
-    # تحميل السناك شوت (لو متفعّل)
     try:
         services.load_snapshot()
     except Exception as e:
         logging.exception("Snapshot load failed on startup: %s", e)
 
-    # ضبط الويب هوك
     try:
         set_webhook_on_startup()
     except Exception as e:
         logging.exception("Failed to set webhook on startup: %s", e)
 
-    # تشغيل كل الثريدات من services
     try:
         services.start_background_threads()
     except Exception as e:
         logging.exception("Failed to start background threads: %s", e)
 
-    # تشغيل Flask
     app.run(host="0.0.0.0", port=8080)
