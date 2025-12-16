@@ -4590,12 +4590,13 @@ def _digital_block() -> str:
         return "\n".join(lines)
 
     # اختيار المدرسة المطلوبة
-    elif code in ("ict",):
+    # اختيار المدرسة المطلوبة
+if code in ("ict",):
     body = _ict_master_block(symbol)
 elif code in ("smc", "smc_pro", "smart"):
     body = _smc_master_block(symbol)
-    elif code in ("wyckoff", "wyck"):
-        body = _wyckoff_block()
+elif code in ("wyckoff", "wyck"):
+    body = _wyckoff_block()
     elif code in ("harmonic", "harm"):
         body = _harmonic_block()
     elif code in ("elliott", "eliott", "wave", "waves"):
