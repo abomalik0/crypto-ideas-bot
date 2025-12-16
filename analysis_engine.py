@@ -4589,399 +4589,45 @@ def _digital_block() -> str:
         )
         return "\n".join(lines)
 
-# ================================
-# اختيار المدرسة المطلوبة
-# ================================
-
-if code in ("ict",):
-    body = _ict_master_block(symbol)
-
-elif code in ("smc", "smc_pro", "smart"):
-    body = _smc_master_block(symbol)
-
-elif code in ("wyckoff", "wyck"):
-    body = _wyckoff_block()
-
-elif code in ("harmonic", "harm"):
-    body = _harmonic_block()
-
-elif code in ("elliott", "elliot", "wave", "waves"):
-    body = _elliott_block()
-
-elif code in ("time", "time_analysis", "t"):
-    body = _time_block()
-
-elif code in ("price_action", "pa", "price"):
-    body = _price_action_block()
-
-elif code in ("sd", "supply", "supply_demand"):
-    body = _sd_block()
-
-elif code in ("classic", "ta", "classical"):
-    body = _classic_block()
-
-elif code in ("liquidity", "liq"):
-    body = _liquidity_block()
-
-elif code in ("structure", "ms", "market_structure"):
-    body = _structure_block()
-
-elif code in ("multi", "mtf", "multi_timeframe"):
-    body = _mtf_block()
-
-elif code in ("volume", "vol", "volatility"):
-    body = _volume_volatility_block()
-
-elif code in ("risk", "risk_position", "rm"):
-    body = _risk_position_block()
-
-elif code in ("digital", "quant", "digits"):
-    body = _digital_block()
-
-elif code in ("all", "all_schools"):
-    body = _all_schools_block()
-
-else:
-    body = (
-        "⚠️ هذه المدرسة غير معروفة للمحرّك.\n"
-        "يمكنك اختيار مدرسة مثل:\n"
-        "ICT / SMC / Wyckoff / Harmonic / Elliott / Time / "
-        "Price Action / Supply & Demand / Classical / Liquidity / "
-        "Structure / Multi / Volume / Risk"
-    )
-# ==============================
-# Advanced Schools Engine (V3) — Detailed & Separated
-# NOTE:
-# - ICT مدرسة مستقلة عن SMC (مش نفس المدرسة)
-# - هذا القسم يُستخدم عبر format_school_report dispatch
-# ==============================
-
-def _normalize_symbol_for_school(symbol: str) -> str:
-    try:
-        s = (symbol or "BTCUSDT").strip().upper()
-        if not s:
-            s = "BTCUSDT"
-        if (not s.endswith("USDT")) and (len(s) <= 5):
-            s = s + "USDT"
-        return s
-    except Exception:
-        return "BTCUSDT"
-
-
-def _school_get_snapshot(symbol: str):
-    """يحاول بناء Snapshot شامل لاستخدامه داخل المدارس."""
-    sym = _normalize_symbol_for_school(symbol)
-    try:
-        snap = compute_smart_market_snapshot(sym)
-    except TypeError:
-        snap = compute_smart_market_snapshot()
-    except Exception:
-        snap = None
-    if not isinstance(snap, dict):
-        snap = {}
-    return sym, snap
-
-
-def _school_fmt_price(v):
-    try:
-        if v is None:
-            return "-"
-        return f"{float(v):,.0f}"
-    except Exception:
-        return str(v) if v is not None else "-"
-
-
-def _school_fmt_pct(v):
-    try:
-        if v is None:
-            return "-"
-        return f"{float(v):+.2f}%"
-    except Exception:
-        return str(v) if v is not None else "-"
-
-
-def _school_fmt_num(v, nd=2):
-    try:
-        if v is None:
-            return "-"
-        return f"{float(v):.{nd}f}"
-    except Exception:
-        return str(v) if v is not None else "-"
-
-
-def _zones_to_levels(zones: dict, price):
-    """تحويل Zones إلى مستويات قابلة للعرض داخل المدارس."""
-    def _rng(z):
-        try:
-            if not z or len(z) != 2:
-                return None
-            a, b = float(z[0]), float(z[1])
-            lo, hi = (a, b) if a <= b else (b, a)
-            return (lo, hi)
-        except Exception:
-            return None
-
-    d1 = _rng((zones or {}).get("downside_zone_1"))
-    d2 = _rng((zones or {}).get("downside_zone_2"))
-    u1 = _rng((zones or {}).get("upside_zone_1"))
-    u2 = _rng((zones or {}).get("upside_zone_2"))
-
-    poi_buy = None
-    poi_sell = None
-    tp1 = tp2 = tp3 = None
-    sl_buy = sl_sell = None
-
-    try:
-        p = float(price) if price is not None else None
-    except Exception:
-        p = None
-
-    if p is not None:
-        # POI شراء: أعلى جزء من Downside1 (أقرب دعم منطقي)
-        if d1:
-            poi_buy = (d1[0] + (d1[1]-d1[0]) * 0.70, d1[1])
-            sl_buy = d1[0] * 0.999
-        elif d2:
-            poi_buy = (d2[0] + (d2[1]-d2[0]) * 0.70, d2[1])
-            sl_buy = d2[0] * 0.999
-
-        # POI بيع: أسفل جزء من Upside1 (أقرب مقاومة منطقية)
-        if u1:
-            poi_sell = (u1[0], u1[0] + (u1[1]-u1[0]) * 0.30)
-            sl_sell = u1[1] * 1.001
-        elif u2:
-            poi_sell = (u2[0], u2[0] + (u2[1]-u2[0]) * 0.30)
-            sl_sell = u2[1] * 1.001
-
-        # Targets صاعدة: Upside zones
-        if u1:
-            tp1 = u1[0]
-            tp2 = u1[1]
-        if u2:
-            tp3 = u2[1]
-
-    return {
-        "d1": d1, "d2": d2, "u1": u1, "u2": u2,
-        "poi_buy": poi_buy, "poi_sell": poi_sell,
-        "tp1": tp1, "tp2": tp2, "tp3": tp3,
-        "sl_buy": sl_buy, "sl_sell": sl_sell,
-    }
-
-
-def _render_level_range(rng):
-    if not rng:
-        return "-"
-    try:
-        a, b = rng
-        return f"{_school_fmt_price(a)} → {_school_fmt_price(b)}"
-    except Exception:
-        return "-"
-
-
-def _render_poi(rng):
-    if not rng:
-        return "-"
-    try:
-        a, b = rng
-        return f"{_school_fmt_price(a)} – {_school_fmt_price(b)}"
-    except Exception:
-        return "-"
-
-
-def _infer_trend_labels(metrics: dict, pulse: dict):
-    """استنتاج بسيط للترند لكل فريم من بيانات المحرك (بدون API شموع)."""
-    strength = (metrics or {}).get("strength_label") or ""
-    regime = (pulse or {}).get("regime") or ""
-
-    if "Strong" in str(strength) or "قوي" in str(strength):
-        htf = "Trending"
-    elif "Weak" in str(strength) or "ضعيف" in str(strength):
-        htf = "Transition"
+    # اختيار المدرسة المطلوبة
+    if code in ("ict",):
+        body = _ict_block()
+    elif code in ("smc", "smc_pro", "smart"):
+        body = _smc_block()
+    elif code in ("wyckoff", "wyck"):
+        body = _wyckoff_block()
+    elif code in ("harmonic", "harm"):
+        body = _harmonic_block()
+    elif code in ("elliott", "eliott", "wave", "waves"):
+        body = _elliott_block()
+    elif code in ("time", "time_analysis", "t"):
+        body = _time_block()
+    elif code in ("price_action", "pa", "price"):
+        body = _price_action_block()
+    elif code in ("sd", "supply", "supply_demand"):
+        body = _sd_block()
+    elif code in ("classic", "ta", "classical"):
+        body = _classic_block()
+    elif code in ("liquidity", "liq"):
+        body = _liquidity_block()
+    elif code in ("structure", "ms", "market_structure"):
+        body = _structure_block()
+    elif code in ("multi", "mtf", "multi_timeframe"):
+        body = _mtf_block()
+    elif code in ("volume", "vol", "volatility"):
+        body = _volume_volatility_block()
+    elif code in ("risk", "risk_position", "rm"):
+        body = _risk_position_block()
+    elif code in ("digital", "quant", "digits"):
+        body = _digital_block()
+    elif code in ("all", "all_schools"):
+        body = _all_schools_block()
     else:
-        htf = "Ranging"
+        body = (
+            "⚠️ هذه المدرسة غير معروفة للمحرك حتى الآن.\n"
+            "يمكنك اختيار مدرسة من اللوحة أو استخدام مثلاً: ICT / SMC / Wyckoff / Harmonic / Elliott / Time / "
+            "Price Action / Supply & Demand / Classical / Liquidity / Structure / Multi / Volume / Risk."
+        )
 
-    if "HIGH" in str(regime).upper():
-        ltf = "Volatile / Fast"
-    elif "LOW" in str(regime).upper():
-        ltf = "Quiet / Range"
-    else:
-        ltf = "Balanced"
-    return htf, ltf
-
-
-def _risk_text(risk: dict):
-    try:
-        lvl = (risk or {}).get("level")
-        from analysis_engine import _risk_level_ar as _rl_txt
-        name = _rl_txt(lvl) if lvl else "غير معروف"
-        emo = (risk or {}).get("emoji", "")
-        score = (risk or {}).get("score")
-        return f"{emo} {name}", score
-    except Exception:
-        return "غير معروف", None
-
-
-def _smc_master_block(symbol: str) -> str:
-    sym, snap = _school_get_snapshot(symbol)
-    metrics = (snap or {}).get("metrics") or {}
-    pulse = (snap or {}).get("pulse") or {}
-    zones = (snap or {}).get("zones") or {}
-    risk = (snap or {}).get("risk") or {}
-
-    price = metrics.get("price")
-    chg = metrics.get("change_pct")
-    rng = metrics.get("range_pct")
-    vol = metrics.get("volatility_score")
-    liq = metrics.get("liquidity_pulse")
-    strength = metrics.get("strength_label") or "-"
-
-    htf_state, ltf_state = _infer_trend_labels(metrics, pulse)
-    risk_name, risk_score = _risk_text(risk)
-    levels = _zones_to_levels(zones, price)
-
-    one_d = (
-        f"• 1D Context: {htf_state} | قوة: {strength} | مدى 24h ≈ {_school_fmt_num(rng)}%\n"
-        f"• 1D Liquidity Map: Sell-side→ {_render_level_range(levels['d1'])} | Buy-side→ {_render_level_range(levels['u1'])}\n"
-        f"• 1D Bias (تعليمي): {'هابط' if (isinstance(chg,(int,float)) and chg<0) else 'صاعد/محايد'}"
-    )
-
-    four_h = (
-        f"• 4H POI (Demand): {_render_poi(levels['poi_buy'])}\n"
-        f"• 4H POI (Supply): {_render_poi(levels['poi_sell'])}\n"
-        "• 4H Structure Key: راقب BOS/CHoCH حول حدود الـ POI + إعادة اختبار (Mitigation)."
-    )
-
-    one_h = (
-        "• 1H Trigger: دخول بعد Confirmation (كسر داخلي + إعادة اختبار + شمعة رفض داخل POI).\n"
-        "• 1H Liquidity Sweep: الأفضل يكون فيه Sweep (EQH/EQL) قبل الـ Trigger.\n"
-        "• 1H Invalidation: إغلاق 1H خارج الـ POI + كسر آخر Swing."
-    )
-
-    bull_entry = _render_poi(levels["poi_buy"])
-    bull_sl = _school_fmt_price(levels["sl_buy"]) if levels["sl_buy"] else "-"
-    bull_t1 = _school_fmt_price(levels["tp1"]) if levels["tp1"] else "-"
-    bull_t2 = _school_fmt_price(levels["tp2"]) if levels["tp2"] else "-"
-    bull_t3 = _school_fmt_price(levels["tp3"]) if levels["tp3"] else "-"
-
-    d1 = levels["d1"]; d2 = levels["d2"]
-    bear_t1 = _school_fmt_price(d1[1]) if d1 else "-"
-    bear_t2 = _school_fmt_price(d1[0]) if d1 else "-"
-    bear_t3 = _school_fmt_price(d2[0]) if d2 else "-"
-    bear_entry = _render_poi(levels["poi_sell"])
-    bear_sl = _school_fmt_price(levels["sl_sell"]) if levels["sl_sell"] else "-"
-
-    rr = "-"
-    try:
-        if price and levels["sl_buy"] and levels["tp1"]:
-            risk_pts = abs(float(price) - float(levels["sl_buy"]))
-            reward_pts = abs(float(levels["tp1"]) - float(price))
-            if risk_pts > 0:
-                rr = f"{reward_pts/risk_pts:.2f}R"
-    except Exception:
-        pass
-
-    text = (
-        f"✅ 📘 SMC MASTER MODEL — Institutional SMC (مستقل عن ICT)\n\n"
-        f"العملة: <b>{sym}</b>\n"
-        f"• السعر: <b>${_school_fmt_price(price)}</b> | 24h: <b>{_school_fmt_pct(chg)}</b>\n"
-        f"• التقلب: <b>{_school_fmt_num(vol)}</b>/100 | نبض السيولة: <b>{_school_fmt_num(liq)}</b>/10\n"
-        f"• المخاطر: <b>{risk_name}</b> (score≈{_school_fmt_num(risk_score)}/10)\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "📊 1) Timeframes (1D / 4H / 1H)\n"
-        f"{one_d}\n\n{four_h}\n\n{one_h}\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "💧 2) Liquidity & Sweep (SMC)\n"
-        f"• Sell-side: {_render_level_range(levels['d1'])} | {_render_level_range(levels['d2'])}\n"
-        f"• Buy-side: {_render_level_range(levels['u1'])} | {_render_level_range(levels['u2'])}\n"
-        "• Sweep Rule: غالبًا السوق يسحب سيولة (EQH/EQL) ثم يعمل Displacement.\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "🏦 3) POIs (Order Blocks + Demand/Supply)\n"
-        f"• Demand POI: <b>{_render_poi(levels['poi_buy'])}</b>\n"
-        f"• Supply POI: <b>{_render_poi(levels['poi_sell'])}</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "🎯 4) Plans (تعليمى)\n"
-        "📈 Bullish Plan\n"
-        "• شروط: Sweep للـ SSL + CHoCH صاعد على 1H داخل Demand + إغلاق 1H فوق OB.\n"
-        f"• Entry: {bull_entry}\n"
-        f"• Targets: T1={bull_t1} | T2={bull_t2} | T3={bull_t3}\n"
-        f"• SL: {bull_sl}\n\n"
-        "📉 Bearish Plan\n"
-        "• شروط: Sweep للـ BSL + CHoCH هابط على 1H داخل Supply + Displacement هابط.\n"
-        f"• Entry: {bear_entry}\n"
-        f"• Targets: T1={bear_t1} | T2={bear_t2} | T3={bear_t3}\n"
-        f"• SL: {bear_sl}\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "⚠️ 5) Risk & Invalidation\n"
-        f"• RR تقديرى: <b>{rr}</b>\n"
-        "• Invalidation (Bull): إغلاق 1H تحت Demand + كسر Swing Low.\n"
-        "• Invalidation (Bear): إغلاق 1H فوق Supply + كسر Swing High.\n\n"
-        "📌 SMC Flow: 1D → POI على 4H → Trigger على 1H.\n"
-        "⚠️ تعليمى فقط.\n"
-    )
-    return text
-
-
-def _ict_master_block(symbol: str) -> str:
-    sym, snap = _school_get_snapshot(symbol)
-    metrics = (snap or {}).get("metrics") or {}
-    pulse = (snap or {}).get("pulse") or {}
-    zones = (snap or {}).get("zones") or {}
-    risk = (snap or {}).get("risk") or {}
-
-    price = metrics.get("price")
-    chg = metrics.get("change_pct")
-    rng = metrics.get("range_pct")
-    vol = metrics.get("volatility_score")
-    strength = metrics.get("strength_label") or "-"
-
-    htf_state, ltf_state = _infer_trend_labels(metrics, pulse)
-    risk_name, risk_score = _risk_text(risk)
-    levels = _zones_to_levels(zones, price)
-
-    dealing_range = _render_level_range(levels["d1"]) if levels["d1"] else "-"
-    pd_state = "Discount" if (levels["d1"] and price and float(price) <= levels["d1"][1]) else "Premium/Neutral"
-
-    london = "08:00–11:00 (UTC) تقريبًا"
-    ny = "13:30–16:30 (UTC) تقريبًا"
-    asia = "00:00–06:00 (UTC) تقريبًا"
-    prime = "London→NY overlap (تعليمي)"
-
-    ote_buy = _render_poi(levels["poi_buy"])
-    ote_sell = _render_poi(levels["poi_sell"])
-
-    text = (
-        f"✅ 📘 ICT MASTER MODEL — ICT (مستقل عن SMC)\n\n"
-        f"العملة: <b>{sym}</b>\n"
-        f"• السعر: <b>${_school_fmt_price(price)}</b> | 24h: <b>{_school_fmt_pct(chg)}</b>\n"
-        f"• التقلب: <b>{_school_fmt_num(vol)}</b>/100 | مدى 24h ≈ <b>{_school_fmt_num(rng)}</b>%\n"
-        f"• المخاطر: <b>{risk_name}</b> (score≈{_school_fmt_num(risk_score)}/10)\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "📌 1) Timeframes (1D / 4H / 1H) — ICT Flow\n"
-        f"• 1D (Bias & DR): {htf_state} | Dealing Range: {dealing_range} | السعر داخل: <b>{pd_state}</b>\n"
-        "• 4H (PD Arrays): راقب FVG/IFVG/OB/BB داخل Premium/Discount\n"
-        "• 1H (Execution): التنفيذ داخل Killzones بعد Liquidity Raid + MSS\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "⏰ 2) Sessions & Killzones\n"
-        f"• Asian Range: {asia}\n"
-        f"• London Killzone: {london}\n"
-        f"• NY Killzone: {ny}\n"
-        f"• Prime Time: {prime}\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "📍 3) Liquidity Targets (EQH/EQL + SSL/BSL)\n"
-        f"• Below: {_render_level_range(levels['d1'])} | {_render_level_range(levels['d2'])}\n"
-        f"• Above: {_render_level_range(levels['u1'])} | {_render_level_range(levels['u2'])}\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "⚖️ 4) Premium/Discount + OTE (تعليمي)\n"
-        f"• Ideal Buy Zone: <b>{ote_buy}</b>\n"
-        f"• Ideal Sell Zone: <b>{ote_sell}</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "🎯 5) ICT Models (تعليمي)\n"
-        "📈 Bullish: Raid SSL → MSS صاعد (1H) → Entry من FVG/OB داخل Discount → Targets Above\n"
-        f"• Targets: {_render_level_range(levels['u1'])} ثم {_render_level_range(levels['u2'])}\n"
-        "📉 Bearish: Raid BSL → MSS هابط (1H) → Entry من FVG/OB داخل Premium → Targets Below\n"
-        f"• Targets: {_render_level_range(levels['d1'])} ثم {_render_level_range(levels['d2'])}\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "📌 ICT Flow: Bias من 1D → PD Arrays على 4H → تنفيذ 1H داخل Killzone بعد Raid/MSS.\n"
-        "⚠️ تعليمى فقط.\n"
-    )
-    return text
+    full_msg = base_header + body
+    return _shrink_text_preserve_content(full_msg, limit=3900)
