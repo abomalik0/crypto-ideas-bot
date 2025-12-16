@@ -4631,3 +4631,130 @@ def _digital_block() -> str:
 
     full_msg = base_header + body
     return _shrink_text_preserve_content(full_msg, limit=3900)
+# ==============================
+#   SMC MASTER — Institutional Model
+#   Timeframes: 1D / 4H / 1H
+# ==============================
+
+def smc_master_model(symbol: str, data: dict) -> dict:
+    """
+    Institutional Smart Money Concepts Engine
+    Returns structured SMC analysis (NO ICT LOGIC)
+    """
+
+    result = {
+        "symbol": symbol,
+        "timeframes": {},
+        "liquidity": {},
+        "fvg": {},
+        "poi": {},
+        "scenarios": {},
+        "risk": {},
+        "summary": {}
+    }
+
+    # =========================
+    # 1️⃣ DAILY STRUCTURE (1D)
+    # =========================
+    d = data.get("1D", {})
+    result["timeframes"]["1D"] = {
+        "trend": d.get("trend"),
+        "last_high": d.get("swing_high"),
+        "last_low": d.get("swing_low"),
+        "structure_state": d.get("structure_state"),
+        "bias": d.get("bias"),
+    }
+
+    # =========================
+    # 2️⃣ 4H STRUCTURE
+    # =========================
+    h4 = data.get("4H", {})
+    result["timeframes"]["4H"] = {
+        "trend": h4.get("trend"),
+        "bos": h4.get("bos"),
+        "choch": h4.get("choch"),
+        "phase": h4.get("phase"),
+    }
+
+    # =========================
+    # 3️⃣ 1H MICRO STRUCTURE
+    # =========================
+    h1 = data.get("1H", {})
+    result["timeframes"]["1H"] = {
+        "trend": h1.get("trend"),
+        "internal_bos": h1.get("internal_bos"),
+        "purpose": "Liquidity engineering",
+    }
+
+    # =========================
+    # 4️⃣ LIQUIDITY ANALYSIS
+    # =========================
+    result["liquidity"] = {
+        "buy_side": data.get("buy_liquidity"),
+        "sell_side": data.get("sell_liquidity"),
+        "expected_sweep": data.get("expected_sweep"),
+        "taken": data.get("liquidity_taken"),
+    }
+
+    # =========================
+    # 5️⃣ FVG / IMBALANCE
+    # =========================
+    result["fvg"] = {
+        "active_zone": data.get("fvg_zone"),
+        "mitigated": data.get("fvg_mitigated"),
+        "move_type": data.get("impulse_type"),
+    }
+
+    # =========================
+    # 6️⃣ ORDER BLOCKS / POI
+    # =========================
+    result["poi"] = {
+        "bullish_ob": data.get("bullish_ob"),
+        "bearish_ob": data.get("bearish_ob"),
+        "best_poi": data.get("best_poi"),
+        "score": data.get("poi_score"),
+    }
+
+    # =========================
+    # 7️⃣ SCENARIOS
+    # =========================
+    result["scenarios"]["bullish"] = {
+        "conditions": [
+            "Sell-side liquidity sweep",
+            "Entry inside POI",
+            "1H CHoCH confirmation",
+        ],
+        "entry": data.get("bull_entry"),
+        "targets": data.get("bull_targets"),
+        "stop": data.get("bull_sl"),
+        "rr": data.get("rr_best"),
+    }
+
+    result["scenarios"]["bearish"] = {
+        "valid_only_if": "Daily CHoCH confirmed",
+        "entry": data.get("bear_entry"),
+    }
+
+    # =========================
+    # 8️⃣ RISK MANAGEMENT
+    # =========================
+    result["risk"] = {
+        "max_risk": "0.5% - 1%",
+        "invalidation": data.get("smc_invalidation"),
+        "no_trade_if": [
+            "No liquidity sweep",
+            "No structure confirmation",
+            "Mid-range entry",
+        ],
+    }
+
+    # =========================
+    # 9️⃣ FINAL SUMMARY
+    # =========================
+    result["summary"] = {
+        "bias": data.get("smc_bias"),
+        "best_zone": data.get("smc_reaction_zone"),
+        "market_state": "Institutional pullback or expansion",
+    }
+
+    return result
