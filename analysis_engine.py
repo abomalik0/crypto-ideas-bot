@@ -4589,49 +4589,66 @@ def _digital_block() -> str:
         )
         return "\n".join(lines)
 
-    # اختيار المدرسة المطلوبة
-    # اختيار المدرسة المطلوبة
+# ================================
+# اختيار المدرسة المطلوبة
+# ================================
+
 if code in ("ict",):
     body = _ict_master_block(symbol)
+
 elif code in ("smc", "smc_pro", "smart"):
     body = _smc_master_block(symbol)
+
 elif code in ("wyckoff", "wyck"):
     body = _wyckoff_block()
-    elif code in ("harmonic", "harm"):
-        body = _harmonic_block()
-    elif code in ("elliott", "eliott", "wave", "waves"):
-        body = _elliott_block()
-    elif code in ("time", "time_analysis", "t"):
-        body = _time_block()
-    elif code in ("price_action", "pa", "price"):
-        body = _price_action_block()
-    elif code in ("sd", "supply", "supply_demand"):
-        body = _sd_block()
-    elif code in ("classic", "ta", "classical"):
-        body = _classic_block()
-    elif code in ("liquidity", "liq"):
-        body = _liquidity_block()
-    elif code in ("structure", "ms", "market_structure"):
-        body = _structure_block()
-    elif code in ("multi", "mtf", "multi_timeframe"):
-        body = _mtf_block()
-    elif code in ("volume", "vol", "volatility"):
-        body = _volume_volatility_block()
-    elif code in ("risk", "risk_position", "rm"):
-        body = _risk_position_block()
-    elif code in ("digital", "quant", "digits"):
-        body = _digital_block()
-    elif code in ("all", "all_schools"):
-        body = _all_schools_block()
-    else:
-        body = (
-            "⚠️ هذه المدرسة غير معروفة للمحرك حتى الآن.\n"
-            "يمكنك اختيار مدرسة من اللوحة أو استخدام مثلاً: ICT / SMC / Wyckoff / Harmonic / Elliott / Time / "
-            "Price Action / Supply & Demand / Classical / Liquidity / Structure / Multi / Volume / Risk."
-        )
 
-    full_msg = base_header + body
-    return _shrink_text_preserve_content(full_msg, limit=3900)
+elif code in ("harmonic", "harm"):
+    body = _harmonic_block()
+
+elif code in ("elliott", "elliot", "wave", "waves"):
+    body = _elliott_block()
+
+elif code in ("time", "time_analysis", "t"):
+    body = _time_block()
+
+elif code in ("price_action", "pa", "price"):
+    body = _price_action_block()
+
+elif code in ("sd", "supply", "supply_demand"):
+    body = _sd_block()
+
+elif code in ("classic", "ta", "classical"):
+    body = _classic_block()
+
+elif code in ("liquidity", "liq"):
+    body = _liquidity_block()
+
+elif code in ("structure", "ms", "market_structure"):
+    body = _structure_block()
+
+elif code in ("multi", "mtf", "multi_timeframe"):
+    body = _mtf_block()
+
+elif code in ("volume", "vol", "volatility"):
+    body = _volume_volatility_block()
+
+elif code in ("risk", "risk_position", "rm"):
+    body = _risk_position_block()
+
+elif code in ("digital", "quant", "digits"):
+    body = _digital_block()
+
+elif code in ("all", "all_schools"):
+    body = _all_schools_block()
+
+else:
+    body = (
+        "⚠️ هذه المدرسة غير معروفة للمحرّك.\n"
+        "يمكنك اختيار مدرسة مثل:\n"
+        "ICT / SMC / Wyckoff / Harmonic / Elliott / Time / "
+        "Price Action / Supply & Demand / Classical / Liquidity / "
+        "Structure / Multi / Volume / Risk"
+    )
 # ==============================
 # Advanced Schools Engine (V3) — Detailed & Separated
 # NOTE:
