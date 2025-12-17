@@ -3638,8 +3638,7 @@ def _compute_time_school_view(symbol: str = "BTCUSDT") -> dict:
         kl_4h = _fetch_binance_klines(symbol, "4h", limit=150)
         kl_1d = _fetch_binance_klines(symbol, "1d", limit=120)
     except Exception as e:
-        logger.exception("Error in _compute_time_school_view: %s", e)
-        return {"error": str(e)}
+        config.logger.exception("Error in _compute_time_school_view: %s", e)
 
     # ==============================
     # Helpers
@@ -3875,7 +3874,68 @@ def _compute_time_school_view(symbol: str = "BTCUSDT") -> dict:
         "dow_stats": dow_stats,
         "time_pro": time_pro,  # ← الجديد
     }
+def format_time_school_report(symbol: str = "BTCUSDT") -> str:
+    tv = _compute_time_school_view(symbol)
 
+    if isinstance(tv, dict) and tv.get("error"):
+        return (
+            "⏱ <b>Time Analysis – المدرسة الزمنية</b>\n"
+            "⚠️ تعذر جلب بيانات كافية الآن.\n"
+            f"<code>{symbol}</code>"
+        )
+
+    tp = (tv or {}).get("time_pro", {})
+    cur = (tv or {}).get("current", {})
+    swings = (tv or {}).get("swings", {})
+
+    market_state = tp.get("market_time_state", "UNKNOWN")
+    phase = tp.get("cycle_phase", "MID")
+    nearest = tp.get("nearest_fib_time")
+    cycles = tp.get("cycles_active", [])
+    cycle_sync = tp.get("cycle_sync", "DIVERGENT")
+    gann = tp.get("gann_status", "BALANCED")
+    session = tp.get("session_bias", cur.get("session", "unknown"))
+    score = int(tp.get("confluence_score", 0))
+    reco = tp.get("recommendation", "NO_TRADE")
+
+    last_close = swings.get("last_daily_close")
+    last_close_txt = f"{last_close:.4f}" if isinstance(last_close, (int, float)) else "-"
+
+    reco_txt = {
+        "TRADE": "✅ نافذة قوية (انتبه للتنفيذ)",
+        "WAIT": "🟡 راقب وانتظر تأكيد سعري",
+        "NO_TRADE": "🔴 لا أفضلية زمنية",
+    }.get(reco, "🟡 راقب")
+
+    nearest_txt = f"بعد {nearest} يوم" if nearest else "غير محدد"
+    cycles_txt = ", ".join(cycles) if cycles else "لا يوجد"
+
+    lines = []
+    lines.append("⏱ <b>Time Analysis – المدرسة الزمنية (PRO)</b>")
+    lines.append("⚠️ هذا التحليل تعليمي فقط وليس توصية مباشرة.")
+    lines.append("")
+    lines.append(f"🪙 <b>{symbol}</b> | آخر إغلاق يومي: <code>{last_close_txt}</code>")
+    lines.append("")
+    lines.append("🧭 <b>الصورة الزمنية العامة</b>")
+    lines.append(f"• حالة الزمن: <b>{market_state}</b>")
+    lines.append(f"• مرحلة الدورة: <b>{phase}</b>")
+    lines.append(f"• أقرب نافذة Fib Time: <b>{nearest_txt}</b>")
+    lines.append(f"• الدورات النشطة: <b>{cycles_txt}</b>")
+    lines.append(f"• Gann Time: <b>{gann}</b>")
+    lines.append("")
+    lines.append("🕰️ <b>التوقيت الحالي</b>")
+    lines.append(f"• الجلسة: <b>{session}</b>")
+    lines.append("")
+    lines.append("🔗 <b>قوة التوافق</b>")
+    lines.append(f"• Score: <b>{score}/100</b>")
+    lines.append(f"• الحكم: {reco_txt}")
+    lines.append("")
+    lines.append("📌 <b>الحكم النهائي على مدرسة الزمن</b>")
+    lines.append("✔ قوية جدًا للتوقيت")
+    lines.append("❌ لا تُستخدم زر دخول وحدها")
+    lines.append("✔ تُستخدم مع السعر ومدرسة أخرى")
+
+    return "\n".join(lines)
 # ==============================
 #   V16 – Per‑School Detailed Report
 # ==============================
