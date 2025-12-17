@@ -4174,8 +4174,84 @@ def format_school_report(code: str, symbol: str = "BTCUSDT") -> str:
         return "\n".join(lines)
 
     def _time_block() -> str:
-        # نعيد استخدام المدرسة الزمنية الكاملة
-        return format_time_school_report(symbol=symbol)
+        tv = _compute_time_school_view(symbol)
+        if isinstance(tv, dict) and tv.get("error"):
+            return (
+                "⏱ <b>مدرسة Time Analysis – الزمن</b>\n"
+                "⚠️ تعذر جلب بيانات كافية الآن. جرّب لاحقًا.\n"
+                f"<code>{symbol}</code>"
+            )
+
+        tp = (tv or {}).get("time_pro") or {}
+        cur = (tv or {}).get("current") or {}
+        swings = (tv or {}).get("swings") or {}
+
+        # قيم أساسية
+        market_state = str(tp.get("market_time_state") or "UNKNOWN")
+        phase = str(tp.get("cycle_phase") or "MID")
+        nearest = tp.get("nearest_fib_time")
+        fib_windows = tp.get("fib_time_windows") or []
+        cycles = tp.get("cycles_active") or []
+        cycle_sync = str(tp.get("cycle_sync") or "DIVERGENT")
+        gann = str(tp.get("gann_status") or "BALANCED")
+        session = str(tp.get("session_bias") or cur.get("session") or "unknown")
+        score = int(tp.get("confluence_score") or 0)
+        timing_bias = str(tp.get("timing_bias") or "NO_TIMING_EDGE")
+        reco = str(tp.get("recommendation") or "NO_TRADE")
+
+        last_close = swings.get("last_daily_close")
+        last_close_txt = f"{last_close:,.4f}" if isinstance(last_close, (int, float)) else "-"
+
+        reco_txt = {
+            "TRADE": "✅ نافذة قوية (راقب تأكيد السعر للتنفيذ)",
+            "WAIT": "🟡 نافذة محتملة (انتظر إشارة سعر واضحة)",
+            "NO_TRADE": "🔴 لا أفضلية زمنية الآن (تجنّب العشوائية)",
+        }.get(reco, "🟡 راقب")
+
+        nearest_txt = f"بعد {nearest} يوم" if isinstance(nearest, (int, float)) and nearest else "غير محدد"
+        cycles_txt = ", ".join(cycles) if cycles else "لا يوجد"
+        fib_txt = ", ".join(str(x) for x in fib_windows[:6]) if fib_windows else "—"
+
+        bull = tp.get("bull_plan") or {}
+        bear = tp.get("bear_plan") or {}
+
+        lines: list[str] = []
+        lines.append("⏱ <b>مدرسة Time Analysis – التحليل الزمني (PRO)</b>")
+        lines.append(f"🪙 <b>{symbol}</b> | آخر إغلاق يومي: <code>{last_close_txt}</code>")
+        lines.append("")
+        lines.append("🔍 <b>الفكرة ببساطة</b>: الزمن يحدد <i>متى</i> الحركة غالبًا، والسعر يحدد <i>فين</i>.")
+        lines.append("")
+        lines.append("🧭 <b>1) الصورة العامة (1D)</b>")
+        lines.append(f"• حالة الزمن: <b>{market_state}</b> | مرحلة الدورة: <b>{phase}</b>")
+        lines.append(f"• Fib Time (قريب): <b>{nearest_txt}</b> | نوافذ إضافية: <code>{fib_txt}</code>")
+        lines.append(f"• الدورات النشطة: <b>{cycles_txt}</b> | التزامن: <b>{cycle_sync}</b>")
+        lines.append(f"• Gann Time: <b>{gann}</b>")
+        lines.append("")
+        lines.append("🕰️ <b>2) التوقيت الحالي (1H)</b>")
+        lines.append(f"• الجلسة: <b>{session}</b>")
+        lines.append("")
+        lines.append("🔗 <b>3) قوة التوافق (Confluence)</b>")
+        lines.append(f"• Score: <b>{score}/100</b> | Bias: <b>{timing_bias}</b>")
+        lines.append(f"• الحكم: {reco_txt}")
+        lines.append("")
+        lines.append("🎯 <b>4) خطتين بسيطتين</b>")
+        lines.append("📈 <b>Plan A (صعود)</b>")
+        lines.append(f"• شرط 1: {bull.get('cond1','-')}")
+        lines.append(f"• شرط 2: {bull.get('cond2','-')}")
+        lines.append(f"• نافذة مراقبة: <b>{bull.get('entry_window','-')}</b>")
+        lines.append(f"• إلغاء: {bull.get('invalidation','-')}")
+        lines.append("")
+        lines.append("📉 <b>Plan B (هبوط)</b>")
+        lines.append(f"• شرط 1: {bear.get('cond1','-')}")
+        lines.append(f"• شرط 2: {bear.get('cond2','-')}")
+        lines.append(f"• نافذة مراقبة: <b>{bear.get('entry_window','-')}</b>")
+        lines.append(f"• إلغاء: {bear.get('invalidation','-')}")
+        lines.append("")
+        lines.append("📌 <b>الحكم النهائي على Time</b>")
+        lines.append("✔ مدرسة قوية جدًا للتوقيت")
+        lines.append("❌ مينفعش تتستخدم كـ زر دخول لوحدها")
+        lines.append("✔ لازم تتأكد بالسعر + مدرسة تانية (SMC/ICT/Structure)")
+        return "\n".join(lines)
 
     def _price_action_block() -> str:
         lines: list[str] = []
