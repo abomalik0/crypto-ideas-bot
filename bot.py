@@ -29,6 +29,7 @@ from analysis_engine import (
     fusion_ai_brain,
     compute_hybrid_pro_core,
     format_school_report,
+    format_school_report_v17,
 )
 import services
 
@@ -487,7 +488,7 @@ def _build_school_report(code: str, symbol: str) -> str:
     # 1) نحاول أولاً المحرك الأصلى format_school_report
     body = None
     try:
-        body = format_school_report(code, symbol=symbol)
+        body = format_school_report_v17(code, symbol=symbol)
     except Exception as e:
         config.logger.exception("Error in format_school_report(%s, %s): %s", code, symbol, e)
         body = None
