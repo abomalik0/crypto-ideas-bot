@@ -3626,23 +3626,21 @@ def format_v14_ultra_alert() -> str:
 # ==============================
 def _compute_time_school_view(symbol: str = "BTCUSDT") -> dict:
     """
-    Time Analysis PRO
+    Time Analysis PRO (منطق فقط — بدون ML / بدون Self-Learning)
+    يعتمد على: Fibonacci Time + Cycles/Rhythm + Gann Time (مبسّط) + Sessions
     Timeframes: 1D / 4H / 1H
-    No ML – No self learning – Pure logic
-    Returns a dict used by format_school_report() time block.
 
-    IMPORTANT:
-    - This function MUST return only data (no formatting text)
-    - Formatting is handled elsewhere (inside format_school_report time block)
+    يرجّع dict يستخدمه format_school_report() داخل _time_block().
     """
 
     try:
-        k1h = _fetch_binance_klines(symbol, "1h", limit=180)
-        k4h = _fetch_binance_klines(symbol, "4h", limit=150)
-        k1d = _fetch_binance_klines(symbol, "1d", limit=140)
+        k1h = _fetch_binance_klines(symbol, "1h", limit=220)
+        k4h = _fetch_binance_klines(symbol, "4h", limit=180)
+        k1d = _fetch_binance_klines(symbol, "1d", limit=180)
     except Exception as e:
         config.logger.exception("Error in _compute_time_school_view: %s", e)
         return {
+            "error": True,
             "session_stats": {},
             "current": {"symbol": symbol},
             "swings": {},
@@ -3662,10 +3660,10 @@ def _compute_time_school_view(symbol: str = "BTCUSDT") -> dict:
                 "timing_bias": "NO_TIMING_EDGE",
                 "recommendation": "NO_TRADE",
                 "confidence": 0,
-                "bullish_plan": {},
-                "bearish_plan": {},
-                "notes": "Fetch error"
-            }
+                "bull_plan": {},
+                "bear_plan": {},
+                "notes": "Fetch error",
+            },
         }
 
     # ------------------------------
@@ -3683,18 +3681,21 @@ def _compute_time_school_view(symbol: str = "BTCUSDT") -> dict:
             return 0.0
         return ((h - l) / o) * 100.0
 
-    def _utc_hour_from_kline(c):
+    def _utc_dt_from_kline(c):
         ts_raw = c.get("time", 0)
         if ts_raw and ts_raw > 10**12:
             ts_raw = ts_raw / 1000.0
         try:
-            ts = datetime.datetime.utcfromtimestamp(float(ts_raw))
-            return ts.hour
+            return datetime.utcfromtimestamp(float(ts_raw))
         except Exception:
             return None
 
+    def _utc_hour_from_kline(c):
+        dt = _utc_dt_from_kline(c)
+        return dt.hour if dt else None
+
     def _session_for_hour(h: int) -> str:
-        # (تقريبي/تعليمي) Asia=00-06, London=07-10, NY=13-16
+        # (تقريبي/عملي) Asia=00-06, London=07-10, NY=13-16 (UTC)
         if h is None:
             return "unknown"
         if 0 <= h <= 6:
@@ -3710,232 +3711,267 @@ def _compute_time_school_view(symbol: str = "BTCUSDT") -> dict:
         lows = []
         if not candles or len(candles) < (lookback * 2 + 3):
             return highs, lows
-        for i in range(lookback, len(candles) - lookback):
-            hi = candles[i]["high"]
-            lo = candles[i]["low"]
-            left_h = [candles[j]["high"] for j in range(i - lookback, i)]
-            right_h = [candles[j]["high"] for j in range(i + 1, i + lookback + 1)]
-            left_l = [candles[j]["low"] for j in range(i - lookback, i)]
-            right_l = [candles[j]["low"] for j in range(i + 1, i + lookback + 1)]
-            if hi > max(left_h) and hi > max(right_h):
-                highs.append((i, hi))
-            if lo < min(left_l) and lo < min(right_l):
-                lows.append((i, lo))
+        n = len(candles)
+        for i in range(lookback, n - lookback):
+            h = float(candles[i].get("high") or 0.0)
+            l = float(candles[i].get("low") or 0.0)
+            left_h = [float(candles[i - j].get("high") or 0.0) for j in range(1, lookback + 1)]
+            right_h = [float(candles[i + j].get("high") or 0.0) for j in range(1, lookback + 1)]
+            left_l = [float(candles[i - j].get("low") or 0.0) for j in range(1, lookback + 1)]
+            right_l = [float(candles[i + j].get("low") or 0.0) for j in range(1, lookback + 1)]
+            if h > max(left_h) and h > max(right_h):
+                highs.append((i, h))
+            if l < min(left_l) and l < min(right_l):
+                lows.append((i, l))
         return highs, lows
 
     # ------------------------------
-    # Normalize candles (your fetch returns dicts already; ensure numeric)
+    # Normalize candles (نفس شكل باقي المحرك)
     # ------------------------------
-    def _norm(klines):
+    def _norm_kl(kl):
         out = []
-        for c in (klines or []):
-            try:
-                out.append({
+        for c in (kl or []):
+            out.append(
+                {
                     "time": c.get("time") or c.get("timestamp") or 0,
                     "open": float(c.get("open") or 0.0),
                     "high": float(c.get("high") or 0.0),
                     "low": float(c.get("low") or 0.0),
                     "close": float(c.get("close") or 0.0),
                     "volume": float(c.get("volume") or 0.0),
-                    "timestamp": c.get("timestamp"),  # keep if exists
-                })
-            except Exception:
-                continue
+                }
+            )
         return out
 
-    d1 = _norm(k1d)
-    h4 = _norm(k4h)
-    h1 = _norm(k1h)
+    kl_1h = _norm_kl(k1h)
+    kl_4h = _norm_kl(k4h)
+    kl_1d = _norm_kl(k1d)
 
-    # ------------------------------
-    # Current / swings / stats (light but useful)
-    # ------------------------------
-    current = {"symbol": symbol}
-    if h1:
-        last = h1[-1]
-        current["price"] = last["close"]
-        current["range_pct_h1"] = _rng_pct(last)
-        hour = _utc_hour_from_kline(last)
-        current["utc_hour"] = hour
-        current["session"] = _session_for_hour(hour)
+    # ==============================
+    # 1) Session Stats
+    # ==============================
+    session_stats = {
+        "asia": {"count": 0, "rng": 0.0, "vol": 0.0},
+        "london": {"count": 0, "rng": 0.0, "vol": 0.0},
+        "new_york": {"count": 0, "rng": 0.0, "vol": 0.0},
+        "other": {"count": 0, "rng": 0.0, "vol": 0.0},
+    }
 
+    for c in kl_1h[-120:]:
+        h = _utc_hour_from_kline(c)
+        sess = _session_for_hour(h)
+        session_stats[sess]["count"] += 1
+        session_stats[sess]["rng"] += _rng_pct(c)
+        session_stats[sess]["vol"] += float(c.get("volume") or 0.0)
+
+    for k, st in session_stats.items():
+        if st["count"]:
+            st["rng_avg"] = st["rng"] / st["count"]
+            st["vol_avg"] = st["vol"] / st["count"]
+        else:
+            st["rng_avg"] = 0.0
+            st["vol_avg"] = 0.0
+
+    # ==============================
+    # 2) Current Info
+    # ==============================
+    current_info = {"symbol": symbol}
+    last = kl_1h[-1] if kl_1h else None
+    if last:
+        h = _utc_hour_from_kline(last)
+        sess = _session_for_hour(h)
+        r = _rng_pct(last)
+        vol_label = "low" if r < 0.4 else ("high" if r > 1.0 else "mid")
+        dt = _utc_dt_from_kline(last)
+        current_info.update(
+            {
+                "session": sess,
+                "utc_hour": h,
+                "volatility": vol_label,
+                "range_pct": round(r, 3),
+                "bias": "neutral",
+                "ts": dt.isoformat() if dt else "",
+            }
+        )
+
+    # ==============================
+    # 3) Swings (1D) + DOW stats مبسّط
+    # ==============================
     swings = {}
-    if d1:
-        swings["last_daily_close"] = d1[-1]["close"]
-        highs, lows = _pivots(d1, lookback=2)
-        if highs:
-            swings["last_swing_high"] = highs[-1][1]
-            swings["last_swing_high_index"] = highs[-1][0]
-        if lows:
-            swings["last_swing_low"] = lows[-1][1]
-            swings["last_swing_low_index"] = lows[-1][0]
-
-    # Day-of-week stats (simple / educational)
     dow_stats = {}
-    try:
-        if len(d1) >= 14:
-            # compute avg daily range by weekday from last 30 candles (if possible)
-            sample = d1[-30:] if len(d1) >= 30 else d1[:]
-            buckets = {i: [] for i in range(7)}
-            for c in sample:
-                ts_raw = c.get("time", 0)
-                if ts_raw and ts_raw > 10**12:
-                    ts_raw = ts_raw / 1000.0
-                dt = datetime.datetime.utcfromtimestamp(float(ts_raw)) if ts_raw else None
-                if dt:
-                    buckets[dt.weekday()].append(_rng_pct(c))
-            dow_stats = {str(k): round(_avg(v), 2) for k, v in buckets.items() if v}
-    except Exception:
-        dow_stats = {}
+    if kl_1d:
+        highs, lows = _pivots(kl_1d, lookback=2)
+        swings = {
+            "pivot_highs": highs[-6:],
+            "pivot_lows": lows[-6:],
+            "last_daily_close": float(kl_1d[-1].get("close") or 0.0),
+            "bars": len(kl_1d),
+        }
 
-    # Session stats (simple)
-    session_stats = {}
-    try:
-        if h1:
-            last_hours = h1[-48:] if len(h1) >= 48 else h1[:]
-            sess_buckets = {"asia": [], "london": [], "new_york": [], "other": []}
-            for c in last_hours:
-                h = _utc_hour_from_kline(c)
-                s = _session_for_hour(h)
-                sess_buckets.setdefault(s, []).append(_rng_pct(c))
-            session_stats = {k: round(_avg(v), 2) for k, v in sess_buckets.items() if v}
-    except Exception:
-        session_stats = {}
+        buckets = {i: [] for i in range(7)}
+        for c in kl_1d[-120:]:
+            dt = _utc_dt_from_kline(c)
+            if not dt:
+                continue
+            buckets[dt.weekday()].append(_rng_pct(c))
+        dow_stats = {str(k): round(_avg(v), 3) for k, v in buckets.items() if v}
 
     # ==============================
-    # 1) Market Time Context (1D)
+    # 4) Market Time Context (HTF)
     # ==============================
-    market_time_state = "UNKNOWN"
+    time_state = "UNKNOWN"
     cycle_phase = "MID"
 
-    if len(d1) >= 60:
-        market_time_state = "CYCLIC"
-        # rough phase logic: late if near end of a 20-bar block
-        mod = len(d1) % 20
-        cycle_phase = "LATE" if mod >= 15 else ("EARLY" if mod <= 5 else "MID")
-    elif len(d1) >= 25:
-        market_time_state = "DEVELOPING"
+    n1d = len(kl_1d)
+    if n1d >= 60:
+        time_state = "CYCLIC"
+        pos = n1d % 20
+        if pos <= 5:
+            cycle_phase = "EARLY"
+        elif pos >= 15:
+            cycle_phase = "LATE"
+        else:
+            cycle_phase = "MID"
+    elif n1d >= 30:
+        time_state = "DEVELOPING"
         cycle_phase = "MID"
     else:
-        market_time_state = "LIMITED_DATA"
+        time_state = "LIMITED"
         cycle_phase = "UNKNOWN"
 
     # ==============================
-    # 2) Fibonacci Time Zones (educational projection)
+    # 5) Fibonacci Time Zones (1D)
     # ==============================
-    fib_time_windows = []
+    fib_windows = []
     nearest_fib_time = None
 
-    last_index = len(d1) - 1
-    if last_index >= 10:
-        # Use last pivot (if exists) as anchor; else fallback to last_index
-        anchor = swings.get("last_swing_low_index") or swings.get("last_swing_high_index") or last_index
-        base = max(10, int(anchor))
-        for ratio in [0.382, 0.5, 0.618, 1.0, 1.272, 1.618]:
-            projected = int(base * ratio)
-            if projected > last_index:
-                fib_time_windows.append(projected)
-        fib_time_windows = sorted(list(set(fib_time_windows)))
-        nearest_fib_time = fib_time_windows[0] if fib_time_windows else None
+    if kl_1d and swings.get("pivot_highs") and swings.get("pivot_lows"):
+        pivots = sorted(swings["pivot_highs"] + swings["pivot_lows"], key=lambda x: x[0])
+        if len(pivots) >= 2:
+            a_i = pivots[-2][0]
+            b_i = pivots[-1][0]
+            swing_len = max(1, b_i - a_i)
+
+            ratios = [0.382, 0.5, 0.618, 1.0, 1.272, 1.618, 2.0]
+            for r in ratios:
+                proj = b_i + int(round(swing_len * r))
+                if proj > b_i:
+                    fib_windows.append(proj)
+
+            if fib_windows:
+                remaining = [x - (n1d - 1) for x in fib_windows if x >= (n1d - 1)]
+                remaining = [x for x in remaining if x >= 0]
+                nearest_fib_time = min(remaining) if remaining else None
 
     # ==============================
-    # 3) Cycles & Rhythm (1D)
+    # 6) Cycles & Rhythm (20/40/90)
     # ==============================
-    cycles_def = {"short": 20, "medium": 40, "major": 90}
-    cycles_active = []
+    cycles = {"short": 20, "medium": 40, "major": 90}
+    active_cycles = []
+    for name, length in cycles.items():
+        if n1d >= length and (n1d % length) <= 2:
+            active_cycles.append(name)
 
-    for name, length in cycles_def.items():
-        if len(d1) >= length and (len(d1) % length) <= 2:
-            cycles_active.append(name)
-
-    cycle_sync = "ALIGNED" if len(cycles_active) >= 2 else "DIVERGENT"
+    cycle_sync = "ALIGNED" if len(active_cycles) >= 2 else ("MIXED" if len(active_cycles) == 1 else "DIVERGENT")
 
     # ==============================
-    # 4) Gann Time (simplified)
+    # 7) Gann Time (مبسّط)
     # ==============================
+    gann_hits = []
+    for g in (9, 12, 16, 24):
+        if n1d >= g and (n1d % g) == 0:
+            gann_hits.append(g)
+
     gann_status = "BALANCED"
-    if len(d1) >= 18 and (len(d1) % 9 == 0):
+    if gann_hits:
         gann_status = "TIME_SQUARE_HIT"
 
     # ==============================
-    # 5) Sessions & Timing (from 1H)
+    # 8) Session Bias (من آخر 1H)
     # ==============================
-    session_bias = current.get("session") or "unknown"
+    session_bias = str(current_info.get("session") or "unknown")
 
     # ==============================
-    # 6) Time + Price Confluence Score
+    # 9) Confluence Score
     # ==============================
-    confluence_score = 0
+    score = 0
+    if nearest_fib_time is not None and nearest_fib_time <= 5:
+        score += 30
+    elif nearest_fib_time is not None:
+        score += 15
 
-    if nearest_fib_time is not None:
-        confluence_score += 30
     if cycle_sync == "ALIGNED":
-        confluence_score += 30
+        score += 25
+    elif cycle_sync == "MIXED":
+        score += 15
+
     if gann_status != "BALANCED":
-        confluence_score += 20
+        score += 20
+
     if session_bias in ("london", "new_york"):
-        confluence_score += 20
+        score += 15
+    elif session_bias == "asia":
+        score += 10
 
-    # clamp
-    confluence_score = max(0, min(100, int(confluence_score)))
+    score = max(0, min(100, int(score)))
 
     # ==============================
-    # 7) Scenarios (pure logic)
+    # 10) Plans
     # ==============================
-    bullish_plan = {
-        "cond1": "دخولنا “زمني” فقط لو وصلنا نافذة فيبو الزمنية",
-        "cond2": "ومعها تزامن دورتين على الأقل (Cycle Sync=ALIGNED)",
-        "entry_window": "خلال 24–48 ساعة القادمة (راقب لندن/نيويورك)",
-        "invalidation": "انتهاء نافذة التوقيت بدون تفاعل واضح"
+    bull_plan = {
+        "cond1": "اقتراب/دخول نافذة Fib Time",
+        "cond2": "تزامن دورة (Cycles) + ظهور رفض/ابتلاع على السعر",
+        "entry_window": "24–48 ساعة القادمة",
+        "invalidation": "خروج واضح من النافذة الزمنية بدون تفاعل",
     }
 
-    bearish_plan = {
-        "cond1": "مرحلة LATE في الدورة (احتمال إنهاك)",
-        "cond2": "لمسة/تفعيل Gann (TIME_SQUARE_HIT) أو تزامن دورات ضعيف",
-        "entry_window": "أقرب جلسة قوية (لندن/نيويورك) بعد علامة إنهاك",
-        "invalidation": "عودة الدورة لبداية/منتصف بدون إشارات إنهاك"
+    bear_plan = {
+        "cond1": "مرحلة LATE مع ضعف زخم (تباطؤ الحركة)",
+        "cond2": "ضربة/مربع Gann + فشل كسر قمة/قاع قريب",
+        "entry_window": "الجلسة القادمة (London/NY)",
+        "invalidation": "عودة تزامن الدورات أو كسر هيكل معاكس",
     }
 
     # ==============================
-    # 8) Verdict
+    # 11) Final Verdict
     # ==============================
-    if confluence_score >= 75:
+    if score >= 70:
         timing_bias = "ACTIVE_WINDOW"
-        recommendation = "TRADE_WINDOW"
-    elif confluence_score >= 45:
+        reco = "TRADE"
+    elif score >= 40:
         timing_bias = "WAITING_ZONE"
-        recommendation = "WAIT_CONFIRM"
+        reco = "WAIT"
     else:
         timing_bias = "NO_TIMING_EDGE"
-        recommendation = "NO_TRADE"
+        reco = "NO_TRADE"
 
     time_pro = {
         "school": "TIME_ANALYSIS_PRO",
         "timeframes": "1D / 4H / 1H",
-        "market_time_state": market_time_state,
+        "market_time_state": time_state,
         "cycle_phase": cycle_phase,
         "nearest_fib_time": nearest_fib_time,
-        "fib_time_windows": fib_time_windows,
-        "cycles_active": cycles_active,
+        "fib_time_windows": fib_windows[:10],
+        "cycles_active": active_cycles,
         "cycle_sync": cycle_sync,
         "gann_status": gann_status,
         "session_bias": session_bias,
-        "confluence_score": confluence_score,
+        "confluence_score": score,
         "timing_bias": timing_bias,
-        "recommendation": recommendation,
-        "confidence": confluence_score,
-        "bullish_plan": bullish_plan,
-        "bearish_plan": bearish_plan,
-        "notes": "Time PRO = Fib Time + Cycles + Gann + Sessions + Confluence"
+        "recommendation": reco,
+        "confidence": score,
+        "bull_plan": bull_plan,
+        "bear_plan": bear_plan,
+        "notes": "PRO: Fib Time + Cycles + Gann + Sessions (منطق فقط)",
     }
 
     return {
         "session_stats": session_stats,
-        "current": current,
+        "current": current_info,
         "swings": swings,
         "dow_stats": dow_stats,
-        "time_pro": time_pro
-        }
+        "time_pro": time_pro,
+    }
 # ==============================
 #   V16 – Per‑School Detailed Report
 # ==============================
