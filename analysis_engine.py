@@ -4707,3 +4707,198 @@ def _digital_block() -> str:
 
     full_msg = base_header + body
     return _shrink_text_preserve_content(full_msg, limit=3900)
+def format_school_report_v17(code: str, symbol: str = "BTCUSDT") -> str:
+    """V17: Safe, self-contained per-school report generator.
+    - لا يعدّل أى توكن
+    - لا يعتمد على أجزاء مكسورة داخل الملف
+    - يراعى حد تيليجرام عبر _shrink_text_preserve_content
+    """
+    code = (code or "").strip().lower()
+    symbol = (symbol or "BTCUSDT").strip().upper()
+
+    metrics = get_market_metrics_cached()
+    if not metrics:
+        return "⚠️ تعذّر جلب بيانات السوق الآن."
+
+    # Core numbers
+    price = float(metrics.get("price", 0.0) or 0.0)
+    change = float(metrics.get("change_pct", 0.0) or 0.0)
+    range_pct = float(metrics.get("range_pct", 0.0) or 0.0)
+    vol_score = float(metrics.get("volatility_score", 0.0) or 0.0)
+    volume = float(metrics.get("volume", 0.0) or 0.0)
+
+    risk = evaluate_risk_level(change, vol_score)
+    fusion = fusion_ai_brain(metrics, risk)
+
+    # Pulse / events (لو متاح)
+    pulse = {}
+    events = {}
+    try:
+        pulse = update_market_pulse(metrics)
+        events = detect_institutional_events(pulse, metrics, risk)
+    except Exception:
+        pulse = {}
+        events = {}
+
+    try:
+        regime = _compute_volatility_regime(vol_score, range_pct)
+    except Exception:
+        regime = "normal"
+
+    level_ar = _risk_level_ar(risk.get("level"))
+    risk_emoji = risk.get("emoji", "⚪")
+
+    def _fmt(v: float, nd: int = 2) -> str:
+        try:
+            return f"{v:,.{nd}f}"
+        except Exception:
+            return str(v)
+
+    header = (
+        f"🏫 <b>School Report (V17)</b>\n"
+        f"🪙 <b>{symbol}</b> | السعر: <b>{price:,.0f}$</b> | تغير 24h: <b>%{change:+.2f}</b>\n"
+        f"📊 المدى: <b>{range_pct:.2f}%</b> | التقلب: <b>{vol_score:.1f}/100</b> | المخاطر: {risk_emoji} <b>{level_ar}</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+    )
+
+    # =========================
+    # 1) Market Structure
+    # =========================
+    def _market_structure_block() -> str:
+        bias_text = fusion.get("bias_text", "")
+        wyck = fusion.get("wyckoff_phase", "")
+        smc_view = fusion.get("smc_view", "")
+        direction_conf = float(pulse.get("direction_confidence", 0.0) or 0.0)
+
+        lines = []
+        lines.append("📘 <b>Market Structure – هيكل السوق</b>")
+        lines.append("🔍 الفكرة: بنشوف السوق ماشى ازاى (قمم/قيعان) عشان نعرف هو فى ترند ولا تذبذب.")
+        lines.append("")
+        lines.append("🧭 <b>1) انحياز الاتجاه (Bias)</b>")
+        lines.append(f"• قراءة المحرك: {bias_text or 'غير حاسم حالياً.'}")
+        if direction_conf:
+            lines.append(f"• ثبات الاتجاه من التاريخ القريب: <b>{direction_conf:.0f}%</b>")
+        lines.append("")
+        lines.append("🧱 <b>2) مناطق الكسر/التغير</b>")
+        lines.append("• لو السوق بيطلع بقوة: نراقب كسر قمة اليوم/الأسبوع ثم إعادة اختبار.")
+        lines.append("• لو السوق بيهبط بقوة: نراقب كسر قاع اليوم/الأسبوع ثم إعادة اختبار.")
+        lines.append("")
+        lines.append("🧩 <b>3) مرحلة وايكوف (للمساعدة)</b>")
+        lines.append(f"• {wyck or 'غير متاح الآن.'}")
+        if smc_view:
+            lines.append("")
+            lines.append("💧 <b>4) سلوك السيولة (SMC View)</b>")
+            lines.append(f"• {smc_view}")
+        lines.append("")
+        lines.append("✅ <b>الخلاصة العملية</b>")
+        lines.append("• الترند يتأكد لما: كسر + إعادة اختبار + استمرار بزخم.")
+        lines.append("• التذبذب يتأكد لما: السعر يحترم نطاق واضح ويعكس من أطرافه.")
+        return "\n".join(lines)
+
+    # =========================
+    # 2) Volume & Volatility
+    # =========================
+    def _volume_volatility_block() -> str:
+        speed = float(pulse.get("speed_index", 0.0) or 0.0)
+        accel = float(pulse.get("accel_index", 0.0) or 0.0)
+        vol_pct = float(pulse.get("vol_percentile", 0.0) or 0.0)
+        active = events.get("active_labels") or []
+        active_txt = " / ".join(active) if active else "لا يوجد حدث حاد الآن."
+
+        atr_hint = "مرتفع" if vol_score >= 60 else ("متوسط" if vol_score >= 35 else "منخفض")
+        bb_hint = "واسع" if range_pct >= 6 else ("طبيعى" if range_pct >= 3 else "ضيق")
+        obv_hint = "إيجابى" if change > 0 else ("سلبى" if change < 0 else "محايد")
+
+        lines = []
+        lines.append("📘 <b>Volume & Volatility – الحجم والتقلب</b>")
+        lines.append("🔍 الفكرة: الحجم يقول لك (القوة)، والتقلب يقول لك (المساحة) اللى السعر بيتحرك فيها.")
+        lines.append("")
+        lines.append("📊 <b>1) قراءة سريعة</b>")
+        lines.append(f"• Volume 24h: <b>{_fmt(volume, 0)}</b> | Regime: <b>{regime}</b>")
+        if vol_pct:
+            lines.append(f"• ترتيب التقلب تاريخيًا: <b>{vol_pct:.0f}%</b>")
+        lines.append(f"• سرعة الحركة: <b>{speed:.1f}/100</b> | التسارع: <b>{accel:.1f}</b>")
+        lines.append("")
+        lines.append("🧰 <b>2) مؤشرات المدرسة (مترجمة ببساطة)</b>")
+        lines.append(f"• ATR (حجم الحركة): <b>{atr_hint}</b> → لما يكون عالى، وقف الخسارة لازم يتوسع.")
+        lines.append(f"• Bollinger Width (اتساع البولينجر): <b>{bb_hint}</b> → ضيق=ضغط قبل انفجار، واسع=تقلب قائم.")
+        lines.append(f"• OBV (اتجاه الحجم): <b>{obv_hint}</b> → لو السعر طالع والحجم داعم يبقى الترند أقوى.")
+        lines.append("• Volume Spike: نقارن حجم اليوم بالمتوسط (هنا بنستخدم إشارات المحرك بدل بيانات تاريخية كاملة).")
+        lines.append("")
+        lines.append("⚡ <b>3) إشارات قوية محتملة</b>")
+        lines.append(f"• أحداث نشطة: {active_txt}")
+        lines.append("• اختراق حقيقى غالباً = كسر مستوى + حجم أعلى من المعتاد + استمرار.")
+        lines.append("• كسر وهمى غالباً = كسر سريع + رجوع داخل النطاق + حجم متذبذب.")
+        lines.append("")
+        lines.append("✅ <b>الخلاصة العملية</b>")
+        lines.append("• لو التقلب عالى: اشتغل بأهداف أقصر أو قلل حجم الصفقة.")
+        lines.append("• لو التقلب ضيق: استنى تأكيد الاختراق (مش أول شمعة).")
+        return "\n".join(lines)
+
+    # =========================
+    # 3) Risk & Position
+    # =========================
+    def _risk_position_block() -> str:
+        msg = risk.get("message", "")
+        lines = []
+        lines.append("📘 <b>Risk & Position – إدارة المخاطر وحجم الصفقة</b>")
+        lines.append("🔍 الفكرة: حتى لو التحليل صح، إدارة المخاطر هى اللى بتخليك تعيش فى السوق.")
+        lines.append("")
+        lines.append(f"• مستوى المخاطر الآن: {risk_emoji} <b>{level_ar}</b>")
+        if msg:
+            lines.append(f"• تعليق المحرك: {msg}")
+        lines.append("")
+        lines.append("📐 <b>قواعد سهلة (وتنفع لأى مدرسة)</b>")
+        lines.append("• لا تخاطر بأكثر من 1–2٪ من رأس المال فى الصفقة.")
+        lines.append("• وقف الخسارة لازم يبقى منطقى (ورا مستوى واضح)، مش رقم عشوائى.")
+        lines.append("• لما التقلب يزيد: قلل حجم الصفقة أو قرب الأهداف.")
+        lines.append("")
+        lines.append("🧮 <b>ترجمة سريعة للواقع</b>")
+        if risk.get("level") == "high":
+            lines.append("• الأفضل: مراقبة أو صفقات قصيرة جدًا بحجم صغير.")
+        elif risk.get("level") == "medium":
+            lines.append("• ممكن تداول بحذر: صفقات قليلة وبشروط قوية فقط.")
+        else:
+            lines.append("• الوضع أفضل نسبيًا: لكن لا تتجاهل الخطة.")
+        return "\n".join(lines)
+
+    # =========================
+    # 4) ALL (مختصر قوى)
+    # =========================
+    def _all_schools_block() -> str:
+        p_up = int(round(fusion.get("p_up", 0)))
+        p_side = int(round(fusion.get("p_side", 0)))
+        p_down = int(round(fusion.get("p_down", 0)))
+
+        lines = []
+        lines.append("🧠 <b>ALL SCHOOLS – ملخص سريع قوى</b>")
+        lines.append("• الاتجاه العام (AI): " + (fusion.get("bias_text") or "غير واضح"))
+        lines.append("• سلوك السيولة (SMC): " + (fusion.get("smc_view") or "غير حاسم"))
+        lines.append("• مرحلة السوق (Wyckoff): " + (fusion.get("wyckoff_phase") or "غير متاح"))
+        lines.append(f"• احتمالات 24–72h: صعود ~{p_up}% | تماسك ~{p_side}% | هبوط ~{p_down}%")
+        lines.append("")
+        lines.append("🎯 <b>النتيجة النهائية</b>")
+        if p_down >= p_up + 10 and p_down >= p_side:
+            lines.append("• السيناريو الأقوى حالياً: <b>هبوط</b> (راقب الدعوم وإشارات الارتداد).")
+        elif p_up >= p_down + 10 and p_up >= p_side:
+            lines.append("• السيناريو الأقوى حالياً: <b>صعود</b> (راقب المقاومات والتأكيدات).")
+        else:
+            lines.append("• السيناريو الأقوى حالياً: <b>تذبذب</b> (اشتغل على الأطراف أو انتظر كسر مؤكد).")
+        return "\n".join(lines)
+
+    # Router
+    if code in ("1", "structure", "market_structure", "ms"):
+        body = _market_structure_block()
+    elif code in ("2", "volume", "volume_volatility", "vv"):
+        body = _volume_volatility_block()
+    elif code in ("3", "risk", "risk_position", "rp"):
+        body = _risk_position_block()
+    elif code in ("all", "all_schools", "0"):
+        body = _all_schools_block()
+    else:
+        body = (
+            "⚠️ كود مدرسة غير معروف.\n"
+            "جرّب: 1 (Market Structure) | 2 (Volume&Volatility) | 3 (Risk&Position) | all"
+        )
+
+    return _shrink_text_preserve_content(header + body, limit=3900)
