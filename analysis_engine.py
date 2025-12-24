@@ -4681,9 +4681,9 @@ def format_school_report_v17(code: str, symbol: str = "BTCUSDT") -> str:
     symbol = (symbol or "BTCUSDT").strip().upper()
 # ✅ إذا المستخدم اختار مدرسة (TIME/SMC/ICT...) مش أجزاء 1/2/3/all
     if code in ("time", "time_analysis"):
-    pass
-elif code not in ("1","2","3","all"):
-    return format_school_report(code, symbol=symbol)
+    return _time_analysis_block(symbol)
+    elif code not in ("1", "2", "3", "all"):
+        return format_school_report(code, symbol=symbol)
     metrics = get_market_metrics_cached()
     if not metrics:
         return "⚠ تعذر جلب بيانات السوق الآن."
