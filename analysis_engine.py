@@ -4679,12 +4679,14 @@ def format_school_report_v17(code: str, symbol: str = "BTCUSDT") -> str:
     """
     code = (code or "").strip().lower()
     symbol = (symbol or "BTCUSDT").strip().upper()
-# ✅ لو الكود مش (1/2/3/all) يبقى ده كود "مدرسة" عادي -> حوّله للمحرك الأساسي
-    if code not in ("1", "2", "3", "all"):
-        return format_school_report(code, symbol=symbol)
+# ✅ إذا المستخدم اختار مدرسة (TIME/SMC/ICT...) مش أجزاء 1/2/3/all
+    if code in ("time", "time_analysis"):
+    pass
+elif code not in ("1","2","3","all"):
+    return format_school_report(code, symbol=symbol)
     metrics = get_market_metrics_cached()
     if not metrics:
-        return "⚠️ تعذّر جلب بيانات السوق الآن."
+        return "⚠ تعذر جلب بيانات السوق الآن."
 
     # Core numbers
     price = float(metrics.get("price", 0.0) or 0.0)
