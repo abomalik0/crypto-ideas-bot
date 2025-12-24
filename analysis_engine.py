@@ -4714,8 +4714,8 @@ def _time_school_summary_v17(symbol: str = "BTCUSDT") -> str:
     if isinstance(notes, str) and notes.strip():
         lines.append("")
         lines.append("🧠 <b>Time PRO:</b>")
-        lines.append(notes.strip()
-
+        lines.append(notes.strip())
+        
     return _shrink_text_preserve_content("\n".join(lines), limit=3900)
 def format_school_report_v17(code: str, symbol: str = "BTCUSDT") -> str:
     """V17: Safe, self-contained per-school report generator.
