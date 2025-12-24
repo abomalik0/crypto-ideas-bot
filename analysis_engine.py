@@ -4668,11 +4668,12 @@ def _digital_block() -> str:
             "يمكنك اختيار مدرسة من اللوحة أو استخدام مثلاً: ICT / SMC / Wyckoff / Harmonic / Elliott / Time / "
             "Price Action / Supply & Demand / Classical / Liquidity / Structure / Multi / Volume / Risk."
         )
-
+        
     full_msg = base_header + body
- return _shrink_text_preserve_content(full_msg, limit=3900)
+    return _shrink_text_preserve_content(full_msg, limit=3900)
+
 def _time_school_summary_v17(symbol: str = "BTCUSDT") -> str:
-    """Time Analysis block (V17-safe) — no nested dependencies."""
+    """Time Analysis block (V17-safe) - no nested dependencies."""
     symbol = (symbol or "BTCUSDT").strip().upper()
     try:
         view = _compute_time_school_view(symbol) or {}
