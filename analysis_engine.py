@@ -4688,7 +4688,8 @@ def _time_school_summary_v17(symbol: str = "BTCUSDT") -> str:
             "حاول مرة أخرى بعد دقائق قليلة."
         )
 
-    current = view.get("current") or {}    time_pro = view.get("time_pro") or {}
+    current = view.get("current") or {}
+time_pro = view.get("time_pro") or {}
 
     lines = []
     lines.append("⏱ <b>Time Analysis – المدرسة الزمنية</b>")
