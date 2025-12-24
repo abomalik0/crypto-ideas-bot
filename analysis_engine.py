@@ -4668,55 +4668,9 @@ def _digital_block() -> str:
             "يمكنك اختيار مدرسة من اللوحة أو استخدام مثلاً: ICT / SMC / Wyckoff / Harmonic / Elliott / Time / "
             "Price Action / Supply & Demand / Classical / Liquidity / Structure / Multi / Volume / Risk."
         )
-        
+
     full_msg = base_header + body
     return _shrink_text_preserve_content(full_msg, limit=3900)
-
-def _time_school_summary_v17(symbol: str = "BTCUSDT") -> str:
-    """Time Analysis block (V17-safe) - no nested dependencies."""
-    symbol = (symbol or "BTCUSDT").strip().upper()
-
-    try:
-        view = _compute_time_school_view(symbol) or {}
-    except Exception:
-        view = {}
-
-    if not view:
-        return (
-            "🕒 <b>Time Analysis - المدرسة الزمنية</b>\n"
-            "⚠️ هذا التحليل تعليمي فقط وليس توصية مباشرة بالشراء أو البيع.\n\n"
-            f"<b>{symbol}</b> — تعذر توليد تحليل المدرسة الزمنية حالياً.\n"
-            "حاول مرة أخرى بعد دقائق قليلة."
-        )
-
-    current = view.get("current") or {}
-    time_pro = view.get("time_pro") or {}
-
-    lines = []
-    lines.append("🕒 <b>Time Analysis - المدرسة الزمنية</b>")
-    lines.append("⚠️ هذا التحليل تعليمي فقط وليس توصية مباشرة بالشراء أو البيع.")
-    lines.append("")
-    lines.append(f"⌚ <b>{symbol}</b> — تحليل المدرسة الزمنية")
-    lines.append("🔍 <b>الفكرة الأساسية:</b> المدرسة الزمنية تهتم بالدورات (Cycles) وإيقاع السوق.")
-
-    rng = current.get("range_pct")
-    vol = current.get("volatility_pct")
-    if rng is not None or vol is not None:
-        rng_txt = f"{rng:.2f}%" if isinstance(rng, (int, float)) else "--"
-        vol_txt = f"{vol:.2f}%" if isinstance(vol, (int, float)) else "--"
-        lines.append(f"• المدى اليومي: {rng_txt} | التقلب: {vol_txt}")
-
-    sess = (current.get("session") or "").strip()
-    if sess:
-        lines.append(f"• الجلسة الحالية (UTC): <b>{sess}</b>")
-
-    notes = time_pro.get("notes")
-    if isinstance(notes, str) and notes.strip():
-        lines.append("")
-        lines.append("🧠 <b>Time PRO:</b>")
-        lines.append(notes.strip())
-        
-    return _shrink_text_preserve_content("\n".join(lines), limit=3900)
 def format_school_report_v17(code: str, symbol: str = "BTCUSDT") -> str:
     """V17: Safe, self-contained per-school report generator.
     - لا يعدّل أى توكن
@@ -4726,13 +4680,10 @@ def format_school_report_v17(code: str, symbol: str = "BTCUSDT") -> str:
     code = (code or "").strip().lower()
     symbol = (symbol or "BTCUSDT").strip().upper()
 
-    # TIME school shortcut (fix /school TIME)
-    if code in ("time", "time_analysis", "t"):
-    return _time_school_summary_v17(symbol)
-
     metrics = get_market_metrics_cached()
     if not metrics:
         return "⚠️ تعذّر جلب بيانات السوق الآن."
+
     # Core numbers
     price = float(metrics.get("price", 0.0) or 0.0)
     change = float(metrics.get("change_pct", 0.0) or 0.0)
