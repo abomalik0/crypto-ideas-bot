@@ -1233,24 +1233,74 @@ def status_api():
 
 
 def setup_webhook():
-    webhook_url = f"{config.APP_BASE_URL}/webhook"
-    try:
-        _base = (config.APP_BASE_URL or "").rstrip("/")
-        if _base.endswith("/webhook"):
-            webhook_url = _base
-        else:
-            webhook_url = _base + "/webhook"
-    except Exception:
-        pass
-    try:
-        r = HTTP_SESSION.get(
-            f"{TELEGRAM_API}/setWebhook",
-            params={"url": webhook_url},
-            timeout=10,
-        )
-        config.logger.info("Webhook response: %s - %s", r.status_code, r.text)
-    except Exception as e:
-        config.logger.exception("Error while setting webhook: %s", e)
+    """
+    Robust webhook setup with retries to reduce transient network errors on startup.
+
+    - Uses exponential backoff (+ small jitter).
+    - Never blocks app startup if it fails.
+    - Logs concise warnings per attempt, and one full exception at the end if all attempts fail.
+    """
+    import time
+    import random
+
+    base = (config.APP_BASE_URL or "").strip()
+    if not base:
+        config.logger.warning("APP_BASE_URL is empty; skipping webhook setup.")
+        return False
+
+    base = base.rstrip("/")
+    # Allow APP_BASE_URL to already include /webhook
+    if base.endswith("/webhook"):
+        webhook_url = base
+    else:
+        webhook_url = base + "/webhook"
+
+    max_attempts = 4
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            r = HTTP_SESSION.get(
+                f"{TELEGRAM_API}/setWebhook",
+                params={"url": webhook_url},
+                timeout=10,
+            )
+
+            # Telegram عادة بيرجع JSON: {"ok": true, "result": true, ...}
+            ok = False
+            try:
+                payload = r.json()
+                ok = bool(payload.get("ok")) and bool(payload.get("result"))
+            except Exception:
+                payload = None
+
+            config.logger.info(
+                "Webhook response (attempt %s/%s): %s - %s",
+                attempt,
+                max_attempts,
+                r.status_code,
+                (payload if payload is not None else r.text),
+            )
+
+            if 200 <= r.status_code < 300 and ok:
+                return True
+
+        except Exception as e:
+            last_error = e
+            config.logger.warning(
+                "Webhook setup failed (attempt %s/%s): %s",
+                attempt,
+                max_attempts,
+                repr(e),
+            )
+
+        # backoff + jitter
+        if attempt < max_attempts:
+            time.sleep((2 ** (attempt - 1)) + random.uniform(0.0, 0.35))
+
+    if last_error is not None:
+        config.logger.exception("Error while setting webhook after retries: %s", last_error)
+    return False
 
 
 def set_webhook_on_startup():
