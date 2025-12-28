@@ -35,6 +35,102 @@ import services
 
 app = Flask(__name__)
 
+# ==============================
+#   Security Gate + Rate Limit
+#   (بدون تعديل مساراتك القديمة)
+# ==============================
+
+# Buckets بسيطة للـ rate limit (In-memory)
+# ملاحظة: على خطة Koyeb المجانية ومع 3-4 مستخدمين ده كافي جدًا
+_RATE_BUCKETS = {
+    "webhook": {},  # ip -> [timestamps]
+    "admin": {},    # ip -> [timestamps]
+}
+
+def _rate_limited(bucket_name: str, key: str, limit: int, window_sec: int) -> bool:
+    """يرجع True لو تعدّى الحد."""
+    now = time.time()
+    bucket = _RATE_BUCKETS.get(bucket_name) or {}
+    arr = bucket.get(key) or []
+    # prune
+    arr = [t for t in arr if (now - t) < window_sec]
+    if len(arr) >= limit:
+        bucket[key] = arr
+        _RATE_BUCKETS[bucket_name] = bucket
+        return True
+    arr.append(now)
+    bucket[key] = arr
+    _RATE_BUCKETS[bucket_name] = bucket
+    return False
+
+def _client_ip() -> str:
+    # Koyeb/Proxy عادة بيبعت X-Forwarded-For
+    xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    return xff or (request.remote_addr or "unknown")
+
+@app.before_request
+def _security_gate():
+    """
+    بوابة أمنية قبل كل Request:
+    - حماية /webhook بسر Telegram secret (لو متضبط)
+    - Rate limiting على /webhook و /admin/*
+    - إجبار auth على endpoints الحساسة (حتى لو نسينا نحط check داخل المسار)
+    """
+    path = request.path or ""
+    ip = _client_ip()
+
+    # ------------------------------
+    # 1) Webhook protection
+    # ------------------------------
+    if path == "/webhook" and request.method == "POST":
+        # Rate limit: افتراض 120 طلب/الدقيقة لكل IP
+        if _rate_limited("webhook", ip, limit=120, window_sec=60):
+            return jsonify(ok=False, error="rate_limited"), 429
+
+        secret_expected = (getattr(config, "WEBHOOK_SECRET", "") or "").strip()
+        if secret_expected:
+            secret_got = (request.headers.get("X-Telegram-Bot-Api-Secret-Token") or "").strip()
+            if not secret_got:
+                return jsonify(ok=False, error="missing_telegram_secret"), 401
+            try:
+                import hmac
+                if not hmac.compare_digest(str(secret_got), str(secret_expected)):
+                    return jsonify(ok=False, error="invalid_telegram_secret"), 401
+            except Exception:
+                return jsonify(ok=False, error="telegram_secret_check_failed"), 401
+        else:
+            # لو السر مش متضبط → نسيب الويب هوك شغال للتوافق لكن نطبع تحذير
+            try:
+                if not getattr(config, "_WARNED_NO_WEBHOOK_SECRET", False):
+                    config._WARNED_NO_WEBHOOK_SECRET = True
+                    config.logger.warning(
+                        "SECURITY WARNING: WEBHOOK_SECRET is not set. "
+                        "Webhook requests are not verified."
+                    )
+            except Exception:
+                pass
+
+        return None  # allow request to continue
+
+    # ------------------------------
+    # 2) Admin / Sensitive endpoints
+    # ------------------------------
+    protected = (
+        path.startswith("/admin/")
+        or path in {"/dashboard_api", "/auto_alert", "/test_alert", "/weekly_ai_report", "/status"}
+    )
+
+    if protected:
+        # Rate limit: افتراض 60 طلب/الدقيقة لكل IP
+        if _rate_limited("admin", ip, limit=60, window_sec=60):
+            return Response("Rate limited", status=429)
+
+        if not check_admin_auth(request):
+            return Response("Unauthorized", status=401)
+
+    return None
+
+
 # مجموعة الأوامر المعروفة حتى لا تتداخل مع أوامر الرموز (/btcusdt ...)
 KNOWN_COMMANDS = {
     "/start",
@@ -344,9 +440,7 @@ def _get_school_snapshot(symbol: str):
         "risk_score": risk_score if isinstance(risk_score, (int, float)) else None,
         "fmt": _fmt,
     }
-
-
-def _build_smc_template(s):
+    def _build_smc_template(s):
     f = s["fmt"]
     sym = s["symbol"]
     direction = s["trend"]
@@ -566,7 +660,6 @@ def webhook():
     except Exception:
         pass
     # ⭐ END
-
     if config.BOT_DEBUG:
         config.logger.info("Update: %s", update)
     else:
@@ -1242,16 +1335,26 @@ def setup_webhook():
             webhook_url = _base + "/webhook"
     except Exception:
         pass
+
+    # ✅ Webhook secret (اختياري لكن مُوصى به بشدة)
+    # لو WEBHOOK_SECRET متضبط فى env → هنرسله لـ Telegram
+    # وبالتالى Telegram هيبعت نفس السر فى Header:
+    # X-Telegram-Bot-Api-Secret-Token
+    secret = (getattr(config, "WEBHOOK_SECRET", "") or "").strip()
+
     try:
+        params = {"url": webhook_url}
+        if secret:
+            params["secret_token"] = secret
+
         r = HTTP_SESSION.get(
             f"{TELEGRAM_API}/setWebhook",
-            params={"url": webhook_url},
+            params=params,
             timeout=10,
         )
         config.logger.info("Webhook response: %s - %s", r.status_code, r.text)
     except Exception as e:
         config.logger.exception("Error while setting webhook: %s", e)
-
 
 def set_webhook_on_startup():
     setup_webhook()
