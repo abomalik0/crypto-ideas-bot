@@ -21,6 +21,7 @@ ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "669209875"))
 ALERT_TARGET_CHAT_ID = int(os.getenv("ALERT_TARGET_CHAT_ID", str(ADMIN_CHAT_ID)))
 
 ADMIN_DASH_PASSWORD = os.getenv("ADMIN_DASH_PASSWORD", "change_me")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 BOT_DEBUG = os.getenv("BOT_DEBUG", "0") == "1"
 
 if not TELEGRAM_TOKEN:
@@ -515,13 +516,80 @@ def log_cleaned_buffer() -> str:
 
 def check_admin_auth(req) -> bool:
     """
-    ممكن تضيف Basic Auth أو توكن أو مقارنة HEADER بالـ ADMIN_DASH_PASSWORD.
-    دلوقتى راجع True (مفتوح).
+    Auth موحد لمسارات الإدارة / لوحة التحكم.
+
+    ✅ يدعم 3 طرق (للتوافق + الأمان):
+    1) Query param:  ?pass=...  أو  ?password=...
+    2) Header:      X-Admin-Password  أو  X-Admin-Secret
+    3) Authorization: Bearer <secret>
+
+    ✅ المقارنة تتم بـ constant-time (hmac.compare_digest) لتقليل فرص هجمات timing.
     """
-    # مثال لو حبيت:
-    # pwd = req.headers.get("X-Admin-Password")
-    # return pwd == ADMIN_DASH_PASSWORD
-    return True
+    try:
+        import hmac  # local import لتجنب تعديل imports أعلى الملف
+
+        expected = (ADMIN_DASH_PASSWORD or "").strip()
+
+        # لو الباسورد فاضى → مفيش صلاحية أدمن
+        if not expected:
+            return False
+
+        # لو لسه على change_me → نسمح للتوافق لكن نطبع تحذير قوى فى اللوج
+        if expected == "change_me":
+            try:
+                logger.warning(
+                    "SECURITY WARNING: ADMIN_DASH_PASSWORD is still 'change_me'. "
+                    "Please set a strong value in environment variables."
+                )
+            except Exception:
+                pass
+
+        candidates: list[str] = []
+
+        # (1) Query params
+        try:
+            qp = (req.args.get("pass") or req.args.get("password") or "").strip()
+            if qp:
+                candidates.append(qp)
+        except Exception:
+            pass
+
+        # (2) Custom headers
+        try:
+            hdr = (
+                req.headers.get("X-Admin-Password")
+                or req.headers.get("X-Admin-Secret")
+                or ""
+            ).strip()
+            if hdr:
+                candidates.append(hdr)
+        except Exception:
+            pass
+
+        # (3) Authorization: Bearer <secret>
+        try:
+            auth = (req.headers.get("Authorization") or "").strip()
+            if auth.lower().startswith("bearer "):
+                token = auth.split(None, 1)[1].strip()
+                if token:
+                    candidates.append(token)
+        except Exception:
+            pass
+
+        # Compare
+        for cand in candidates:
+            if cand and hmac.compare_digest(str(cand), str(expected)):
+                return True
+
+        return False
+
+    except Exception as e:
+        try:
+            logger.exception("check_admin_auth failed: %s", e)
+        except Exception:
+            pass
+        return False
+
 # ==============================
 #   Telegram Smart Splitter (NO DELETE)
 # ==============================
