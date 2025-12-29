@@ -1,15 +1,21 @@
 """
 engine_metrics.py
 
-✅ الهدف: تجميع منطق حسابات السوق (Market Metrics) في ملف مستقل.
-ملاحظة: حالياً هذا الملف غير مربوط بالشغل الفعلي إلا عندما نبدأ مرحلة الربط لاحقاً.
+✅ الهدف: حساب Metrics السوق (Range/Volatility/Labels) بشكل مستقل + كاش TTL.
+- يعتمد على engine_data_sources.fetch_price_data
+- يستخدم engine_cache (TTLCache) لتقليل الضغط على الـ APIs
+
+ملاحظة:
+- لا يوجد أي تعامل مع توكنات هنا.
+- الملف جاهز للربط لاحقاً داخل analysis_engine.py بدون كسر الشغل الحالي.
 """
 
 from __future__ import annotations
 
-import time
+from typing import Any, Dict, Optional
 
 import config
+from engine_cache import cache_get, cache_set
 from engine_data_sources import fetch_price_data
 
 
@@ -18,15 +24,18 @@ def build_symbol_metrics(
     change_pct: float,
     high: float,
     low: float,
-) -> dict:
+) -> Dict[str, Any]:
+    """يبني Metrics موحدة من بيانات السعر."""
     if price > 0 and high >= low:
         range_pct = ((high - low) / price) * 100.0
     else:
         range_pct = 0.0
 
+    # تقلب تقديري (0..100)
     volatility_raw = abs(change_pct) * 1.5 + range_pct
     volatility_score = max(0.0, min(100.0, volatility_raw))
 
+    # Label للاتجاه
     if change_pct >= 3:
         strength_label = "صعود قوى وزخم واضح فى الحركة."
     elif change_pct >= 1:
@@ -38,6 +47,7 @@ def build_symbol_metrics(
     else:
         strength_label = "حركة جانبية أو تغير بسيط فى السعر."
 
+    # Pulse للسيولة بشكل استدلالي
     if volatility_score >= 70:
         if change_pct >= 2:
             liquidity_pulse = "اندفاع شرائى قوى وسيولة مرتفعة."
@@ -64,29 +74,49 @@ def build_symbol_metrics(
     }
 
 
-def compute_market_metrics() -> dict | None:
-    data = fetch_price_data("BTCUSDT")
+def compute_market_metrics(user_symbol: str = "BTCUSDT") -> Optional[Dict[str, Any]]:
+    """يجلب بيانات السعر ويبني metrics."""
+    data = fetch_price_data(user_symbol)
     if not data:
         return None
 
-    return build_symbol_metrics(
-        data["price"],
-        data["change_pct"],
-        data["high"],
-        data["low"],
+    try:
+        price = float(data.get("price") or 0.0)
+        change_pct = float(data.get("change_pct") or 0.0)
+        high = float(data.get("high") or price)
+        low = float(data.get("low") or price)
+    except Exception:
+        return None
+
+    metrics = build_symbol_metrics(
+        price=price,
+        change_pct=change_pct,
+        high=high,
+        low=low,
     )
 
+    # إضافات مفيدة للتشخيص
+    metrics["symbol"] = data.get("symbol", user_symbol)
+    metrics["exchange"] = data.get("exchange")
+    metrics["volume"] = data.get("volume")
+    return metrics
 
-def get_market_metrics_cached() -> dict | None:
-    now = time.time()
-    data = config.MARKET_METRICS_CACHE.get("data")
-    ts = config.MARKET_METRICS_CACHE.get("time", 0.0)
 
-    if data and (now - ts) <= config.MARKET_TTL_SECONDS:
-        return data
+def get_market_metrics_cached(
+    user_symbol: str = "BTCUSDT",
+    ttl_seconds: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    نفس compute_market_metrics لكن بكاش TTL (افتراضي: MARKET_TTL_SECONDS من config).
+    """
+    ttl = int(ttl_seconds or getattr(config, "MARKET_TTL_SECONDS", 20))
+    key = f"metrics:{(user_symbol or 'BTCUSDT').upper()}"
 
-    data = compute_market_metrics()
+    cached = cache_get(key)
+    if cached:
+        return cached
+
+    data = compute_market_metrics(user_symbol)
     if data:
-        config.MARKET_METRICS_CACHE["data"] = data
-        config.MARKET_METRICS_CACHE["time"] = now
+        cache_set(key, data, ttl=ttl)
     return data
