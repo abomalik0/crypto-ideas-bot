@@ -4,6 +4,9 @@ import time
 from datetime import datetime, timezone
 
 import requests
+import asyncio
+import inspect
+
 try:
     from telegram import Bot, ParseMode
 except ImportError:
@@ -106,6 +109,34 @@ def _ensure_bot() -> Bot:
     if getattr(config, "BOT", None) is None:
         config.BOT = Bot(token=config.BOT_TOKEN)
     return config.BOT
+
+
+def _run_coroutine_sync(coro, timeout: float = 15.0):
+    """
+    يشغّل coroutine بشكل آمن داخل Threads ويرجع نتيجته.
+    - Thread: يستخدم asyncio.run_coroutine_threadsafe لو فيه loop شغال
+    - مفيش loop: يستخدم asyncio.run
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result(timeout=timeout)
+
+    return asyncio.run(coro)
+
+
+def _maybe_await(value):
+    """
+    مشغّل يرجّع النتيجة لو الدالة رجّعت coroutine (نسخ PTB الحديثة)
+    او لو رجّعت قيمة عادية (نسخ قديمة) فترجعها زي ما هي.
+    """
+    if inspect.isawaitable(value):
+        return _run_coroutine_sync(value)
+    return value
 
 
 def http_get(url: str, timeout: int = 10, **kwargs):
@@ -1218,7 +1249,7 @@ def get_system_status() -> str:
 <b>📌 الحالة العامة:</b>
 - Realtime: {"🟢 شغال" if rt < 120 else "🔴 متوقف"}
 - Smart Alert: {"🟢 شغال" if sa < 180 else "🔴 متوقف"}
-- Watchdog: {"🟢 متوقف" if wd > 180 else "🟢 شغال"}
+- Watchdog: {"🟢 شغال" if wd < 180 else "🔴 متوقف"}
 - Keep-Alive: {"🟢 نشط" if ka < 600 else "🔴 قد يكون معطل"}
 
 <b>⚙️ Supervisor:</b> 🟢 يعمل بشكل دائم
@@ -1331,8 +1362,9 @@ def watchdog_loop():
             config.LAST_WATCHDOG_TICK = time.time()
 
             bot = _ensure_bot()
-            me = bot.get_me()
-            logger.debug("Bot is alive as @%s", me.username)
+            me = _maybe_await(bot.get_me())
+            username = getattr(me, "username", None) or "unknown"
+            logger.debug("Bot is alive as @%s", username)
         except Exception as e:
             logger.exception("Watchdog error: %s", e)
         time.sleep(config.WATCHDOG_INTERVAL)
@@ -1532,11 +1564,13 @@ def start_background_threads(force: bool = False):
 
     config.THREADS_STARTED = True
     logger.info("All background threads started (including keep-alive, supervisor & startup broadcast).")
+
+
 # ==============================
 #   SCHOOL CACHE (60s)
 # ==============================
-import time
-from typing import Callable, Any
+
+from typing import Callable
 
 # كاش مستقل للمدارس
 SCHOOL_RESPONSE_CACHE: dict = {}
@@ -1597,6 +1631,8 @@ def get_school_cached_response(
         _school_cache_set(cache_key, text)
 
     return text
+
+
 # =====================================================
 #   SCHOOL 1: Classical TA — ULTRA
 # =====================================================
@@ -1680,4 +1716,308 @@ def get_classical_ta_school(symbol: str, timeframe: str) -> str:
         school_name="classical_ta",
         symbol=f"{symbol}:{timeframe}",
         generator=lambda: generate_classical_ta_school(symbol, timeframe),
-)
+    )
+
+# =====================================================
+#   SCHOOL 2: Smart Money Concepts (SMC) — ULTRA
+# =====================================================
+
+def generate_smc_school(symbol: str, timeframe: str) -> str:
+    try:
+        from analysis_engine import get_market_metrics_cached
+
+        metrics = get_market_metrics_cached(symbol=symbol, timeframe=timeframe)
+        if not metrics:
+            return "⚠️ تعذّر جلب بيانات SMC حاليًا."
+
+        bos = metrics.get("bos", "غير واضح")
+        choch = metrics.get("choch", "غير واضح")
+        liquidity = metrics.get("liquidity_zones", "غير محدد")
+        order_blocks = metrics.get("order_blocks", "غير محدد")
+        fvg = metrics.get("fvg", "غير محدد")
+
+        price = metrics.get("price")
+        trend = metrics.get("trend", "غير واضح")
+
+        return f"""
+🧠 <b>SMC — Smart Money Concepts (Ultra)</b>
+━━━━━━━━━━━━━━━━━━
+🔍 <b>العملة:</b> {symbol}
+⏱ <b>الإطار الزمني:</b> {timeframe}
+💰 <b>السعر:</b> {price}
+
+📈 <b>الاتجاه العام:</b> <b>{trend}</b>
+
+🔁 <b>Structure:</b>
+• BOS: <b>{bos}</b>
+• CHoCH: <b>{choch}</b>
+
+💧 <b>Liquidity Zones:</b>
+• {liquidity}
+
+🧱 <b>Order Blocks:</b>
+• {order_blocks}
+
+🕳 <b>Fair Value Gaps (FVG):</b>
+• {fvg}
+
+⚠️ <b>ملاحظة:</b>
+SMC يعتمد على قراءة السيولة وبنية السوق، ويُفضّل دمجه مع ICT/Wyckoff.
+
+📌 <b>IN CRYPTO AI — SMC Engine</b>
+""".strip()
+
+    except Exception as e:
+        logger.exception("Error in SMC school: %s", e)
+        return "⚠️ حدث خطأ أثناء توليد تحليل SMC."
+
+
+def get_smc_school(symbol: str, timeframe: str) -> str:
+    return get_school_cached_response(
+        school_name="smc",
+        symbol=f"{symbol}:{timeframe}",
+        generator=lambda: generate_smc_school(symbol, timeframe),
+    )
+
+
+# =====================================================
+#   SCHOOL 3: Wyckoff — ULTRA
+# =====================================================
+
+def generate_wyckoff_school(symbol: str, timeframe: str) -> str:
+    try:
+        from analysis_engine import get_market_metrics_cached
+
+        metrics = get_market_metrics_cached(symbol=symbol, timeframe=timeframe)
+        if not metrics:
+            return "⚠️ تعذّر جلب بيانات Wyckoff حاليًا."
+
+        phase = metrics.get("wyckoff_phase", "غير واضح")
+        event = metrics.get("wyckoff_event", "غير محدد")
+        trend = metrics.get("trend", "غير واضح")
+        vol = metrics.get("volatility_score")
+
+        return f"""
+📗 <b>Wyckoff — التحليل حسب دورة وايكوف (Ultra)</b>
+━━━━━━━━━━━━━━━━━━
+🔍 <b>العملة:</b> {symbol}
+⏱ <b>الإطار الزمني:</b> {timeframe}
+
+🌀 <b>المرحلة:</b> <b>{phase}</b>
+🎯 <b>إشارة/حدث:</b> {event}
+
+📈 <b>الاتجاه العام:</b> <b>{trend}</b>
+📊 <b>التقلب:</b> {vol} / 100
+
+⚠️ <b>ملاحظة:</b>
+Wyckoff ممتاز لتفسير التجميع/التصريف، لكنه يحتاج تأكيد من SMC/Volume.
+
+📌 <b>IN CRYPTO AI — Wyckoff Engine</b>
+""".strip()
+
+    except Exception as e:
+        logger.exception("Error in Wyckoff school: %s", e)
+        return "⚠️ حدث خطأ أثناء توليد تحليل Wyckoff."
+
+
+def get_wyckoff_school(symbol: str, timeframe: str) -> str:
+    return get_school_cached_response(
+        school_name="wyckoff",
+        symbol=f"{symbol}:{timeframe}",
+        generator=lambda: generate_wyckoff_school(symbol, timeframe),
+    )
+
+
+# =====================================================
+#   SCHOOL 4: ICT — ULTRA
+# =====================================================
+
+def generate_ict_school(symbol: str, timeframe: str) -> str:
+    try:
+        from analysis_engine import get_market_metrics_cached
+
+        metrics = get_market_metrics_cached(symbol=symbol, timeframe=timeframe)
+        if not metrics:
+            return "⚠️ تعذّر جلب بيانات ICT حاليًا."
+
+        killzone = metrics.get("ict_killzone", "غير محدد")
+        liquidity = metrics.get("liquidity_zones", "غير محدد")
+        displacement = metrics.get("displacement", "غير محدد")
+        pd_arrays = metrics.get("pd_arrays", "غير محدد")
+
+        return f"""
+🧠 <b>ICT — Inner Circle Trader (Ultra)</b>
+━━━━━━━━━━━━━━━━━━
+🔍 <b>العملة:</b> {symbol}
+⏱ <b>الإطار الزمني:</b> {timeframe}
+
+🕒 <b>Killzones:</b> {killzone}
+💧 <b>Liquidity:</b> {liquidity}
+⚡ <b>Displacement:</b> {displacement}
+📌 <b>PD Arrays:</b> {pd_arrays}
+
+⚠️ <b>ملاحظة:</b>
+ICT ممتاز لتحديد مناطق السيولة والإزاحة، ويُفضّل دمجه مع SMC.
+
+📌 <b>IN CRYPTO AI — ICT Engine</b>
+""".strip()
+
+    except Exception as e:
+        logger.exception("Error in ICT school: %s", e)
+        return "⚠️ حدث خطأ أثناء توليد تحليل ICT."
+
+
+def get_ict_school(symbol: str, timeframe: str) -> str:
+    return get_school_cached_response(
+        school_name="ict",
+        symbol=f"{symbol}:{timeframe}",
+        generator=lambda: generate_ict_school(symbol, timeframe),
+    )
+
+
+# =====================================================
+#   SCHOOL 5: Harmonic Patterns — ULTRA
+# =====================================================
+
+def generate_harmonic_school(symbol: str, timeframe: str) -> str:
+    try:
+        from analysis_engine import get_market_metrics_cached
+
+        metrics = get_market_metrics_cached(symbol=symbol, timeframe=timeframe)
+        if not metrics:
+            return "⚠️ تعذّر جلب بيانات Harmonic حاليًا."
+
+        pattern = metrics.get("harmonic_pattern", "غير محدد")
+        score = metrics.get("harmonic_score", 0)
+        direction = metrics.get("harmonic_direction", "غير واضح")
+
+        return f"""
+🎼 <b>Harmonic — نماذج الهارمونيك (Ultra)</b>
+━━━━━━━━━━━━━━━━━━
+🔍 <b>العملة:</b> {symbol}
+⏱ <b>الإطار الزمني:</b> {timeframe}
+
+🧩 <b>النموذج:</b> {pattern}
+📊 <b>Score:</b> {score}/100
+🧭 <b>الاتجاه:</b> {direction}
+
+⚠️ <b>ملاحظة:</b>
+الهارمونيك حساس جدًا للتذبذب، الأفضل تأكيده بمستويات S/R و RSI.
+
+📌 <b>IN CRYPTO AI — Harmonic Engine</b>
+""".strip()
+
+    except Exception as e:
+        logger.exception("Error in Harmonic school: %s", e)
+        return "⚠️ حدث خطأ أثناء توليد تحليل Harmonic."
+
+
+def get_harmonic_school(symbol: str, timeframe: str) -> str:
+    return get_school_cached_response(
+        school_name="harmonic",
+        symbol=f"{symbol}:{timeframe}",
+        generator=lambda: generate_harmonic_school(symbol, timeframe),
+    )
+
+
+# =====================================================
+#   SCHOOL 6: Elliott Wave — ULTRA
+# =====================================================
+
+def generate_elliott_school(symbol: str, timeframe: str) -> str:
+    try:
+        from analysis_engine import get_market_metrics_cached
+
+        metrics = get_market_metrics_cached(symbol=symbol, timeframe=timeframe)
+        if not metrics:
+            return "⚠️ تعذّر جلب بيانات Elliott Wave حاليًا."
+
+        wave = metrics.get("elliott_wave", "غير محدد")
+        count = metrics.get("elliott_count", "غير واضح")
+        scenario = metrics.get("elliott_scenario", "غير محدد")
+
+        return f"""
+🌊 <b>Elliott Wave — موجات إليوت (Ultra)</b>
+━━━━━━━━━━━━━━━━━━
+🔍 <b>العملة:</b> {symbol}
+⏱ <b>الإطار الزمني:</b> {timeframe}
+
+🌀 <b>الموجة الحالية:</b> {wave}
+🔢 <b>العدّ:</b> {count}
+📌 <b>السيناريو:</b> {scenario}
+
+⚠️ <b>ملاحظة:</b>
+إليوت يحتاج خبرة، الأفضل استخدامه كداعم بجانب SMC/Wyckoff.
+
+📌 <b>IN CRYPTO AI — Elliott Engine</b>
+""".strip()
+
+    except Exception as e:
+        logger.exception("Error in Elliott school: %s", e)
+        return "⚠️ حدث خطأ أثناء توليد تحليل Elliott Wave."
+
+
+def get_elliott_school(symbol: str, timeframe: str) -> str:
+    return get_school_cached_response(
+        school_name="elliott",
+        symbol=f"{symbol}:{timeframe}",
+        generator=lambda: generate_elliott_school(symbol, timeframe),
+    )
+
+
+# =====================================================
+#   ALL SCHOOLS (Aggregator)
+# =====================================================
+
+def get_all_schools_report(symbol: str, timeframe: str) -> str:
+    parts = [
+        get_classical_ta_school(symbol, timeframe),
+        get_smc_school(symbol, timeframe),
+        get_wyckoff_school(symbol, timeframe),
+        get_ict_school(symbol, timeframe),
+        get_harmonic_school(symbol, timeframe),
+        get_elliott_school(symbol, timeframe),
+    ]
+    return "\n\n━━━━━━━━━━━━━━━━━━\n\n".join(parts)
+
+
+# =====================================================
+#   Command Router Helpers
+# =====================================================
+
+def handle_school_command(chat_id: int, school: str, symbol: str, timeframe: str):
+    bot = _ensure_bot()
+
+    school = (school or "").strip().lower()
+
+    if school in ("all", "all_schools", "schools"):
+        text = get_cached_response(
+            key=f"schools_all:{symbol}:{timeframe}",
+            builder_func=lambda: get_all_schools_report(symbol, timeframe),
+            ttl=60,
+        )
+    elif school in ("classic", "classical", "ta"):
+        text = get_classical_ta_school(symbol, timeframe)
+    elif school in ("smc",):
+        text = get_smc_school(symbol, timeframe)
+    elif school in ("wyckoff", "wy"):
+        text = get_wyckoff_school(symbol, timeframe)
+    elif school in ("ict",):
+        text = get_ict_school(symbol, timeframe)
+    elif school in ("harmonic", "harm"):
+        text = get_harmonic_school(symbol, timeframe)
+    elif school in ("elliott", "wave"):
+        text = get_elliott_school(symbol, timeframe)
+    else:
+        text = (
+            "⚠️ مدرسة غير معروفة.\n\n"
+            "استخدم واحدة من:\n"
+            "- classic\n- smc\n- wyckoff\n- ict\n- harmonic\n- elliott\n- all"
+        )
+
+    bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
