@@ -239,3 +239,126 @@ def update_market_pulse(metrics: Dict[str, Any]) -> Dict[str, Any]:
         "range_percentile": float(rng_rank),
         "history_len": len(hist),
     }
+# --- Warm-up override: keep old code, but override function below (no deletion) ---
+
+def update_market_pulse(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    metrics expects:
+    - change_pct
+    - range_pct
+    - volatility_score
+
+    ✅ تحسين قوي:
+    بعد أي Restart، history بتكون فاضية → speed/conf بيطلعوا 0.0 لأول Snapshot.
+    هنا بنعمل Warm-up Seed خفيف (عدة نقاط قريبة جدًا من القيم الحالية) مرة واحدة
+    لما تكون history فاضية، علشان speed/conf يطلعوا أرقام من أول تشغيل بدون تضخيم.
+    """
+    change_pct = float(metrics.get("change_pct", 0.0))
+    range_pct = float(metrics.get("range_pct", 0.0))
+    vol = float(metrics.get("volatility_score", 0.0))
+
+    hist = _get_hist()
+
+    # -------- Warm-up (once after boot) --------
+    warmup_used = False
+    if len(hist) == 0:
+        warmup_points = int(getattr(config, "PULSE_WARMUP_POINTS", 8))
+        warmup_points = max(0, min(20, warmup_points))
+        if warmup_points >= 3:
+            warmup_used = True
+            now_seed = _now()
+
+            # change_pct ramp (بدون تضخيم)
+            target = float(change_pct)
+            if abs(target) < 0.10:
+                sign = 1.0 if target >= 0 else -1.0
+                start = sign * 0.02
+                target = sign * 0.12
+            else:
+                start = target * 0.30
+                if abs(target - start) < 0.08:
+                    start = target - 0.08 if target > 0 else target + 0.08
+
+            step = (target - start) / max(1, warmup_points - 1)
+
+            # range_pct ramp صغير
+            tgt_r = max(0.10, float(range_pct))
+            start_r = max(0.10, tgt_r * 0.85)
+            step_r = (tgt_r - start_r) / max(1, warmup_points - 1)
+
+            for i in range(warmup_points):
+                c = start + step * i
+                r = start_r + step_r * i
+                _push_hist(
+                    {
+                        "t": now_seed - (warmup_points - i) * 6,
+                        "change_pct": float(c),
+                        "range_pct": float(r),
+                        "vol": float(vol),
+                    },
+                    max_len=60,
+                )
+
+    # push new tick
+    _push_hist(
+        {
+            "t": _now(),
+            "change_pct": change_pct,
+            "range_pct": range_pct,
+            "vol": vol,
+        },
+        max_len=60,
+    )
+
+    # recompute hist after pushing
+    hist = _get_hist()
+
+    # rank-like percentile indicator
+    vol_series = [float(it.get("vol", 0.0)) for it in hist[-40:]]
+    rng_series = [float(it.get("range_pct", 0.0)) for it in hist[-40:]]
+
+    if len(vol_series) >= 10:
+        vol_rank = sum(1 for x in vol_series if x <= vol) / len(vol_series) * 100.0
+        rng_rank = sum(1 for x in rng_series if x <= range_pct) / len(rng_series) * 100.0
+    else:
+        vol_rank = 0.0
+        rng_rank = 0.0
+
+    # speed/accel
+    prev_speed = float(hist[-2].get("speed_index", 0.0)) if len(hist) >= 2 else 0.0
+    speed = _compute_speed(hist, lookback=8)
+    accel = _compute_accel(prev_speed, speed)
+
+    conf = _direction_confidence(hist, lookback=12)
+
+    current_regime = _regime(vol, range_pct, vol_rank, rng_rank)
+    prev_regime = None
+    try:
+        prev_regime = hist[-2].get("regime") if len(hist) >= 2 else None
+    except Exception:
+        prev_regime = None
+
+    # store computed fields into latest hist item
+    try:
+        hist[-1]["speed_index"] = speed
+        hist[-1]["accel_index"] = accel
+        hist[-1]["direction_confidence"] = conf
+        hist[-1]["regime"] = current_regime
+        hist[-1]["prev_regime"] = prev_regime
+        hist[-1]["vol_percentile"] = vol_rank
+        hist[-1]["range_percentile"] = rng_rank
+        hist[-1]["warmup_used"] = warmup_used
+    except Exception:
+        pass
+
+    return {
+        "speed_index": float(speed),
+        "accel_index": float(accel),
+        "direction_confidence": float(conf),
+        "regime": current_regime,
+        "prev_regime": prev_regime,
+        "vol_percentile": float(vol_rank),
+        "range_percentile": float(rng_rank),
+        "history_len": len(hist),
+        "warmup_used": bool(warmup_used),
+    }
