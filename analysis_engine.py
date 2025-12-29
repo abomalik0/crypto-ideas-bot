@@ -1036,20 +1036,52 @@ def compute_adaptive_interval(metrics: dict, pulse: dict, risk: dict) -> float:
 
 
 def compute_smart_market_snapshot() -> dict | None:
-    metrics = get_market_metrics_cached()
-    if not metrics:
-        return None
+    """
+    Snapshot موحد للـ SmartAlert.
 
-    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
-    pulse = update_market_pulse(metrics)
-    events = detect_institutional_events(pulse, metrics, risk)
-    alert_level = classify_alert_level(metrics, risk, pulse, events)
+    ✅ تحسين مهم:
+    - نجرب أولاً الـ engine الجديد (engine_smart_snapshot) لأنه بيرجع level ثابت (مش None).
+    - لو حصل أي خطأ/عدم توفر بيانات → نرجع للمسار القديم كـ fallback (لكن مع إجبار level ألا يكون None).
+    """
+    # ---- Path A: New Engine (preferred) ----
+    try:
+        from engine_smart_snapshot import compute_smart_market_snapshot as _engine_snapshot
 
-    zones = compute_potential_zones(metrics, pulse, risk)
-    interval = compute_adaptive_interval(metrics, pulse, risk)
+        eng = _engine_snapshot("BTCUSDT")
+    except Exception:
+        eng = None
 
-    reason_text = None
-    if alert_level["level"] is not None:
+    if eng:
+        metrics = eng.get("metrics") or {}
+        risk = eng.get("risk") or {}
+        pulse = eng.get("pulse") or {}
+        events = eng.get("events") or {}
+        alert = eng.get("alert") or {}
+
+        # Mapping للهيكل القديم المتوقع في services.py
+        tb = alert.get("trend_bias")
+        if tb == "bull":
+            trend_bias = "up_strong"
+        elif tb == "bear":
+            trend_bias = "down_strong"
+        elif tb == "neutral":
+            trend_bias = "balanced"
+        else:
+            trend_bias = "balanced"
+
+        level = alert.get("level") or "low"
+
+        alert_level = {
+            "level": level,
+            "shock_score": float(alert.get("shock_score") or 0.0),
+            "trend_bias": trend_bias,
+            "reasons": alert.get("reasons") or [],
+            "boost": float(alert.get("boost") or 0.0),
+        }
+
+        zones = compute_potential_zones(metrics, pulse, risk)
+        interval = compute_adaptive_interval(metrics, pulse, risk)
+
         reason_text = build_smart_alert_reason(
             metrics,
             risk,
@@ -1059,7 +1091,46 @@ def compute_smart_market_snapshot() -> dict | None:
             zones,
         )
 
-    snapshot = {
+        return {
+            "metrics": metrics,
+            "risk": risk,
+            "pulse": pulse,
+            "events": events,
+            "alert_level": alert_level,
+            "zones": zones,
+            "adaptive_interval": interval,
+            "reason": reason_text,
+        }
+
+    # ---- Path B: Legacy fallback ----
+    metrics = get_market_metrics_cached()
+    if not metrics:
+        return None
+
+    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
+    pulse = update_market_pulse(metrics)
+    events = detect_institutional_events(pulse, metrics, risk)
+    alert_level = classify_alert_level(metrics, risk, pulse, events)
+
+    # اجبار level ألا يكون None علشان الـ hint والـ logs
+    if alert_level.get("level") is None:
+        alert_level["level"] = "low"
+        alert_level["shock_score"] = float(alert_level.get("shock_score") or 0.0)
+        alert_level["trend_bias"] = alert_level.get("trend_bias") or "balanced"
+
+    zones = compute_potential_zones(metrics, pulse, risk)
+    interval = compute_adaptive_interval(metrics, pulse, risk)
+
+    reason_text = build_smart_alert_reason(
+        metrics,
+        risk,
+        pulse,
+        events,
+        alert_level,
+        zones,
+    )
+
+    return {
         "metrics": metrics,
         "risk": risk,
         "pulse": pulse,
@@ -1069,9 +1140,6 @@ def compute_smart_market_snapshot() -> dict | None:
         "adaptive_interval": interval,
         "reason": reason_text,
     }
-
-    return snapshot
-
 # ==============================
 #   Ultra Smart Snapshot + Message
 # ==============================
