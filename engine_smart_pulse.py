@@ -362,3 +362,77 @@ def update_market_pulse(metrics: Dict[str, Any]) -> Dict[str, Any]:
         "history_len": len(hist),
         "warmup_used": bool(warmup_used),
     }
+
+
+
+# --- Confidence & bounds wrapper override (no deletion) ---
+# الهدف: منع direction_confidence من الوصول لـ 100% (مبالغة) + وضع حدود للـ speed/accel عند الحاجة.
+# ملاحظة: نعمل alias للدالة الحالية (الـ Warm-up override) ثم نغلفها بدون لمس الكود القديم.
+_prev_update_market_pulse = update_market_pulse  # noqa: F811
+
+
+def update_market_pulse(metrics: Dict[str, Any]) -> Dict[str, Any]:  # noqa: F811
+    out = _prev_update_market_pulse(metrics)
+
+    # --- Clamp confidence ---
+    try:
+        conf = float(out.get("direction_confidence", 0.0))
+    except Exception:
+        conf = 0.0
+
+    conf_max = float(getattr(config, "PULSE_CONF_MAX", 85.0))
+    conf_min = float(getattr(config, "PULSE_CONF_MIN", 0.0))
+    if conf_max < conf_min:
+        conf_max, conf_min = conf_min, conf_max
+
+    if conf != conf:  # NaN guard
+        conf = 0.0
+
+    if conf < conf_min:
+        conf = conf_min
+    if conf > conf_max:
+        conf = conf_max
+
+    out["direction_confidence"] = float(conf)
+
+    # --- Optional: Clamp speed/accel ---
+    # لو حابب، تقدر تتحكم في الحدود من config.py:
+    # PULSE_SPEED_MAX = 10.0
+    # PULSE_ACCEL_MAX = 5.0
+    try:
+        speed = float(out.get("speed_index", 0.0))
+    except Exception:
+        speed = 0.0
+    try:
+        accel = float(out.get("accel_index", 0.0))
+    except Exception:
+        accel = 0.0
+
+    speed_max = getattr(config, "PULSE_SPEED_MAX", None)
+    accel_max = getattr(config, "PULSE_ACCEL_MAX", None)
+
+    if speed_max is not None:
+        try:
+            speed_max = float(speed_max)
+            if speed_max >= 0:
+                if speed > speed_max:
+                    speed = speed_max
+                if speed < -speed_max:
+                    speed = -speed_max
+                out["speed_index"] = float(speed)
+        except Exception:
+            pass
+
+    if accel_max is not None:
+        try:
+            accel_max = float(accel_max)
+            if accel_max >= 0:
+                if accel > accel_max:
+                    accel = accel_max
+                if accel < -accel_max:
+                    accel = -accel_max
+                out["accel_index"] = float(accel)
+        except Exception:
+            pass
+
+    return out
