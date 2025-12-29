@@ -4,7 +4,11 @@ import time
 from datetime import datetime, timezone
 
 import requests
-from telegram import Bot, ParseMode
+try:
+    from telegram import Bot, ParseMode
+except ImportError:
+    from telegram import Bot
+    from telegram.constants import ParseMode
 
 import config
 from config import ADMIN_CHAT_ID
