@@ -1379,7 +1379,7 @@ def watchdog_loop():
                         data = {}
 
                     username = ((data.get("result") or {}).get("username")) or "unknown"
-                    logger.debug("Bot is alive as @%s", username)
+                    logger.info("Bot is alive as @%s", username)
         except Exception as e:
             logger.exception("Watchdog error: %s", e)
         time.sleep(config.WATCHDOG_INTERVAL)
