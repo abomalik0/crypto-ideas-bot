@@ -1361,10 +1361,25 @@ def watchdog_loop():
         try:
             config.LAST_WATCHDOG_TICK = time.time()
 
-            bot = _ensure_bot()
-            me = _maybe_await(bot.get_me())
-            username = getattr(me, "username", None) or "unknown"
-            logger.debug("Bot is alive as @%s", username)
+            token = getattr(config, "BOT_TOKEN", None) or getattr(config, "TELEGRAM_TOKEN", None)
+            if not token:
+                logger.warning("Watchdog: BOT_TOKEN/TELEGRAM_TOKEN not set.")
+            else:
+                url = f"https://api.telegram.org/bot{token}/getMe"
+                resp = http_get(url, timeout=10)
+
+                if resp is None:
+                    logger.warning("Watchdog ping failed: no response.")
+                elif resp.status_code != 200:
+                    logger.warning("Watchdog ping failed: HTTP %s", resp.status_code)
+                else:
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        data = {}
+
+                    username = ((data.get("result") or {}).get("username")) or "unknown"
+                    logger.debug("Bot is alive as @%s", username)
         except Exception as e:
             logger.exception("Watchdog error: %s", e)
         time.sleep(config.WATCHDOG_INTERVAL)
