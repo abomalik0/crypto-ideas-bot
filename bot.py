@@ -1306,6 +1306,49 @@ def setup_webhook():
 def set_webhook_on_startup():
     setup_webhook()
 
+# ------------------------------
+# WSGI/Gunicorn bootstrap (no deletion)
+# ------------------------------
+
+def bootstrap_app_once():
+    """Start background threads + webhook setup when running under gunicorn (import-time).
+
+    Gunicorn does not execute the __main__ block, so without this, the loops
+    (weekly/realtime/smart alert/watchdog/keep-alive/supervisor) will NOT start.
+
+    This function is idempotent: it runs only once per process.
+    """
+    import threading
+
+    lock = getattr(config, "_BOOTSTRAP_LOCK", None)
+    if lock is None:
+        lock = threading.Lock()
+        setattr(config, "_BOOTSTRAP_LOCK", lock)
+
+    with lock:
+        if getattr(config, "_BOOTSTRAPPED", False):
+            return
+
+        setattr(config, "_BOOTSTRAPPED", True)
+
+        try:
+            services.load_snapshot()
+        except Exception as e:
+            config.logger.exception("Snapshot load failed on startup (WSGI): %s", e)
+
+        try:
+            set_webhook_on_startup()
+        except Exception as e:
+            config.logger.exception("Failed to set webhook on startup (WSGI): %s", e)
+
+        try:
+            services.start_background_threads()
+        except Exception as e:
+            config.logger.exception("Failed to start background threads (WSGI): %s", e)
+
+
+# Auto bootstrap when imported by gunicorn / WSGI
+bootstrap_app_once()
 
 if __name__ == "__main__":
     import logging
