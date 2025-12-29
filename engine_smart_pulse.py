@@ -1,170 +1,241 @@
 """
 engine_smart_pulse.py
 
-✅ الهدف: عزل Smart Pulse Engine (السرعة/التسارع/الثقة/النظام السوقي)
-في ملف مستقل عشان تتبع الأخطاء يكون أسرع والتعديل يبقى أسهل.
+✅ Market Pulse Engine:
+- keeps small history buffer in config.REALTIME_CACHE
+- computes speed, acceleration, direction confidence
+- estimates regime (calm/expansion/explosion)
+- optional percentiles for vol/range when enough history exists
 
-ملاحظة: الملف ده جاهز للنقل التدريجي من analysis_engine.py بدون كسر الشغل الحالي.
+هدفنا: نخلي speed/accel/conf يبقوا real numbers بدل 0.0
 """
 
 from __future__ import annotations
 
+from typing import Any, Dict, List
 import time
+import math
 
 import config
 
 
-def _compute_volatility_regime(volatility_score: float, range_pct: float) -> str:
-    if volatility_score < 20 and range_pct < 3:
-        return "calm"
-    if volatility_score < 40 and range_pct < 5:
-        return "normal"
-    if volatility_score < 70 and range_pct < 8:
+# -------------------------
+# helpers
+# -------------------------
+
+def _now() -> float:
+    return time.time()
+
+
+def _clamp(x: float, lo: float, hi: float) -> float:
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+
+
+def _percentile(values: List[float], p: float) -> float:
+    """
+    p from 0..100
+    """
+    if not values:
+        return 0.0
+    xs = sorted(values)
+    if len(xs) == 1:
+        return xs[0]
+    k = (len(xs) - 1) * (p / 100.0)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return xs[int(k)]
+    d0 = xs[int(f)] * (c - k)
+    d1 = xs[int(c)] * (k - f)
+    return float(d0 + d1)
+
+
+def _get_hist() -> List[Dict[str, Any]]:
+    cache = getattr(config, "REALTIME_CACHE", None)
+    if cache is None:
+        config.REALTIME_CACHE = {}
+        cache = config.REALTIME_CACHE
+    hist = cache.get("pulse_history")
+    if not isinstance(hist, list):
+        hist = []
+        cache["pulse_history"] = hist
+    return hist
+
+
+def _push_hist(item: Dict[str, Any], max_len: int = 60) -> None:
+    hist = _get_hist()
+    hist.append(item)
+    # keep last N
+    if len(hist) > max_len:
+        del hist[: len(hist) - max_len]
+
+
+def _direction_confidence(hist: List[Dict[str, Any]], lookback: int = 12) -> float:
+    """
+    confidence: 0..100
+    based on how consistent sign(change_pct) is in last lookback points.
+    """
+    xs = hist[-lookback:] if len(hist) >= lookback else hist[:]
+    if len(xs) < 3:
+        return 0.0
+
+    signs = []
+    for it in xs:
+        ch = float(it.get("change_pct", 0.0))
+        if ch > 0.03:
+            signs.append(1)
+        elif ch < -0.03:
+            signs.append(-1)
+        else:
+            signs.append(0)
+
+    non_zero = [s for s in signs if s != 0]
+    if len(non_zero) < 3:
+        return 0.0
+
+    pos = sum(1 for s in non_zero if s > 0)
+    neg = sum(1 for s in non_zero if s < 0)
+    total = pos + neg
+    if total == 0:
+        return 0.0
+
+    consistency = max(pos, neg) / total  # 0.5..1.0
+    return _clamp(consistency * 100.0, 0.0, 100.0)
+
+
+def _compute_speed(hist: List[Dict[str, Any]], lookback: int = 8) -> float:
+    """
+    Speed index: 0..50 تقريباً
+    Uses average absolute delta of change_pct and range_pct.
+    """
+    xs = hist[-lookback:] if len(hist) >= lookback else hist[:]
+    if len(xs) < 3:
+        return 0.0
+
+    deltas = []
+    for i in range(1, len(xs)):
+        a = float(xs[i].get("change_pct", 0.0))
+        b = float(xs[i - 1].get("change_pct", 0.0))
+        ra = float(xs[i].get("range_pct", 0.0))
+        rb = float(xs[i - 1].get("range_pct", 0.0))
+        deltas.append(abs(a - b) + 0.35 * abs(ra - rb))
+
+    avg = sum(deltas) / max(1, len(deltas))
+    # scale to a nicer index
+    speed = _clamp(avg * 12.0, 0.0, 50.0)
+    return speed
+
+
+def _compute_accel(prev_speed: float, speed: float) -> float:
+    """
+    accel index ~ -25..25
+    """
+    return _clamp((speed - prev_speed), -25.0, 25.0)
+
+
+def _regime(vol: float, range_pct: float, vol_pct: float, rng_pct: float) -> str:
+    """
+    Regime classification:
+    - calm: low vol/range
+    - expansion: medium
+    - explosion: high vol/range or high percentiles
+    """
+    # primary thresholds
+    if vol >= 70 or range_pct >= 8:
+        return "explosion"
+    if vol >= 45 or range_pct >= 5:
         return "expansion"
-    return "explosion"
+
+    # percentile assist if history exists
+    if vol_pct >= 90 or rng_pct >= 90:
+        return "explosion"
+    if vol_pct >= 75 or rng_pct >= 75:
+        return "expansion"
+    return "calm"
 
 
-def update_market_pulse(metrics: dict) -> dict:
+# -------------------------
+# public API
+# -------------------------
+
+def update_market_pulse(metrics: Dict[str, Any]) -> Dict[str, Any]:
     """
-    تحديث نبض السوق وتخزين آخر القراءات فى PULSE_HISTORY داخل config
-    مع حساب إحصائيات تاريخية (متوسط + انحراف معيارى + percentiles)
-    لاستخدامها فى بناء قراءات ديناميكية أدق.
+    metrics expects:
+    - change_pct
+    - range_pct
+    - volatility_score
     """
-    price = float(metrics["price"])
-    change = float(metrics["change_pct"])
-    range_pct = float(metrics["range_pct"])
-    vol = float(metrics["volatility_score"])
+    change_pct = float(metrics.get("change_pct", 0.0))
+    range_pct = float(metrics.get("range_pct", 0.0))
+    vol = float(metrics.get("volatility_score", 0.0))
 
-    regime = _compute_volatility_regime(vol, range_pct)
+    hist = _get_hist()
 
-    # -------- تهيئة / استخدام تاريخ النبض --------
-    history = getattr(config, "PULSE_HISTORY", None)
-    if history is None:
-        from collections import deque
-        maxlen = getattr(config, "PULSE_HISTORY_MAXLEN", 120)
-        history = deque(maxlen=maxlen)
-        config.PULSE_HISTORY = history  # type: ignore[assignment]
+    # push new tick
+    _push_hist(
+        {
+            "t": _now(),
+            "change_pct": change_pct,
+            "range_pct": range_pct,
+            "vol": vol,
+        },
+        max_len=60,
+    )
 
-    prev_entry = history[-1] if len(history) > 0 else None
-    prev_regime = prev_entry.get("regime") if isinstance(prev_entry, dict) else None
+    # compute percentiles when enough history
+    vol_series = [float(it.get("vol", 0.0)) for it in hist[-40:]]
+    rng_series = [float(it.get("range_pct", 0.0)) for it in hist[-40:]]
 
-    now = time.time()
-    entry = {
-        "time": now,
-        "price": price,
-        "change_pct": change,
-        "volatility_score": vol,
-        "range_pct": range_pct,
-        "regime": regime,
-    }
-    history.append(entry)
-
-    hist_list = list(history)
-    n = len(hist_list)
-
-    def _mean(values: list[float]) -> float:
-        return sum(values) / len(values) if values else 0.0
-
-    def _std(values: list[float], m: float) -> float:
-        if not values:
-            return 0.0
-        var = sum((v - m) ** 2 for v in values) / max(1, len(values) - 1)
-        return var ** 0.5
-
-    # -------- سرعة الحركة & التسارع مثل الإصدار القديم --------
-    if n >= 2:
-        diffs = [
-            abs(hist_list[i]["change_pct"] - hist_list[i - 1]["change_pct"])
-            for i in range(1, n)
-        ]
-        avg_diff = _mean(diffs)
+    if len(vol_series) >= 10:
+        vol_pct = _percentile(vol_series, 85.0)
+        rng_pct = _percentile(rng_series, 85.0)
+        # convert current value percentile approximation:
+        # (we use rank-like approach for a lightweight percentile indicator)
+        vol_rank = sum(1 for x in vol_series if x <= vol) / len(vol_series) * 100.0
+        rng_rank = sum(1 for x in rng_series if x <= range_pct) / len(rng_series) * 100.0
     else:
-        avg_diff = 0.0
+        vol_pct = 0.0
+        rng_pct = 0.0
+        vol_rank = 0.0
+        rng_rank = 0.0
 
-    if n >= 5:
-        mid = max(2, n // 2)
-        early_diffs = [
-            abs(hist_list[i]["change_pct"] - hist_list[i - 1]["change_pct"])
-            for i in range(1, mid)
-        ]
-        late_diffs = [
-            abs(hist_list[i]["change_pct"] - hist_list[i - 1]["change_pct"])
-            for i in range(mid, n)
-        ]
-        early_avg = _mean(early_diffs)
-        late_avg = _mean(late_diffs)
-        accel = late_avg - early_avg
-    else:
-        accel = 0.0
+    # speed/accel
+    prev_speed = float(hist[-2].get("speed_index", 0.0)) if len(hist) >= 2 else 0.0
+    speed = _compute_speed(hist, lookback=8)
+    accel = _compute_accel(prev_speed, speed)
 
-    # -------- ثقة الاتجاه من التاريخ القريب --------
-    if n >= 3:
-        recent = hist_list[-6:] if n >= 6 else hist_list
-        same_sign_count = 0
-        total = len(recent)
-        for e in recent:
-            c = e["change_pct"]
-            if change > 0 and c > 0:
-                same_sign_count += 1
-            elif change < 0 and c < 0:
-                same_sign_count += 1
-        direction_conf = (same_sign_count / total) * 100.0 if total else 0.0
-    else:
-        direction_conf = 0.0
+    conf = _direction_confidence(hist, lookback=12)
 
-    # -------- baseline ديناميكى (متوسط + std + percentiles) --------
-    if n >= 10:
-        changes = [float(e["change_pct"]) for e in hist_list]
-        vols = [float(e["volatility_score"]) for e in hist_list]
-        ranges = [float(e["range_pct"]) for e in hist_list]
+    current_regime = _regime(vol, range_pct, vol_rank, rng_rank)
+    prev_regime = None
+    try:
+        prev_regime = hist[-2].get("regime") if len(hist) >= 2 else None
+    except Exception:
+        prev_regime = None
 
-        mean_change = _mean(changes)
-        std_change = _std(changes, mean_change)
+    # store computed fields into latest hist item
+    try:
+        hist[-1]["speed_index"] = speed
+        hist[-1]["accel_index"] = accel
+        hist[-1]["direction_confidence"] = conf
+        hist[-1]["regime"] = current_regime
+        hist[-1]["prev_regime"] = prev_regime
+        hist[-1]["vol_percentile"] = vol_rank
+        hist[-1]["range_percentile"] = rng_rank
+    except Exception:
+        pass
 
-        mean_vol = _mean(vols)
-        std_vol = _std(vols, mean_vol)
-
-        mean_range = _mean(ranges)
-        std_range = _std(ranges, mean_range)
-
-        sorted_vols = sorted(vols)
-        rank = sum(1 for v in sorted_vols if v <= vol)
-        vol_percentile = (rank / len(sorted_vols)) * 100.0 if sorted_vols else 0.0
-
-        sorted_ranges = sorted(ranges)
-        rank_r = sum(1 for v in sorted_ranges if v <= range_pct)
-        range_percentile = (
-            (rank_r / len(sorted_ranges)) * 100.0 if sorted_ranges else 0.0
-        )
-    else:
-        mean_change = std_change = 0.0
-        mean_vol = std_vol = 0.0
-        mean_range = std_range = 0.0
-        vol_percentile = range_percentile = 0.0
-
-    speed_index = max(0.0, min(100.0, avg_diff * 8.0))
-    accel_index = max(-100.0, min(100.0, accel * 10.0))
-
-    pulse = {
-        "time": now,
-        "price": price,
-        "change_pct": change,
-        "volatility_score": vol,
-        "range_pct": range_pct,
-        "regime": regime,
+    return {
+        "speed_index": float(speed),
+        "accel_index": float(accel),
+        "direction_confidence": float(conf),
+        "regime": current_regime,
         "prev_regime": prev_regime,
-        "speed_index": speed_index,
-        "accel_index": accel_index,
-        "direction_confidence": direction_conf,
-        "history_len": n,
-        "mean_change": mean_change,
-        "std_change": std_change,
-        "mean_vol": mean_vol,
-        "std_vol": std_vol,
-        "mean_range": mean_range,
-        "std_range": std_range,
-        "vol_percentile": vol_percentile,
-        "range_percentile": range_percentile,
+        "vol_percentile": float(vol_rank),
+        "range_percentile": float(rng_rank),
+        "history_len": len(hist),
     }
-
-    return pulse
