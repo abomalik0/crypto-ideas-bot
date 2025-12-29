@@ -1,7 +1,5 @@
-Flask
-requests
-python-telegram-bot==13.15
-beautifulsoup4
-matplotlib
-psycopg2-binary
-gunicorn
+Flask==3.0.3
+requests==2.32.3
+python-telegram-bot==21.6
+psycopg2-binary==2.9.9
+gunicorn==23.0.0
