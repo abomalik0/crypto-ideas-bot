@@ -4675,71 +4675,7 @@ def _digital_block() -> str:
         )
         return "\n".join(lines)
 
-    # اختيار المدرسة المطلوبة
-    if code in ("ict",):
-        body = _ict_block()
-    elif code in ("smc", "smc_pro", "smart"):
-        body = _smc_block()
-    elif code in ("wyckoff", "wyck"):
-        body = _wyckoff_block()
-    elif code in ("harmonic", "harm"):
-        body = _harmonic_block()
-    elif code in ("elliott", "eliott", "wave", "waves"):
-        body = _elliott_block()
-    elif code in ("time", "time_analysis", "t"):
-        body = _time_block()
-    elif code in ("price_action", "pa", "price"):
-        body = _price_action_block()
-    elif code in ("sd", "supply", "supply_demand"):
-        body = _sd_block()
-    elif code in ("classic", "ta", "classical"):
-        body = _classic_block()
-    elif code in ("liquidity", "liq"):
-        body = _liquidity_block()
-    elif code in ("structure", "ms", "market_structure"):
-        body = _structure_block()
-    elif code in ("multi", "mtf", "multi_timeframe"):
-        body = _mtf_block()
-    elif code in ("volume", "vol", "volatility"):
-        body = _volume_volatility_block()
-    elif code in ("risk", "risk_position", "rm"):
-        body = _risk_position_block()
-    elif code in ("digital", "quant", "digits"):
-        body = _digital_block()
-    elif code in ("all", "all_schools"):
-        body = _all_schools_block()
-    else:
-        body = (
-            "⚠️ هذه المدرسة غير معروفة للمحرك حتى الآن.\n"
-            "يمكنك اختيار مدرسة من اللوحة أو استخدام مثلاً: ICT / SMC / Wyckoff / Harmonic / Elliott / Time / "
-            "Price Action / Supply & Demand / Classical / Liquidity / Structure / Multi / Volume / Risk."
-        )
 
-    full_msg = base_header + body
-    return _shrink_text_preserve_content(full_msg, limit=3900)
-                        lines.append("• السيناريو الأقوى حالياً: <b>هبوط</b> (راقب الدعوم وإشارات الارتداد).")
-        elif p_up >= p_down + 10 and p_up >= p_side:
-            lines.append("• السيناريو الأقوى حالياً: <b>صعود</b> (راقب المقاومات والتأكيدات).")
-        else:
-            lines.append("• السيناريو الأقوى حالياً: <b>تذبذب</b> (اشتغل على الأطراف أو انتظر كسر مؤكد).")
-        return "\n".join(lines)
-
-    # Router
-    if code in ("1", "structure", "market_structure", "ms"):
-        body = _market_structure_block()
-    elif code in ("2", "volume", "volume_volatility", "vv"):
-        body = _volume_volatility_block()
-    elif code in ("3", "risk", "risk_position", "rp"):
-        body = _risk_position_block()
-    elif code in ("all", "all_schools", "0"):
-        body = _all_schools_block()
-    else:
-        body = (
-            "⚠️ كود مدرسة غير معروف.\n"
-            "جرّب: 1 (Market Structure) | 2 (Volume&Volatility) | 3 (Risk&Position) | all"
-        )
-
-    return _shrink_text_preserve_content(header + body, limit=3900)
 # ==============================
 # Unified School Engine (FINAL)
 # ==============================
