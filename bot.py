@@ -913,20 +913,18 @@ def webhook():
 
         try:
     snapshot = compute_smart_market_snapshot()
-    snapshot["symbol"] = symbol   # ✅ جوّه try
-except Exception as e:
-    config.logger.exception("analysis snapshot error: %s", e)
-    send_message(chat_id, "⚠️ فشل جلب بيانات السوق.")
-    return jsonify(ok=True)
-        try:
-            from engine_schools import build_school_report
-            report = build_school_report(school, snapshot)
-        except Exception as e:
-            config.logger.exception("analysis school error: %s", e)
-            report = "❌ حدث خطأ أثناء إنشاء تقرير المدرسة."
+    snapshot["symbol"] = symbol  # نضيف الرمز يدويًا
 
-        send_message(chat_id, report)
-        return jsonify(ok=True)
+    from engine_schools import build_school_report
+    report = build_school_report(school, snapshot)
+
+except Exception as e:
+    config.logger.exception("analysis school error: %s", e)
+    send_message(chat_id, "❌ حدث خطأ أثناء إنشاء تقرير المدرسة.")
+    return jsonify(ok=True)
+
+send_message(chat_id, report)
+return jsonify(ok=True)
         
     # ==============================
     #      أوامر الإدارة (Admin)
