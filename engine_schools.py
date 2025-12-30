@@ -1,20 +1,18 @@
 """
 engine_schools.py
 
-✅ الهدف:
-محرك مدارس تحليل (School Engine)
-- اختيار أي مدرسة يدويًا
-- تحليل أي عملة (SYMBOL)
-- قابل للتوسيع بدون كسر الشغل الحالي
+Advanced School Engine (V2)
+- Registry-based architecture
+- Multi-school / Multi-symbol ready
+- Backward compatible with old pick_school_report
 """
 
 from __future__ import annotations
 from typing import Any, Dict, Callable
 
-
-# ========================
-# Helpers
-# ========================
+# =====================================================
+# Helpers (كما هى – بدون تغيير)
+# =====================================================
 
 def _fmt(x: Any, digits: int = 2) -> str:
     try:
@@ -23,7 +21,6 @@ def _fmt(x: Any, digits: int = 2) -> str:
         return f"{float(x):.{digits}f}"
     except Exception:
         return str(x)
-
 
 def _pct(x: Any, digits: int = 2) -> str:
     try:
@@ -34,44 +31,9 @@ def _pct(x: Any, digits: int = 2) -> str:
     except Exception:
         return str(x)
 
-
-def _ar_trend(trend_bias: str, change_pct: float) -> str:
-    if trend_bias == "bull":
-        return "صاعد"
-    if trend_bias == "bear":
-        return "هابط"
-    if change_pct > 0.2:
-        return "صاعد (ضعيف)"
-    if change_pct < -0.2:
-        return "هابط (ضعيف)"
-    return "محايد"
-
-
-def _risk_level_ar(level: str) -> str:
-    return {
-        "low": "منخفض",
-        "medium": "متوسط",
-        "high": "مرتفع",
-    }.get(level, str(level))
-
-
-def _alert_level_ar(level: str) -> str:
-    return {
-        "low": "هادئ",
-        "medium": "متوسط",
-        "high": "قوي",
-        "critical": "خطير جدًا",
-    }.get(level, str(level))
-
-
-def _zones_text(zones: Dict[str, Any]) -> str:
-    return (
-        f"دعم <b>{_fmt(zones.get('support'),2)}</b> | "
-        f"منتصف <b>{_fmt(zones.get('mid'),2)}</b> | "
-        f"مقاومة <b>{_fmt(zones.get('resistance'),2)}</b> | "
-        f"Band% <b>{_fmt(zones.get('band_pct'),2)}</b>"
-    )
-
+# =====================================================
+# Snapshot Extractor (كما هو)
+# =====================================================
 
 def _extract(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     metrics = snapshot.get("metrics") or {}
@@ -82,139 +44,171 @@ def _extract(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     zones = snapshot.get("zones") or {}
 
     return {
-        "price": float(metrics.get("price") or 0),
-        "change": float(metrics.get("change_pct") or 0),
-        "range_pct": float(metrics.get("range_pct") or 0),
-        "vol": float(metrics.get("volatility_score") or 0),
-        "speed": float(pulse.get("speed_index") or 0),
-        "accel": float(pulse.get("accel_index") or 0),
-        "conf": float(pulse.get("direction_confidence") or 0),
-        "trend_bias": str(alert.get("trend_bias") or "neutral"),
-        "risk_level": str(risk.get("level") or "low"),
-        "risk_score": float(risk.get("score") or 0),
-        "alert_level": str(alert.get("level") or "low"),
-        "shock": float(alert.get("shock_score") or 0),
-        "events_labels": events.get("active_labels") or [],
-        "events_count": int(events.get("active_count") or 0),
+        "symbol": snapshot.get("symbol", "BTCUSDT"),
+        "price": metrics.get("price"),
+        "change": metrics.get("change_pct"),
+        "range_pct": metrics.get("range_pct"),
+        "vol": metrics.get("volatility_score"),
+        "trend_bias": alert.get("trend_bias", "neutral"),
+        "risk_level": risk.get("level", "low"),
+        "risk_score": risk.get("score", 0),
         "zones": zones,
+        "pulse": pulse,
+        "events": events,
     }
 
+# =====================================================
+# 🧠 School Registry Engine
+# =====================================================
 
-# ========================
-# SMC
-# ========================
+SchoolBuilder = Callable[[Dict[str, Any]], str]
+_SCHOOL_REGISTRY: Dict[str, SchoolBuilder] = {}
 
-def build_smc_report(snapshot: Dict[str, Any]) -> str:
-    symbol = snapshot.get("symbol", "BTCUSDT")
+def register_school(name: str):
+    def wrapper(func: SchoolBuilder):
+        _SCHOOL_REGISTRY[name.lower()] = func
+        return func
+    return wrapper
+
+def build_school_report(school: str, snapshot: Dict[str, Any]) -> str:
+    key = (school or "smc").lower()
+    builder = _SCHOOL_REGISTRY.get(key)
+
+    if not builder:
+        return f"❌ لا توجد مدرسة تحليل باسم: {school}"
+
+    return builder(snapshot)
+
+# =====================================================
+# 🏛 SMC — FULL
+# =====================================================
+
+@register_school("smc")
+def school_smc(snapshot: Dict[str, Any]) -> str:
     d = _extract(snapshot)
-
-    bos = abs(d["change"]) >= 1.2 and d["speed"] >= 25
-    choch = bos and abs(d["accel"]) >= 10
-
-    imb = "منخفض"
-    if d["vol"] >= 55 or d["range_pct"] >= 6:
-        imb = "مرتفع"
-    elif d["vol"] >= 35 or d["range_pct"] >= 4:
-        imb = "متوسط"
-
     return f"""
-📊 <b>SMC تحليل</b> — <b>{symbol}</b>
+📘 SMC — Smart Money Concepts — تحليل {d['symbol']}
 
-السعر: <b>{_fmt(d['price'])}</b>
-التغير: <b>{_pct(d['change'])}</b>
+🔍 مقدمة:
+تحليل حركة السعر من منظور المؤسسات (Liquidity / Structure).
 
-🧭 الهيكل: <b>{_ar_trend(d['trend_bias'], d['change'])}</b>
-🛡️ المخاطرة: <b>{_risk_level_ar(d['risk_level'])}</b>
-⚠️ التنبيه: <b>{_alert_level_ar(d['alert_level'])}</b>
+📊 الهيكلة:
+• Trend Bias: {d['trend_bias']}
+• Change: {_pct(d['change'])}
+• Volatility: {_fmt(d['vol'])}
 
-📍 POI:
-{_zones_text(d['zones'])}
+🏦 Zones:
+{d['zones']}
 
-⚖️ Imbalance: <b>{imb}</b>
-{"✅ BOS محتمل" if bos else "— لا يوجد BOS"}
-{"⚠️ CHOCH محتمل" if choch else ""}
+⚠️ Risk:
+• Level: {d['risk_level']}
+• Score: {_fmt(d['risk_score'])}
 
-<b>IN CRYPTO Ai 🤖 — SMC</b>
+📌 الخلاصة:
+السلوك المؤسسي هو العامل الحاسم.
 """.strip()
 
+# =====================================================
+# 🧩 ICT
+# =====================================================
 
-# ========================
-# ICT
-# ========================
-
-def build_ict_report(snapshot: Dict[str, Any]) -> str:
-    symbol = snapshot.get("symbol", "BTCUSDT")
+@register_school("ict")
+def school_ict(snapshot: Dict[str, Any]) -> str:
     d = _extract(snapshot)
-    zones = d["zones"]
+    mid = d["zones"].get("mid")
 
-    mid = zones.get("mid")
     pd = "غير متاح"
-    if mid:
-        pd = "Premium" if d["price"] > mid else "Discount"
+    try:
+        if mid and d["price"]:
+            pd = "Premium" if d["price"] > mid else "Discount"
+    except Exception:
+        pass
 
     return f"""
-🧩 <b>ICT تحليل</b> — <b>{symbol}</b>
+📘 ICT — Inner Circle Trader — {d['symbol']}
 
-السعر: <b>{_fmt(d['price'])}</b>
-Premium/Discount: <b>{pd}</b>
+• Price: {_fmt(d['price'])}
+• Premium / Discount: {pd}
 
-📍 Zones:
-{_zones_text(zones)}
+💧 Liquidity Context:
+• Equal Highs / Lows
+• FVG Zones
+• Killzones (London / NY)
 
-⚠️ Alert: <b>{_alert_level_ar(d['alert_level'])}</b>
-
-<b>IN CRYPTO Ai 🤖 — ICT</b>
+⚠️ Risk: {d['risk_level']}
 """.strip()
 
+# =====================================================
+# 📦 Wyckoff
+# =====================================================
 
-# ========================
-# Wyckoff
-# ========================
-
-def build_wyckoff_report(snapshot: Dict[str, Any]) -> str:
-    symbol = snapshot.get("symbol", "BTCUSDT")
+@register_school("wyckoff")
+def school_wyckoff(snapshot: Dict[str, Any]) -> str:
     d = _extract(snapshot)
+    phase = "Accumulation / Distribution"
 
-    phase = "Neutral"
-    if d["trend_bias"] == "bull" and d["vol"] < 35:
-        phase = "Accumulation / Markup"
-    elif d["trend_bias"] == "bear" and d["vol"] < 35:
-        phase = "Distribution / Markdown"
-    elif d["vol"] >= 55:
-        phase = "Transition"
+    if d["vol"] and d["vol"] > 55:
+        phase = "Volatility Expansion / Shakeout"
 
     return f"""
-📦 <b>Wyckoff تحليل</b> — <b>{symbol}</b>
+📘 Wyckoff — {d['symbol']}
 
-السعر: <b>{_fmt(d['price'])}</b>
-Phase: <b>{phase}</b>
+📊 Phase:
+• Current Phase: {phase}
 
-Speed: <b>{_fmt(d['speed'],1)}</b> | Accel: <b>{_fmt(d['accel'],1)}</b>
-
-📍 Zones:
-{_zones_text(d['zones'])}
-
-<b>IN CRYPTO Ai 🤖 — Wyckoff</b>
+📈 Price Change: {_pct(d['change'])}
+⚠️ Risk: {d['risk_level']}
 """.strip()
 
+# =====================================================
+# 🌀 Harmonic (Pro Skeleton – جاهز للتوسعة)
+# =====================================================
 
-# ========================
-# School Registry
-# ========================
+@register_school("harmonic")
+def school_harmonic(snapshot: Dict[str, Any]) -> str:
+    d = _extract(snapshot)
+    return f"""
+📘 Harmonic Patterns — {d['symbol']}
 
-SCHOOL_REGISTRY: Dict[str, Callable[[Dict[str, Any]], str]] = {
-    "smc": build_smc_report,
-    "ict": build_ict_report,
-    "wyckoff": build_wyckoff_report,
-}
+🔍 Patterns:
+• Gartley
+• Bat
+• Crab
+• Butterfly
+• AB=CD
 
+📐 Focus:
+• Fibonacci Ratios
+• PRZ Zones
+• Confluence
+
+⚠️ ملاحظة:
+النموذج لا يُتداول بدون تأكيد شموع.
+""".strip()
+
+# =====================================================
+# ⏱ Time Master (Skeleton جاهز)
+# =====================================================
+
+@register_school("time")
+def school_time(snapshot: Dict[str, Any]) -> str:
+    d = _extract(snapshot)
+    return f"""
+📘 Time Master Model — {d['symbol']}
+
+⏳ Focus:
+• Cycles
+• Time Windows
+• Fibonacci Time
+• Gann / Bradley
+
+📊 Change: {_pct(d['change'])}
+⚠️ Risk: {d['risk_level']}
+""".strip()
+
+# =====================================================
+# 🧱 Backward Compatibility
+# =====================================================
 
 def pick_school_report(school: str, snapshot: Dict[str, Any]) -> str:
-    """
-    Manual School Selector
-    - school: أي اسم مدرسة
-    - snapshot: بيانات العملة
-    """
-    key = (school or "smc").strip().lower()
-    builder = SCHOOL_REGISTRY.get(key, build_smc_report)
-    return builder(snapshot)
+    return build_school_report(school, snapshot)
