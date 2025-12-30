@@ -10,6 +10,8 @@ SCHOOL_REGISTRY = {
 def run_school(school: str, symbol: str, snapshot: dict) -> str:
     school = (school or "").lower().strip()
     fn = SCHOOL_REGISTRY.get(school)
-    if not fn:
+
+    if not callable(fn):
         return f"⚠️ المدرسة '{school}' غير مدعومة حاليًا."
+
     return fn(symbol, snapshot)
