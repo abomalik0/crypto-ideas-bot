@@ -912,7 +912,8 @@ def webhook():
         school = parts[2].lower()
 
         try:
-            snapshot = compute_smart_market_snapshot(symbol)
+            snapshot = compute_smart_market_snapshot()
+snapshot["symbol"] = symbol
         except Exception as e:
             config.logger.exception("analysis snapshot error: %s", e)
             send_message(chat_id, "⚠️ فشل جلب بيانات السوق.")
