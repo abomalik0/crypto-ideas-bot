@@ -1368,19 +1368,25 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
         },
     }
 
-    # =========================
-    # Final School Report
-    # =========================
-    if school == "smc":
+# =========================
+# Final School Report
+# =========================
+
+if school == "smc":
     return analyze_smc(snapshot)
+
 elif school == "ict":
     return analyze_ict(snapshot)
+
 elif school == "wyckoff":
     return analyze_wyckoff(snapshot)
+
 elif school == "harmonic":
     return analyze_harmonic(snapshot)
+
 elif school == "time":
     return analyze_time(snapshot)
+
 else:
     return "❌ المدرسة غير مدعومة حاليًا."
             
