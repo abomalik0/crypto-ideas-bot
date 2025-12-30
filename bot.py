@@ -31,6 +31,7 @@ from analysis_engine import (
     format_school_report,
     format_school_report_v17,
 )
+)
 import services
 
 app = Flask(__name__)
