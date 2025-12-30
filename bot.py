@@ -28,8 +28,7 @@ from analysis_engine import (
     format_ultra_pro_alert,
     fusion_ai_brain,
     compute_hybrid_pro_core,
-    format_school_report,
-    format_school_report_v17,
+    format_school_entry,
 )
 import services
 
