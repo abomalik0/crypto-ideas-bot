@@ -885,7 +885,6 @@ def webhook():
             )
 
         send_message(chat_id, header + (body or ""))
-        return jsonify(ok=True)
 
 # ===============================
 # /analysis -> /school (ALIAS SAFE)
@@ -906,7 +905,6 @@ if lower_text.startswith("/analysis"):
             "- time\n"
             "- all"
         )
-        return jsonify(ok=True)
 
     symbol = parts[1].upper()
     school = parts[2].lower()
