@@ -874,9 +874,38 @@ if lower_text.startswith("/school"):
             "جرّب مرة أخرى."  
         )  
 
-    send_message(chat_id, header + (body or ""))  
+send_message(chat_id, header + (body or ""))
     return jsonify(ok=True)
 
+    # ==============================
+    #   /analysis SYMBOL SCHOOL
+    # ==============================
+    if lower_text.startswith("/analysis"):
+        parts = text.split()
+
+        if len(parts) < 3:
+            send_message(
+                chat_id,
+                "⚠️ استخدم الأمر بالشكل التالي:\n"
+                "<code>/analysis BTCUSDT smc</code>"
+            )
+            return jsonify(ok=True)
+
+        symbol = parts[1].upper()
+        school = parts[2].lower()
+
+        try:
+            snapshot = compute_smart_market_snapshot(symbol)
+        except Exception:
+            send_message(chat_id, "⚠️ فشل جلب بيانات السوق.")
+            return jsonify(ok=True)
+
+        from engine_schools import build_school_report
+        report = build_school_report(school, snapshot)
+
+        send_message(chat_id, report)
+        return jsonify(ok=True)
+   
 # ==============================  
 #      أوامر الإدارة (Admin)  
 # ==============================  
