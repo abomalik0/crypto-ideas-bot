@@ -1368,28 +1368,31 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
         },
     }
 
-# =========================
-# Final School Report
-# =========================
+# ============================
+# Final School Report (FIXED)
+# ============================
 
-if school == "smc":
-    return analyze_smc(snapshot)
+def dispatch_school_report(school: str, snapshot: dict) -> str:
+    school = (school or "smc").lower()
 
-elif school == "ict":
-    return analyze_ict(snapshot)
+    if school == "smc":
+        return analyze_smc(snapshot)
 
-elif school == "wyckoff":
-    return analyze_wyckoff(snapshot)
+    elif school == "ict":
+        return analyze_ict(snapshot)
 
-elif school == "harmonic":
-    return analyze_harmonic(snapshot)
+    elif school == "wyckoff":
+        return analyze_wyckoff(snapshot)
 
-elif school == "time":
-    return analyze_time(snapshot)
+    elif school == "harmonic":
+        return analyze_harmonic(snapshot)
 
-else:
-    return "❌ المدرسة غير مدعومة حاليًا."
-            
+    elif school == "time":
+        return analyze_time(snapshot)
+
+    else:
+        return "❌ المدرسة غير مدعومة حاليًا."
+        
 # ==============================
 #   تقرير السوق /market
 # ==============================
