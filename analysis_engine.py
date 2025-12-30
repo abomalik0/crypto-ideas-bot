@@ -4912,3 +4912,43 @@ def format_school_report_v17(code: str, symbol: str = "BTCUSDT") -> str:
         )
 
     return _shrink_text_preserve_content(header + body, limit=3900)
+# =====================================================
+# Unified School Entry (SAFE – Mobile Friendly)
+# =====================================================
+
+def format_school_entry(symbol: str, school: str) -> str:
+    """
+    نقطة دخول واحدة وآمنة لكل مدارس التحليل
+    - لا تكسر النظام القديم
+    - تمنع return خارج function
+    """
+
+    school = (school or "smc").lower().strip()
+
+    # --- المحرك الجديد (v17) ---
+    try:
+        return format_school_report_v17(school, symbol=symbol)
+    except Exception:
+        pass
+
+    # --- fallback للنظام القديم ---
+    try:
+        snapshot = compute_smart_market_snapshot(symbol)
+    except Exception:
+        snapshot = None
+
+    if not snapshot:
+        return "⚠️ لا توجد بيانات كافية للتحليل حاليًا."
+
+    if school == "smc":
+        return analyze_smc(snapshot)
+    if school == "ict":
+        return analyze_ict(snapshot)
+    if school == "wyckoff":
+        return analyze_wyckoff(snapshot)
+    if school == "harmonic":
+        return analyze_harmonic(snapshot)
+    if school == "time":
+        return analyze_time(snapshot)
+
+    return "❌ مدرسة التحليل غير مدعومة حاليًا."
