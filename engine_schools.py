@@ -3,15 +3,15 @@ engine_schools.py
 
 Advanced School Engine (V2)
 - Registry-based architecture
-- Multi-school / Multi-symbol ready
-- Backward compatible with old pick_school_report
+- Multi-school ready
+- Backward compatible with pick_school_report
 """
 
 from __future__ import annotations
 from typing import Any, Dict, Callable
 
 # =====================================================
-# Helpers (كما هى – بدون تغيير)
+# Helpers
 # =====================================================
 
 def _fmt(x: Any, digits: int = 2) -> str:
@@ -32,7 +32,7 @@ def _pct(x: Any, digits: int = 2) -> str:
         return str(x)
 
 # =====================================================
-# Snapshot Extractor (كما هو)
+# Snapshot Extractor
 # =====================================================
 
 def _extract(snapshot: Dict[str, Any]) -> Dict[str, Any]:
@@ -71,45 +71,53 @@ def register_school(name: str):
     return wrapper
 
 def build_school_report(school: str, snapshot: Dict[str, Any]) -> str:
-    key = (school or "smc").lower()
+    key = (school or "smc").lower().strip()
     builder = _SCHOOL_REGISTRY.get(key)
 
     if not builder:
-        return f"❌ لا توجد مدرسة تحليل باسم: {school}"
+        return (
+            "⚠️ <b>كود مدرسة غير معروف</b>\n"
+            "المدارس المتاحة:\n"
+            "• smc\n"
+            "• ict\n"
+            "• wyckoff\n"
+            "• harmonic\n"
+            "• time"
+        )
 
     return builder(snapshot)
 
 # =====================================================
-# 🏛 SMC — FULL
+# 🏛 SMC — Smart Money Concepts
 # =====================================================
 
 @register_school("smc")
 def school_smc(snapshot: Dict[str, Any]) -> str:
     d = _extract(snapshot)
     return f"""
-📘 SMC — Smart Money Concepts — تحليل {d['symbol']}
-
-🔍 مقدمة:
-تحليل حركة السعر من منظور المؤسسات (Liquidity / Structure).
+📘 <b>SMC — Smart Money Concepts</b>
+<b>{d['symbol']}</b>
 
 📊 الهيكلة:
-• Trend Bias: {d['trend_bias']}
-• Change: {_pct(d['change'])}
-• Volatility: {_fmt(d['vol'])}
+• Trend Bias: <b>{d['trend_bias']}</b>
+• Change: <b>{_pct(d['change'])}</b>
+• Volatility: <b>{_fmt(d['vol'])}</b>
 
 🏦 Zones:
-{d['zones']}
+• Support: {_fmt(d['zones'].get('support'))}
+• Mid: {_fmt(d['zones'].get('mid'))}
+• Resistance: {_fmt(d['zones'].get('resistance'))}
 
 ⚠️ Risk:
-• Level: {d['risk_level']}
-• Score: {_fmt(d['risk_score'])}
+• Level: <b>{d['risk_level']}</b>
+• Score: <b>{_fmt(d['risk_score'])}</b>
 
 📌 الخلاصة:
-السلوك المؤسسي هو العامل الحاسم.
+السوق يتحرك وفق السيولة والهيكلة المؤسسية.
 """.strip()
 
 # =====================================================
-# 🧩 ICT
+# 🧩 ICT — Inner Circle Trader
 # =====================================================
 
 @register_school("ict")
@@ -125,17 +133,18 @@ def school_ict(snapshot: Dict[str, Any]) -> str:
         pass
 
     return f"""
-📘 ICT — Inner Circle Trader — {d['symbol']}
+📘 <b>ICT — Inner Circle Trader</b>
+<b>{d['symbol']}</b>
 
-• Price: {_fmt(d['price'])}
-• Premium / Discount: {pd}
+• Price: <b>{_fmt(d['price'])}</b>
+• Premium / Discount: <b>{pd}</b>
 
 💧 Liquidity Context:
 • Equal Highs / Lows
-• FVG Zones
+• Fair Value Gaps
 • Killzones (London / NY)
 
-⚠️ Risk: {d['risk_level']}
+⚠️ Risk: <b>{d['risk_level']}</b>
 """.strip()
 
 # =====================================================
@@ -145,30 +154,35 @@ def school_ict(snapshot: Dict[str, Any]) -> str:
 @register_school("wyckoff")
 def school_wyckoff(snapshot: Dict[str, Any]) -> str:
     d = _extract(snapshot)
-    phase = "Accumulation / Distribution"
 
+    phase = "Accumulation / Distribution"
     if d["vol"] and d["vol"] > 55:
         phase = "Volatility Expansion / Shakeout"
 
     return f"""
-📘 Wyckoff — {d['symbol']}
+📘 <b>Wyckoff Method</b>
+<b>{d['symbol']}</b>
 
-📊 Phase:
-• Current Phase: {phase}
+📊 Market Phase:
+• {phase}
 
-📈 Price Change: {_pct(d['change'])}
-⚠️ Risk: {d['risk_level']}
+📈 Price Change: <b>{_pct(d['change'])}</b>
+⚠️ Risk: <b>{d['risk_level']}</b>
+
+📌 التركيز:
+Effort vs Result + Volume Confirmation
 """.strip()
 
 # =====================================================
-# 🌀 Harmonic (Pro Skeleton – جاهز للتوسعة)
+# 🌀 Harmonic (Pro Skeleton)
 # =====================================================
 
 @register_school("harmonic")
 def school_harmonic(snapshot: Dict[str, Any]) -> str:
     d = _extract(snapshot)
     return f"""
-📘 Harmonic Patterns — {d['symbol']}
+📘 <b>Harmonic Patterns</b>
+<b>{d['symbol']}</b>
 
 🔍 Patterns:
 • Gartley
@@ -177,37 +191,38 @@ def school_harmonic(snapshot: Dict[str, Any]) -> str:
 • Butterfly
 • AB=CD
 
-📐 Focus:
+📐 التركيز:
 • Fibonacci Ratios
 • PRZ Zones
 • Confluence
 
-⚠️ ملاحظة:
-النموذج لا يُتداول بدون تأكيد شموع.
+⚠️ تنبيه:
+النموذج لا يُتداول بدون تأكيد سعري.
 """.strip()
 
 # =====================================================
-# ⏱ Time Master (Skeleton جاهز)
+# ⏱ Time Master (Skeleton)
 # =====================================================
 
 @register_school("time")
 def school_time(snapshot: Dict[str, Any]) -> str:
     d = _extract(snapshot)
     return f"""
-📘 Time Master Model — {d['symbol']}
+📘 <b>Time Master Model</b>
+<b>{d['symbol']}</b>
 
-⏳ Focus:
-• Cycles
+⏳ التركيز:
+• Time Cycles
 • Time Windows
 • Fibonacci Time
 • Gann / Bradley
 
-📊 Change: {_pct(d['change'])}
-⚠️ Risk: {d['risk_level']}
+📊 Change: <b>{_pct(d['change'])}</b>
+⚠️ Risk: <b>{d['risk_level']}</b>
 """.strip()
 
 # =====================================================
-# 🧱 Backward Compatibility
+# 🔁 Backward Compatibility
 # =====================================================
 
 def pick_school_report(school: str, snapshot: Dict[str, Any]) -> str:
