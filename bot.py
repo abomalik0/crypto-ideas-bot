@@ -888,6 +888,51 @@ def webhook():
         return jsonify(ok=True)
 
     # ==============================
+    #   /analysis SYMBOL SCHOOL
+    # ==============================
+    if lower_text.startswith("/analysis"):
+        parts = text.split()
+
+        if len(parts) < 3:
+            send_message(
+                chat_id,
+                "⚠️ استخدم الأمر بالشكل التالي:\n"
+                "<code>/analysis BTCUSDT smc</code>\n\n"
+                "المدارس المتاحة:\n"
+                "• smc\n"
+                "• ict\n"
+                "• wyckoff\n"
+                "• harmonic\n"
+                "• time\n"
+                "• all"
+            )
+            return jsonify(ok=True)
+
+        symbol = parts[1].upper()
+        school = parts[2].lower()
+
+        try:
+            snapshot = compute_smart_market_snapshot(symbol)
+        except Exception as e:
+            config.logger.exception("analysis snapshot error: %s", e)
+            send_message(chat_id, "⚠️ فشل جلب بيانات السوق.")
+            return jsonify(ok=True)
+
+        if not snapshot:
+            send_message(chat_id, "⚠️ لا توجد بيانات كافية للتحليل حاليًا.")
+            return jsonify(ok=True)
+
+        try:
+            from engine_schools import build_school_report
+            report = build_school_report(school, snapshot)
+        except Exception as e:
+            config.logger.exception("analysis school error: %s", e)
+            report = "❌ حدث خطأ أثناء إنشاء تقرير المدرسة."
+
+        send_message(chat_id, report)
+        return jsonify(ok=True)
+        
+    # ==============================
     #      أوامر الإدارة (Admin)
     # ==============================
 
