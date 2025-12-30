@@ -482,22 +482,17 @@ def _build_generic_school_template(code: str, s):
 def _build_school_report(code: str, symbol: str) -> str:
     """ Wrapper موحد لبناء نص تحليل المدرسة. يعيد دائمًا نصًا جاهزًا للإرسال. """
     code = (code or "").lower()
-    symbol = symbol or "BTCUSDT"
+    symbol = (symbol or "BTCUSDT").upper()
 
-    # 1) نحاول أولاً المحرك الأصلى format_school_report
-    body = None
+    # 1) المحرك الموحد الجديد (FINAL)
     try:
-        body = format_school_report_v17(code, symbol=symbol)
+        return format_school_entry(symbol=symbol, school=code)
     except Exception as e:
-        config.logger.exception("Error in format_school_report(%s, %s): %s", code, symbol, e)
-        body = None
+        config.logger.exception(
+            "Error in format_school_entry(%s, %s): %s", code, symbol, e
+        )
 
-    if isinstance(body, str):
-        text = body.strip()
-        if text and not any(marker in text for marker in NO_SCHOOL_ANALYSIS_MARKERS):
-            return text
-
-    # 2) لو مفيش مخرجات مفيدة من المحرك → نبنى قالب تعليمى اعتمادًا على لقطة السوق
+    # 2) fallback تعليمى (لو snapshot فشل)
     snapshot = _get_school_snapshot(symbol)
     if not snapshot:
         return (
