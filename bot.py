@@ -912,17 +912,12 @@ def webhook():
         school = parts[2].lower()
 
         try:
-            snapshot = compute_smart_market_snapshot()
-snapshot["symbol"] = symbol
-        except Exception as e:
-            config.logger.exception("analysis snapshot error: %s", e)
-            send_message(chat_id, "⚠️ فشل جلب بيانات السوق.")
-            return jsonify(ok=True)
-
-        if not snapshot:
-            send_message(chat_id, "⚠️ لا توجد بيانات كافية للتحليل حاليًا.")
-            return jsonify(ok=True)
-
+    snapshot = compute_smart_market_snapshot()
+    snapshot["symbol"] = symbol   # ✅ جوّه try
+except Exception as e:
+    config.logger.exception("analysis snapshot error: %s", e)
+    send_message(chat_id, "⚠️ فشل جلب بيانات السوق.")
+    return jsonify(ok=True)
         try:
             from engine_schools import build_school_report
             report = build_school_report(school, snapshot)
