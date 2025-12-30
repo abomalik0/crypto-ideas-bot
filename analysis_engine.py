@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 
 import config
-
+from engine_schools import pick_school_report
 # ==============================
 #   تجهيز رمز العملة + المنصات
 # ==============================
@@ -1410,26 +1410,28 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
 
 {fusion_block}{micro_block}
 
-{ai_note}
-<b>IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى شاملة لتحليل السوق فى الوقت الفعلى</b>
-""".strip()
+    {ai_note}
+    <b>IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى شاملة لتحليل السوق فى الوقت الفعلى</b>
+    """.strip()
 
-    from engine_schools import pick_school_report
-return pick_school_report(school, {
-    "symbol": display_symbol,
-    "metrics": metrics,
-    "risk": risk,
-    "pulse": {},
-    "events": {},
-    "alert": {},
-    "zones": {
-        "support": support,
-        "mid": price,
-        "resistance": resistance,
-        "band_pct": abs(change)
+    return pick_school_report(
+    school,
+    {
+        "symbol": display_symbol,
+        "metrics": metrics,
+        "risk": risk,
+        "pulse": {},
+        "events": {},
+        "alert": {},
+        "zones": {
+            "support": support,
+            "mid": price,
+            "resistance": resistance,
+            "band_pct": abs(change)
+        }
     }
-})
-
+)
+            
 # ==============================
 #   تقرير السوق /market
 # ==============================
