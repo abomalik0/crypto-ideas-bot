@@ -890,6 +890,7 @@ def webhook():
     # ==============================
     #   /analysis SYMBOL SCHOOL
     # ==============================
+    
     if lower_text.startswith("/analysis"):
         parts = text.split()
 
