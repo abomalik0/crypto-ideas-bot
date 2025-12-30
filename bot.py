@@ -887,6 +887,34 @@ def webhook():
         send_message(chat_id, header + (body or ""))
         return jsonify(ok=True)
 
+# ===============================
+# /analysis -> /school (ALIAS SAFE)
+# ===============================
+if lower_text.startswith("/analysis"):
+    parts = text.split()
+
+    if len(parts) < 3:
+        send_message(
+            chat_id,
+            "⚠️ استخدم الأمر بالشكل التالي:\n"
+            "<code>/analysis BTCUSDT smc</code>\n\n"
+            "المدارس المتاحة:\n"
+            "- smc\n"
+            "- ict\n"
+            "- wyckoff\n"
+            "- harmonic\n"
+            "- time\n"
+            "- all"
+        )
+        return jsonify(ok=True)
+
+    symbol = parts[1].upper()
+    school = parts[2].lower()
+
+    # تحويل /analysis إلى /school بدون كسر أي حاجة
+    text = f"/school {school} {symbol}"
+    lower_text = text.lower()
+    
     # ==============================
     #      أوامر الإدارة (Admin)
     # ==============================
