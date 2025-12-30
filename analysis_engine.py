@@ -4724,6 +4724,27 @@ def format_school_report_v17(code: str, symbol: str = "BTCUSDT") -> str:
     - يراعى حد تيليجرام عبر _shrink_text_preserve_content
     """
     code = (code or "").strip().lower()
+    SCHOOL_CODE_MAP = {
+        "smc": "smc",
+        "ict": "ict",
+        "wyckoff": "wyckoff",
+        "harmonic": "harmonic",
+        "elliott": "elliott",
+        "time": "time",
+        "time_analysis": "time",
+        "volume": "volume",
+        "volatility": "volume",
+        "risk": "risk",
+        "risk_position": "risk",
+        "structure": "structure",
+        "market_structure": "structure",
+        "multi": "multi",
+        "mtf": "multi",
+        "all": "all",
+        "all_schools": "all",
+    }
+
+    code = SCHOOL_CODE_MAP.get(code, code)
     symbol = (symbol or "BTCUSDT").strip().upper()
 
     metrics = get_market_metrics_cached()
