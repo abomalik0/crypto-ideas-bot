@@ -1307,6 +1307,7 @@ def format_ultra_smart_alert_from_snapshot(snapshot: dict) -> str:
 def format_analysis(user_symbol: str, school: str = "smc") -> str:
     data = fetch_price_data(user_symbol)
     school = (school or "smc").lower().strip()
+
     if not data:
         return (
             "⚠️ لا يمكن جلب بيانات هذه العملة الآن.\n"
@@ -1314,6 +1315,9 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
             "وحاول مرة أخرى."
         )
 
+    # =========================
+    # Basic Data
+    # =========================
     price = data["price"]
     change = data["change_pct"]
     high = data["high"]
@@ -1326,99 +1330,32 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
         binance_symbol if exchange == "binance" else kucoin_symbol
     ).replace("-", "")
 
+    # =========================
+    # Zones
+    # =========================
     support = round(low * 0.99, 6) if low > 0 else round(price * 0.95, 6)
     resistance = round(high * 1.01, 6) if high > 0 else round(price * 1.05, 6)
 
-    rsi_raw = 50 + (change * 0.8)
-    rsi = max(0, min(100, rsi_raw))
-    if rsi >= 70:
-        rsi_trend = "⬆️ مرتفع (تشبّع شرائى محتمل)"
-    elif rsi <= 30:
-        rsi_trend = "⬇️ منخفض (تشبّع بيع محتمل)"
-    else:
-        rsi_trend = "🔁 حيادى نسبياً"
-
-    if change > 2:
-        trend_text = "الاتجاه العام يميل إلى الصعود مع زخم إيجابى ملحوظ."
-    elif change > 0:
-        trend_text = "الاتجاه العام يميل إلى الصعود بشكل هادئ."
-    elif change > -2:
-        trend_text = "الاتجاه العام يميل إلى الهبوط الخفيف مع بعض التذبذب."
-    else:
-        trend_text = "الاتجاه العام يميل إلى الهبوط مع ضغوط بيعية واضحة."
-
+    # =========================
+    # Metrics & Risk
+    # =========================
     metrics = build_symbol_metrics(price, change, high, low)
-    risk = evaluate_risk_level(metrics["change_pct"], metrics["volatility_score"])
-    fusion = fusion_ai_brain(metrics, risk)
-
-    micro_risks: list[str] = []
-
-    if volume < 50_000:
-        micro_risks.append(
-            "حجم التداول الحالى منخفض جدًا مقارنة بمعظم العملات → أى صفقة كبيرة قد تحرك السعر بشكل حاد."
-        )
-    if abs(change) >= 25:
-        micro_risks.append(
-            "تغير سعرى يومى يتجاوز 25٪ → قد يشير لحركة Pump & Dump أو خبر قصير المدى."
-        )
-    if price < 0.0001:
-        micro_risks.append(
-            "السعر الحالى منخفض جدًا (فراكشن) → نسبة الانزلاق السعرى والسبريد تكون أعلى من المعتاد."
-        )
-
-    micro_block = ""
-    if micro_risks:
-        micro_block = (
-            "\n\n⚠️ <b>تنبيه مخاطر إضافى للعملة:</b>\n" +
-            "\n".join(f"• {line}" for line in micro_risks) +
-            "\n\nهذه الملاحظات تعليمية وليست نصيحة مباشرة بالشراء أو البيع."
-        )
-
-    ai_note = (
-        "🤖 <b>ملاحظة الذكاء الاصطناعى:</b>\n"
-        "هذا التحليل يساعدك على فهم الاتجاه وحركة السعر، "
-        "وليس توصية مباشرة بالشراء أو البيع.\n"
-        "يُفضّل دائمًا دمج التحليل الفنى مع خطة إدارة مخاطر منضبطة.\n"
+    risk = evaluate_risk_level(
+        metrics.get("change_pct"),
+        metrics.get("volatility_score")
     )
 
-    fusion_block = (
-        "🧠 <b>ملخص IN CRYPTO Ai للعملة:</b>\n"
-        f"- الاتجاه: {fusion['bias_text']}\n"
-        f"- سلوك السيولة: {fusion['liquidity']}\n"
-        f"- المرحلة الحالية (وايكوف): {fusion['wyckoff_phase']}\n"
-        f"- تقييم المخاطر: {fusion['risk_comment']}\n"
-        f"- تقدير حركة 24–72 ساعة: صعود ~{fusion['p_up']}٪ / "
-        f"تماسك ~{fusion['p_side']}٪ / هبوط ~{fusion['p_down']}٪.\n"
-    )
-
-    msg = f"""
-📊 <b>تحليل فنى يومى للعملة {display_symbol}</b>
-
-💰 <b>السعر الحالى:</b> {price:.6f}
-📉 <b>تغير اليوم:</b> %{change:.2f}
-📊 <b>حجم التداول 24 ساعة:</b> {volume:,.0f}
-
-🎯 <b>حركة السعر العامة:</b>
-- {trend_text}
-
-📍 <b>مستويات فنية مهمة:</b>
-- دعم يومى تقريبى حول: <b>{support}</b>
-- مقاومة يومية تقريبية حول: <b>{resistance}</b>
-
-📉 <b>RSI:</b>
-- مؤشر القوة النسبية عند حوالى: <b>{rsi:.1f}</b> → {rsi_trend}
-
-{fusion_block}{micro_block}
-
-    {ai_note}
-    <b>IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى شاملة لتحليل السوق فى الوقت الفعلى</b>
-    """.strip()
-
-    return pick_school_report(
-    school,
-    {
+    # =========================
+    # Snapshot (V18 Standard)
+    # =========================
+    snapshot = {
         "symbol": display_symbol,
-        "metrics": metrics,
+        "metrics": {
+            "price": price,
+            "change_pct": change,
+            "range_pct": metrics.get("range_pct"),
+            "volatility_score": metrics.get("volatility_score"),
+        },
         "risk": risk,
         "pulse": {},
         "events": {},
@@ -1427,10 +1364,15 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
             "support": support,
             "mid": price,
             "resistance": resistance,
-            "band_pct": abs(change)
-        }
+            "band_pct": abs(change),
+        },
     }
-)
+
+    # =========================
+    # Final School Report
+    # =========================
+    return build_school_report(school, snapshot)
+    
             
 # ==============================
 #   تقرير السوق /market
