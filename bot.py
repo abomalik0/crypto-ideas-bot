@@ -908,16 +908,20 @@ def webhook():
             )
             return jsonify(ok=True)
 
-        symbol = parts[1].upper()
-        school = parts[2].lower()
+symbol = parts[1].upper()
+school = parts[2].lower()
 
-        try:
+try:
     snapshot = compute_smart_market_snapshot()
-    snapshot["symbol"] = symbol  # نضيف الرمز يدويًا
+    snapshot["symbol"] = symbol
+except Exception as e:
+    config.logger.exception("analysis snapshot error: %s", e)
+    send_message(chat_id, "⚠️ فشل جلب بيانات السوق.")
+    return jsonify(ok=True)
 
+try:
     from engine_schools import build_school_report
     report = build_school_report(school, snapshot)
-
 except Exception as e:
     config.logger.exception("analysis school error: %s", e)
     send_message(chat_id, "❌ حدث خطأ أثناء إنشاء تقرير المدرسة.")
