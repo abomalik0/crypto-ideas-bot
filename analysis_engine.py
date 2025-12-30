@@ -1304,8 +1304,9 @@ def format_ultra_smart_alert_from_snapshot(snapshot: dict) -> str:
 #     صياغة رسالة التحليل /coin
 # ==============================
 
-def format_analysis(user_symbol: str) -> str:
+def format_analysis(user_symbol: str, school: str = "smc") -> str:
     data = fetch_price_data(user_symbol)
+    school = (school or "smc").lower().strip()
     if not data:
         return (
             "⚠️ لا يمكن جلب بيانات هذه العملة الآن.\n"
@@ -1413,7 +1414,21 @@ def format_analysis(user_symbol: str) -> str:
 <b>IN CRYPTO Ai 🤖 — منظومة ذكاء اصطناعى شاملة لتحليل السوق فى الوقت الفعلى</b>
 """.strip()
 
-    return msg
+    from engine_schools import pick_school_report
+return pick_school_report(school, {
+    "symbol": display_symbol,
+    "metrics": metrics,
+    "risk": risk,
+    "pulse": {},
+    "events": {},
+    "alert": {},
+    "zones": {
+        "support": support,
+        "mid": price,
+        "resistance": resistance,
+        "band_pct": abs(change)
+    }
+})
 
 # ==============================
 #   تقرير السوق /market
