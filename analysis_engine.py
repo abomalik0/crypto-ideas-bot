@@ -4700,12 +4700,12 @@ def format_school_entry(symbol: str, school: str) -> str:
 
     if not snapshot:
         snapshot = fetch_symbol_snapshot(symbol)
+        
+# ====================
+# School Router
+# ====================
 
-    # =====================
-    # School Router
-    # =====================
-
-    if if school == "smc":
+if school == "smc":
     return snapshot.get("smc_text", "⚠️ تحليل SMC غير متاح")
 
 if school == "wyckoff":
