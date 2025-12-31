@@ -4700,32 +4700,35 @@ def format_school_entry(symbol: str, school: str) -> str:
 
     if not snapshot:
         snapshot = fetch_symbol_snapshot(symbol)
-        
-# =====================
-# Build school texts if missing
-# =====================
 
-if "smc_text" not in snapshot:
-    snapshot["smc_text"] = analyze_smc(snapshot)
+    if not isinstance(snapshot, dict):
+        return "⚠️ Snapshot غير متاح حالياً"
 
-if "wyckoff_text" not in snapshot:
-    snapshot["wyckoff_text"] = analyze_wyckoff(snapshot)
+    # =====================
+    # Build school texts if missing
+    # =====================
 
-if "harmonic_text" not in snapshot:
-    snapshot["harmonic_text"] = analyze_harmonic(snapshot)
+    if "smc_text" not in snapshot:
+        snapshot["smc_text"] = analyze_smc(snapshot)
 
-if "time_text" not in snapshot:
-    snapshot["time_text"] = analyze_time(snapshot)
+    if "wyckoff_text" not in snapshot:
+        snapshot["wyckoff_text"] = analyze_wyckoff(snapshot)
 
-if "volume_text" not in snapshot:
-    snapshot["volume_text"] = analyze_volume_volatility(snapshot)
+    if "harmonic_text" not in snapshot:
+        snapshot["harmonic_text"] = analyze_harmonic(snapshot)
 
-if "risk_text" not in snapshot:
-    snapshot["risk_text"] = analyze_risk_position(snapshot)
+    if "time_text" not in snapshot:
+        snapshot["time_text"] = analyze_time(snapshot)
 
-if "all_text" not in snapshot:
-    snapshot["all_text"] = analyze_all_schools(snapshot)
-    
+    if "volume_text" not in snapshot:
+        snapshot["volume_text"] = analyze_volume_volatility(snapshot)
+
+    if "risk_text" not in snapshot:
+        snapshot["risk_text"] = analyze_risk_position(snapshot)
+
+    if "all_text" not in snapshot:
+        snapshot["all_text"] = analyze_all_schools(snapshot)
+
     # =====================
     # School Router
     # =====================
