@@ -3555,7 +3555,7 @@ def compute_v14_ultra_snapshot() -> dict | None:
         + "\n\n"
         + snapshot["elliott_text"]
     )
-print("DEBUG SNAPSHOT:", snapshot)
+    print("DEBUG SNAPSHOT:", snapshot)
     return snapshot
     
 def format_v14_ultra_alert() -> str:
