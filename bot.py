@@ -888,6 +888,40 @@ def webhook():
         return jsonify(ok=True)
 
     # ==============================
+    #   /analysis SYMBOL SCHOOL
+    # ==============================
+    
+    if lower_text.startswith("/analysis"):
+        parts = text.split()
+
+        if len(parts) < 3:
+            send_message(
+                chat_id,
+                "⚠️ استخدم الأمر بالشكل التالي:\n"
+                "<code>/analysis BTCUSDT smc</code>\n\n"
+                "المدارس المتاحة:\n"
+                "• smc\n"
+                "• ict\n"
+                "• wyckoff\n"
+                "• harmonic\n"
+                "• time\n"
+                "• all"
+            )
+            return jsonify(ok=True)
+
+        symbol = parts[1].upper()
+        school = parts[2].lower()
+
+        try:
+            report = format_school_entry(symbol=symbol, school=school)
+        except Exception as e:
+            config.logger.exception("analysis error: %s", e)
+            report = "❌ حدث خطأ أثناء إنشاء تحليل المدرسة."
+
+        send_message(chat_id, report)
+        return jsonify(ok=True)
+        
+    # ==============================
     #      أوامر الإدارة (Admin)
     # ==============================
 
