@@ -1,4 +1,4 @@
-import time
+طimport time
 from datetime import datetime
 
 import config
@@ -4700,7 +4700,32 @@ def format_school_entry(symbol: str, school: str) -> str:
 
     if not snapshot:
         snapshot = fetch_symbol_snapshot(symbol)
+        
+# =====================
+# Build school texts if missing
+# =====================
 
+if "smc_text" not in snapshot:
+    snapshot["smc_text"] = analyze_smc(snapshot)
+
+if "wyckoff_text" not in snapshot:
+    snapshot["wyckoff_text"] = analyze_wyckoff(snapshot)
+
+if "harmonic_text" not in snapshot:
+    snapshot["harmonic_text"] = analyze_harmonic(snapshot)
+
+if "time_text" not in snapshot:
+    snapshot["time_text"] = analyze_time(snapshot)
+
+if "volume_text" not in snapshot:
+    snapshot["volume_text"] = analyze_volume_volatility(snapshot)
+
+if "risk_text" not in snapshot:
+    snapshot["risk_text"] = analyze_risk_position(snapshot)
+
+if "all_text" not in snapshot:
+    snapshot["all_text"] = analyze_all_schools(snapshot)
+    
     # =====================
     # School Router
     # =====================
