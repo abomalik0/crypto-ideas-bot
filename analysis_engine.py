@@ -3494,16 +3494,20 @@ def compute_v14_ultra_snapshot() -> dict | None:
     mtf = get_btc_multi_timeframes()
     candle_patterns = detect_candle_patterns_multi_tf(mtf) if mtf else {}
     liq_map = build_liquidity_map(mtf) if mtf else {}
-    smc_ict = analyze_smc_and_ict(mtf, metrics) if mtf else {"smc_view": "", "ict_view": ""}
+    smc_ict = analyze_smc_and_ict(mtf, metrics) if mtf else {
+        "smc_view": "",
+        "ict_view": "",
+    }
 
     harmonic_text = ""
     elliott_text = ""
     indicator_pack = {}
-    if "1h" in mtf:
+
+    if mtf and "1h" in mtf:
         harmonic_text = analyze_harmonic_basic(mtf["1h"])
         elliott_text = analyze_elliott_basic(mtf["1h"])
         indicator_pack = compute_indicator_pack(mtf["1h"])
-    elif "4h" in mtf:
+    elif mtf and "4h" in mtf:
         harmonic_text = analyze_harmonic_basic(mtf["4h"])
         elliott_text = analyze_elliott_basic(mtf["4h"])
         indicator_pack = compute_indicator_pack(mtf["4h"])
@@ -3529,30 +3533,31 @@ def compute_v14_ultra_snapshot() -> dict | None:
         "classical": pa_sd_classical.get("classical", ""),
     }
 
-# =====================
-# Normalized TEXT outputs for school router
-# =====================
+    # =====================
+    # Normalized TEXT outputs for school router
+    # =====================
 
-snapshot["smc_text"] = snapshot.get("smc_view", "")
-snapshot["ict_text"] = snapshot.get("ict_view", "")
-snapshot["wyckoff_text"] = snapshot.get("core", {}).get("wyckoff", "")
-snapshot["harmonic_text"] = snapshot.get("harmonic", "")
-snapshot["elliott_text"] = snapshot.get("elliott", "")
-snapshot["time_text"] = snapshot.get("core", {}).get("time", "")
-snapshot["volume_text"] = snapshot.get("core", {}).get("volume", "")
-snapshot["risk_text"] = snapshot.get("core", {}).get("risk", "")
+    snapshot["smc_text"] = snapshot.get("smc_view", "")
+    snapshot["ict_text"] = snapshot.get("ict_view", "")
+    snapshot["wyckoff_text"] = snapshot.get("core", {}).get("wyckoff", "")
+    snapshot["harmonic_text"] = snapshot.get("harmonic", "")
+    snapshot["elliott_text"] = snapshot.get("elliott", "")
+    snapshot["time_text"] = snapshot.get("core", {}).get("time", "")
+    snapshot["volume_text"] = snapshot.get("core", {}).get("volume", "")
+    snapshot["risk_text"] = snapshot.get("core", {}).get("risk", "")
 
-snapshot["all_text"] = (
-    snapshot["smc_text"]
-    + "\n\n"
-    + snapshot["ict_text"]
-    + "\n\n"
-    + snapshot["harmonic_text"]
-    + "\n\n"
-    + snapshot["elliott_text"]
-)
-return snapshot
+    snapshot["all_text"] = (
+        snapshot["smc_text"]
+        + "\n\n"
+        + snapshot["ict_text"]
+        + "\n\n"
+        + snapshot["harmonic_text"]
+        + "\n\n"
+        + snapshot["elliott_text"]
+    )
 
+    return snapshot
+    
 def format_v14_ultra_alert() -> str:
     """
     رسالة تنبيه V14 النهائية (تُستخدم داخل /alert أو للأدمن):
