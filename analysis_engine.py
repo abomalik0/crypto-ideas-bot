@@ -3555,7 +3555,7 @@ def compute_v14_ultra_snapshot() -> dict | None:
         + "\n\n"
         + snapshot["elliott_text"]
     )
-
+print("DEBUG SNAPSHOT:", snapshot)
     return snapshot
     
 def format_v14_ultra_alert() -> str:
@@ -4707,30 +4707,12 @@ def _digital_block() -> str:
 # ==============================
 
 def format_school_entry(symbol: str, school: str) -> str:
-    """
-    FINAL unified school entry
-    Router ONLY (no analysis building)
-    """
-
     symbol = (symbol or "BTCUSDT").upper()
     school = (school or "smc").lower().strip()
 
-    try:
-        snapshot = compute_smart_market_snapshot()
-        if isinstance(snapshot, dict):
-            snapshot["symbol"] = symbol
-    except Exception:
-        snapshot = None
-
-    if not snapshot:
-        snapshot = fetch_symbol_snapshot(symbol)
-
+    snapshot = compute_v14_ultra_snapshot()
     if not isinstance(snapshot, dict):
-        return "⚠️ Snapshot غير صالح"
-
-    # =====================
-    # School Router ONLY
-    # =====================
+        return "⚠️ التحليل غير متاح حالياً"
 
     if school == "smc":
         return snapshot.get("smc_text", "⚠️ تحليل SMC غير متاح")
@@ -4744,6 +4726,9 @@ def format_school_entry(symbol: str, school: str) -> str:
     if school == "harmonic":
         return snapshot.get("harmonic_text", "⚠️ تحليل Harmonic غير متاح")
 
+    if school == "elliott":
+        return snapshot.get("elliott_text", "⚠️ تحليل Elliott غير متاح")
+
     if school == "time":
         return snapshot.get("time_text", "⚠️ تحليل Time غير متاح")
 
@@ -4756,4 +4741,4 @@ def format_school_entry(symbol: str, school: str) -> str:
     if school == "all":
         return snapshot.get("all_text", "⚠️ تحليل ALL غير متاح")
 
-    return "❌ مدرسة التحليل غير معروفة."
+    return "❌ مدرسة التحليل غير معروفة"
