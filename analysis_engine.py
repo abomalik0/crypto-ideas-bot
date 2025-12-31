@@ -4700,30 +4700,30 @@ def format_school_entry(symbol: str, school: str) -> str:
 
     if not snapshot:
         snapshot = fetch_symbol_snapshot(symbol)
-        
-# ====================
-# School Router
-# ====================
 
-if school == "smc":
-    return snapshot.get("smc_text", "⚠️ تحليل SMC غير متاح")
+    # =====================
+    # School Router
+    # =====================
 
-if school == "wyckoff":
-    return snapshot.get("wyckoff_text", "⚠️ تحليل Wyckoff غير متاح")
+    if school == "smc":
+        return snapshot.get("smc_text", "⚠️ تحليل SMC غير متاح")
 
-if school == "harmonic":
-    return snapshot.get("harmonic_text", "⚠️ تحليل Harmonic غير متاح")
+    if school == "wyckoff":
+        return snapshot.get("wyckoff_text", "⚠️ تحليل Wyckoff غير متاح")
 
-if school == "time":
-    return snapshot.get("time_text", "⚠️ تحليل Time غير متاح")
+    if school == "harmonic":
+        return snapshot.get("harmonic_text", "⚠️ تحليل Harmonic غير متاح")
 
-if school in ("volume", "volatility"):
-    return snapshot.get("volume_text", "⚠️ تحليل Volume غير متاح")
+    if school == "time":
+        return snapshot.get("time_text", "⚠️ تحليل Time غير متاح")
 
-if school in ("risk", "risk_position"):
-    return snapshot.get("risk_text", "⚠️ تحليل Risk غير متاح")
+    if school in ("volume", "volatility"):
+        return snapshot.get("volume_text", "⚠️ تحليل Volume غير متاح")
 
-if school == "all":
-    return snapshot.get("all_text", "⚠️ تحليل ALL غير متاح")
+    if school in ("risk", "risk_position"):
+        return snapshot.get("risk_text", "⚠️ تحليل Risk غير متاح")
 
-return "❌ مدرسة التحليل غير معروفة."
+    if school == "all":
+        return snapshot.get("all_text", "⚠️ تحليل ALL غير متاح")
+
+    return "❌ مدرسة التحليل غير معروفة."
