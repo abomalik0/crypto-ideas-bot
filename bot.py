@@ -913,7 +913,7 @@ def webhook():
         school = parts[2].lower()
 
         try:
-            report = format_school_entry(symbol=symbol, school=school)
+            report = _get_school_report_cached(school, symbol)
         except Exception as e:
             config.logger.exception("analysis error: %s", e)
             report = "❌ حدث خطأ أثناء إنشاء تحليل المدرسة."
