@@ -4691,9 +4691,9 @@ def format_school_entry(symbol: str, school: str) -> str:
     symbol = (symbol or "BTCUSDT").upper()
     school = (school or "smc").lower().strip()
 
-    try:
-    snapshot = compute_smart_market_snapshot()
-    if isinstance(snapshot, dict):
+try:
+        snapshot = compute_smart_market_snapshot()
+        if isinstance(snapshot, dict):
         snapshot["symbol"] = symbol
 except Exception:
     snapshot = None
