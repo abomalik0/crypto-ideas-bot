@@ -4701,32 +4701,32 @@ def format_school_entry(symbol: str, school: str) -> str:
     if not snapshot:
         snapshot = fetch_symbol_snapshot(symbol)
 
-    # =========================
-    # School Router
-    # =========================
+# ======================
+# School Router
+# ======================
 
-    if school == "smc":
-        return analyze_smc(snapshot)
+if school == "smc":
+    return snapshot.get("smc_text", "⚠️ تحليل SMC غير متاح")
 
-    if school == "ict":
-        return analyze_ict(snapshot)
+if school == "ict":
+    return analyze_ict(snapshot)
 
-    if school == "wyckoff":
-        return analyze_wyckoff(snapshot)
+if school == "wyckoff":
+    return analyze_wyckoff(snapshot)
 
-    if school == "harmonic":
-        return analyze_harmonic(snapshot)
+if school == "harmonic":
+    return analyze_harmonic(snapshot)
 
-    if school == "time":
-        return analyze_time(snapshot)
+if school == "time":
+    return analyze_time(snapshot)
 
-    if school in ("volume", "volatility"):
-        return analyze_volume_volatility(snapshot)
+if school in ("volume", "volatility"):
+    return analyze_volume_volatility(snapshot)
 
-    if school in ("risk", "risk_position"):
-        return analyze_risk_position(snapshot)
+if school in ("risk", "risk_position"):
+    return analyze_risk_position(snapshot)
 
-    if school == "all":
-        return analyze_all_schools(snapshot)
+if school == "all":
+    return analyze_all_schools(snapshot)
 
-    return "❌ مدرسة التحليل غير معروفة."
+return "❌ مدرسة التحليل غير معروفة."
