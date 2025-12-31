@@ -3528,8 +3528,30 @@ def compute_v14_ultra_snapshot() -> dict | None:
         "supply_demand": pa_sd_classical.get("supply_demand", ""),
         "classical": pa_sd_classical.get("classical", ""),
     }
-    return snapshot
 
+# =====================
+# Normalized TEXT outputs for school router
+# =====================
+
+snapshot["smc_text"] = snapshot.get("smc_view", "")
+snapshot["ict_text"] = snapshot.get("ict_view", "")
+snapshot["wyckoff_text"] = snapshot.get("core", {}).get("wyckoff", "")
+snapshot["harmonic_text"] = snapshot.get("harmonic", "")
+snapshot["elliott_text"] = snapshot.get("elliott", "")
+snapshot["time_text"] = snapshot.get("core", {}).get("time", "")
+snapshot["volume_text"] = snapshot.get("core", {}).get("volume", "")
+snapshot["risk_text"] = snapshot.get("core", {}).get("risk", "")
+
+snapshot["all_text"] = (
+    snapshot["smc_text"]
+    + "\n\n"
+    + snapshot["ict_text"]
+    + "\n\n"
+    + snapshot["harmonic_text"]
+    + "\n\n"
+    + snapshot["elliott_text"]
+)
+return snapshot
 
 def format_v14_ultra_alert() -> str:
     """
@@ -4682,9 +4704,7 @@ def _digital_block() -> str:
 def format_school_entry(symbol: str, school: str) -> str:
     """
     FINAL unified school entry
-    - نظام واحد
-    - بدون V17
-    - بدون Routers خفية
+    Router ONLY (no analysis building)
     """
 
     symbol = (symbol or "BTCUSDT").upper()
@@ -4704,7 +4724,7 @@ def format_school_entry(symbol: str, school: str) -> str:
         return "⚠️ Snapshot غير صالح"
 
     # =====================
-    # School Router
+    # School Router ONLY
     # =====================
 
     if school == "smc":
