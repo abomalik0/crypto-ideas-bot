@@ -4706,27 +4706,27 @@ def format_school_entry(symbol: str, school: str) -> str:
     # =====================
 
     if school == "smc":
-        return snapshot.get("smc_text", "⚠️ تحليل SMC غير متاح")
+    return snapshot.get("smc_text", "⚠️ تحليل SMC غير متاح")
 
-    if school == "ict":
-        return analyze_ict(snapshot)
+if school == "ict":
+    return snapshot.get("ict_text", "⚠️ تحليل ICT غير متاح")
 
-    if school == "wyckoff":
-        return analyze_wyckoff(snapshot)
+if school == "wyckoff":
+    return snapshot.get("wyckoff_text", "⚠️ تحليل Wyckoff غير متاح")
 
-    if school == "harmonic":
-        return analyze_harmonic(snapshot)
+if school == "harmonic":
+    return snapshot.get("harmonic_text", "⚠️ تحليل Harmonic غير متاح")
 
-    if school == "time":
-        return analyze_time(snapshot)
+if school == "time":
+    return snapshot.get("time_text", "⚠️ تحليل Time غير متاح")
 
-    if school in ("volume", "volatility"):
-        return analyze_volume_volatility(snapshot)
+if school in ("volume", "volatility"):
+    return snapshot.get("volume_text", "⚠️ تحليل Volume غير متاح")
 
-    if school in ("risk", "risk_position"):
-        return analyze_risk_position(snapshot)
+if school in ("risk", "risk_position"):
+    return snapshot.get("risk_text", "⚠️ تحليل Risk غير متاح")
 
-    if school == "all":
-        return analyze_all_schools(snapshot)
-
+if school == "all":
+    return snapshot.get("all_text", "⚠️ تحليل ALL غير متاح")
+    
     return "❌ مدرسة التحليل غير معروفة."
