@@ -4730,4 +4730,4 @@ except Exception:
     if school == "all":
         return analyze_all_schools(snapshot)
 
-    return "❌ مدرسة التحليل غير مدعومة حاليًا."
+    return "❌ مدرسة التحليل غير معروفة."
