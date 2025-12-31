@@ -4705,11 +4705,8 @@ def format_school_entry(symbol: str, school: str) -> str:
     # School Router
     # =====================
 
-    if school == "smc":
+    if if school == "smc":
     return snapshot.get("smc_text", "⚠️ تحليل SMC غير متاح")
-
-if school == "ict":
-    return snapshot.get("ict_text", "⚠️ تحليل ICT غير متاح")
 
 if school == "wyckoff":
     return snapshot.get("wyckoff_text", "⚠️ تحليل Wyckoff غير متاح")
@@ -4728,5 +4725,5 @@ if school in ("risk", "risk_position"):
 
 if school == "all":
     return snapshot.get("all_text", "⚠️ تحليل ALL غير متاح")
-    
-    return "❌ مدرسة التحليل غير معروفة."
+
+return "❌ مدرسة التحليل غير معروفة."
