@@ -4700,7 +4700,7 @@ except Exception:
 
     
     if not snapshot:
-    snapshot = fetch_symbol_snapshot(symbol)
+        snapshot = fetch_symbol_snapshot(symbol)
 
     # =========================
     # School Router (واضح وصريح)
