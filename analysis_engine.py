@@ -4694,7 +4694,7 @@ def format_school_entry(symbol: str, school: str) -> str:
 try:
     snapshot = compute_smart_market_snapshot()
     if isinstance(snapshot, dict):
-    snapshot["symbol"] = symbol
+        snapshot["symbol"] = symbol
 except Exception:
     snapshot = None
 
