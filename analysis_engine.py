@@ -1457,42 +1457,43 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
 
         for i, p in enumerate(patterns[:3], 1):
 
-    # فلترة: confirmed و completed فقط
-    if p["status"] not in ("confirmed", "completed"):
-        continue
+            # فلترة: confirmed و completed فقط
+            if p.get("status") not in ("confirmed", "completed"):
+                continue
 
-    # 🚨 Harmonic Alert (confirmed فقط)
-    alert_msg = check_and_send_harmonic_alert(p, snapshot)
-    if alert_msg:
-        send_alert(alert_msg)
+            # 🚨 Harmonic Alert (مرة واحدة فقط – بالكاش)
+            alert_msg = check_and_send_harmonic_alert(p, snapshot)
+            if alert_msg:
+                send_alert(alert_msg)
 
-    # =====================
-    # Status Header
-    # =====================
-    if p["status"] == "completed":
-        msg.append(f"#{i} 🔥 نموذج مكتمل")
-    else:
-        msg.append(f"#{i} ✅ نموذج مؤكَّد")
+            # =====================
+            # Status Header
+            # =====================
+            if p["status"] == "completed":
+                msg.append(f"#{i} 🔥 نموذج مكتمل")
+            else:
+                msg.append(f"#{i} ✅ نموذج مؤكَّد")
 
-    # =====================
-    # Core Info
-    # =====================
-    msg.append(f"🔹 النموذج: {p['pattern']} ({p['direction']})")
-    msg.append(f"⭐ القوة: {p['confidence']}%")
-    msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
-    msg.append(f"📐 C: {p['point_c']} | D: {p['point_d']}")
+            # =====================
+            # Core Info
+            # =====================
+            msg.append(f"🔹 النموذج: {p['pattern']} ({p['direction']})")
+            msg.append(f"⭐ القوة: {p['confidence']}%")
+            msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
+            msg.append(f"📐 C: {p['point_c']} | D: {p['point_d']}")
 
-    # =====================
-    # Trade Info
-    # =====================
-    if p["status"] == "completed":
-        msg.append(f"🎯 Targets: {p['targets']}")
-        msg.append(f"🛑 Stop Loss: {p['stop_loss']}")
-        msg.append("✅ صالح للإدارة بعد التأكيد")
-    else:
-        msg.append("⚠️ تأكيد مبدئي – انتظر سلوك سعري مناسب")
+            # =====================
+            # Trade Info
+            # =====================
+            if p["status"] == "completed":
+                msg.append(f"🎯 Targets: {p['targets']}")
+                msg.append(f"🛑 Stop Loss: {p['stop_loss']}")
+                msg.append("✅ صالح للإدارة بعد التأكيد")
+            else:
+                msg.append("⚠️ تأكيد مبدئي – انتظر سلوك سعري مناسب")
 
-    msg.append("")
+            msg.append("")
+
         return "\n".join(msg)
 
     # =====================
