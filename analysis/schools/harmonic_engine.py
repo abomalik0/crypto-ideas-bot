@@ -3,14 +3,20 @@ HARMONIC SCHOOL – CORE ENGINE
 ============================
 
 • Detect harmonic patterns using swing points
-• Validate Fibonacci ratios
+• Validate Fibonacci ratios (RELAXED)
 • Build PRZ zones
 • Generate targets & stop loss
-• Pure Harmonic logic only (no SMC / no ICT)
+• Pure Harmonic logic only
 """
 
 from typing import List, Dict, Any
-import math
+
+
+# =========================
+# Global Settings
+# =========================
+
+FIB_TOLERANCE = 0.15   # 🔥 relaxed tolerance
 
 
 # =========================
@@ -23,30 +29,26 @@ def _fib_ratio(a: float, b: float) -> float:
     return abs(b / a)
 
 
-def _in_range(value: float, low: float, high: float, tolerance: float = 0.03) -> bool:
-    return (low - tolerance) <= value <= (high + tolerance)
+def _in_range(value: float, low: float, high: float) -> bool:
+    return (low - FIB_TOLERANCE) <= value <= (high + FIB_TOLERANCE)
 
 
 def _determine_direction(C: float, D: float) -> str:
-    if D < C:
-        return "bullish"
-    elif D > C:
-        return "bearish"
-    return "neutral"
+    return "bullish" if D < C else "bearish"
 
 
 def _strength_label(confidence: float) -> str:
-    if confidence >= 85:
+    if confidence >= 80:
         return "🔥 قوي جدًا"
-    elif confidence >= 70:
+    elif confidence >= 60:
         return "✅ قوي"
-    elif confidence >= 55:
+    elif confidence >= 40:
         return "⚠️ متوسط"
     return "❌ ضعيف"
 
 
 # =========================
-# Harmonic Pattern Rules
+# Harmonic Rules
 # =========================
 
 HARMONIC_RULES = {
@@ -84,7 +86,7 @@ HARMONIC_RULES = {
 
 
 # =========================
-# Core Harmonic Analyzer
+# Core Analyzer
 # =========================
 
 def analyze_harmonic(
@@ -92,16 +94,9 @@ def analyze_harmonic(
     timeframe: str,
     swings: List[float],
 ) -> Dict[str, Any]:
-    """
-    swings = [X, A, B, C, D]
-    """
 
     if not swings or len(swings) < 5:
-        return {
-            "valid": False,
-            "school": "harmonic",
-            "reason": "Not enough swing points",
-        }
+        return {"valid": False}
 
     X, A, B, C, D = swings[-5:]
 
@@ -118,8 +113,9 @@ def analyze_harmonic(
         "AD": _fib_ratio(XA, AD),
     }
 
-    detected_pattern = None
-    confidence = 0.0
+    best_pattern = None
+    best_score = 0
+    best_total = 0
 
     for name, rules in HARMONIC_RULES.items():
         score = 0
@@ -129,46 +125,35 @@ def analyze_harmonic(
             if _in_range(ratios.get(leg, 0), low, high):
                 score += 1
 
-        if score >= total - 1:
-            detected_pattern = name
-            confidence = round((score / total) * 100, 1)
-            break
+        if score > best_score:
+            best_pattern = name
+            best_score = score
+            best_total = total
 
-    if not detected_pattern:
-        return {
-            "valid": False,
-            "school": "harmonic",
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "reason": "No complete harmonic pattern detected",
-        }
+    if best_score < 2:
+        return {"valid": False}
 
+    confidence = round((best_score / best_total) * 100, 1)
     direction = _determine_direction(C, D)
     strength = _strength_label(confidence)
 
     # =========================
-    # PRZ + Targets + Stop
+    # PRZ / Targets / Stop
     # =========================
 
-    prz_low = round(D * 0.995, 2)
-    prz_high = round(D * 1.005, 2)
+    prz = (round(D * 0.995, 2), round(D * 1.005, 2))
+    move = abs(CD)
 
-    bullish_targets = [
-        round(D + abs(CD) * 0.382, 2),
-        round(D + abs(CD) * 0.618, 2),
-        round(D + abs(CD) * 1.0, 2),
-    ]
-
-    bearish_targets = [
-        round(D - abs(CD) * 0.382, 2),
-        round(D - abs(CD) * 0.618, 2),
-        round(D - abs(CD) * 1.0, 2),
-    ]
+    targets = (
+        [round(D + move * r, 2) for r in (0.382, 0.618, 1.0)]
+        if direction == "bullish"
+        else [round(D - move * r, 2) for r in (0.382, 0.618, 1.0)]
+    )
 
     stop_loss = (
-        round(D - abs(CD) * 0.236, 2)
+        round(D - move * 0.236, 2)
         if direction == "bullish"
-        else round(D + abs(CD) * 0.236, 2)
+        else round(D + move * 0.236, 2)
     )
 
     return {
@@ -176,19 +161,13 @@ def analyze_harmonic(
         "school": "harmonic",
         "symbol": symbol,
         "timeframe": timeframe,
-        "pattern": detected_pattern,
+        "pattern": best_pattern,
         "confidence": confidence,
         "strength": strength,
         "direction": direction,
-        "points": {
-            "X": round(X, 2),
-            "A": round(A, 2),
-            "B": round(B, 2),
-            "C": round(C, 2),
-            "D": round(D, 2),
-        },
-        "ratios": {k: round(v, 3) for k, v in ratios.items()},
-        "prz": (prz_low, prz_high),
-        "targets": bullish_targets if direction == "bullish" else bearish_targets,
+        "points": {"X": X, "A": A, "B": B, "C": C, "D": D},
+        "ratios": ratios,
+        "prz": prz,
+        "targets": targets,
         "stop_loss": stop_loss,
     }
