@@ -5,7 +5,7 @@ HARMONIC SCANNER
 • Scan multiple swing windows
 • Detect forming, confirmed & completed harmonic patterns
 • Rank patterns by confidence
-• Pure harmonic logic (no SMC / ICT)
+• Relaxed logic for backtesting & discovery
 """
 
 from typing import List, Dict, Any
@@ -13,12 +13,12 @@ from .harmonic_engine import analyze_harmonic
 
 
 # =========================
-# Thresholds
+# Thresholds (RELAXED)
 # =========================
 
-FORMING_THRESHOLD = 30      # Minimum confidence to show forming pattern
-CONFIRMED_THRESHOLD = 55    # Confirmed harmonic
-COMPLETED_THRESHOLD = 80    # Completed harmonic
+FORMING_THRESHOLD = 20       # كان 30 → أخف
+CONFIRMED_THRESHOLD = 45     # كان 55
+COMPLETED_THRESHOLD = 70     # كان 80
 
 
 # =========================
@@ -33,23 +33,6 @@ def scan_harmonic_patterns(
     """
     Scan all possible 5-swing combinations
     and return detected harmonic patterns.
-
-    Output:
-    [
-        {
-            pattern: str,
-            direction: BUY | SELL,
-            confidence: float,
-            status: forming | confirmed | completed,
-            confirmed: bool,
-            prz: (low, high),
-            point_c: float,
-            point_d: float,
-            d_index: int,
-            targets: list,
-            stop_loss: float | None
-        }
-    ]
     """
 
     patterns: List[Dict[str, Any]] = []
@@ -65,8 +48,6 @@ def scan_harmonic_patterns(
     # =========================
     for i in range(len(swings) - 4):
         subset = swings[i:i + 5]
-
-        # 🔹 D index = آخر swing في المجموعة
         d_index = i + 4
 
         # Analyze harmonic structure
@@ -76,13 +57,16 @@ def scan_harmonic_patterns(
             swings=subset,
         )
 
-        if not result or not result.get("valid"):
+        if not result:
+            continue
+
+        if not result.get("pattern"):
             continue
 
         confidence = float(result.get("confidence", 0.0))
 
         # =========================
-        # Base Status by Confidence
+        # Status by Confidence
         # =========================
         if confidence >= COMPLETED_THRESHOLD:
             status = "completed"
@@ -94,10 +78,11 @@ def scan_harmonic_patterns(
             continue
 
         # =========================
-        # Direction Logic
+        # Direction Logic (FIXED)
         # =========================
-        # D < C → BUY
-        # D > C → SELL
+        # Harmonic logic:
+        # Last leg down → BUY
+        # Last leg up   → SELL
         direction = "BUY" if subset[-1] < subset[-2] else "SELL"
 
         # =========================
@@ -105,21 +90,31 @@ def scan_harmonic_patterns(
         # =========================
         point_c = subset[3]
         point_d = subset[4]
+
         confirmed = False
-
-        if direction == "BUY" and point_d > point_c:
+        if direction == "BUY" and point_d <= point_c:
             confirmed = True
-        elif direction == "SELL" and point_d < point_c:
+        elif direction == "SELL" and point_d >= point_c:
             confirmed = True
 
-        # Upgrade forming → confirmed if price confirms
+        # Upgrade forming → confirmed
         if confirmed and status == "forming":
             status = "confirmed"
 
         # =========================
+        # Targets / SL
+        # =========================
+        targets = []
+        stop_loss = None
+
+        if status in ("confirmed", "completed"):
+            targets = result.get("targets", [])
+            stop_loss = result.get("stop_loss")
+
+        # =========================
         # Store Pattern
         # =========================
-        pattern_data = {
+        patterns.append({
             "pattern": result.get("pattern"),
             "direction": direction,
             "confidence": confidence,
@@ -128,15 +123,10 @@ def scan_harmonic_patterns(
             "prz": result.get("prz"),
             "point_c": point_c,
             "point_d": point_d,
-
-            # ✅ الإضافة المهمة للباكتيست
             "d_index": d_index,
-
-            "targets": result.get("targets", []) if status == "completed" else [],
-            "stop_loss": result.get("stop_loss") if status == "completed" else None,
-        }
-
-        patterns.append(pattern_data)
+            "targets": targets,
+            "stop_loss": stop_loss,
+        })
 
     # =========================
     # Sort strongest first
