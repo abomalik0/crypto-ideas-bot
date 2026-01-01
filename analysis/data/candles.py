@@ -18,8 +18,11 @@ def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500)
     """
     Priority:
     1) Load from CSV if exists
+       - auto-repeat candles to reach optimal size (240)
     2) Fallback to Binance API
     """
+
+    TARGET_SIZE = 240  # ⭐ أفضل عدد لاختبار الهارمونيك
 
     # =====================
     # 1️⃣ Try CSV first
@@ -38,7 +41,23 @@ def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500)
                     "close": float(row["close"]),
                 })
 
-        print(f"📁 Loaded {len(candles)} candles from CSV")
+        if not candles:
+            print("❌ CSV exists but empty")
+            return []
+
+        original_len = len(candles)
+
+        # 🔁 Repeat candles if too few
+        if len(candles) < TARGET_SIZE:
+            repeat_factor = (TARGET_SIZE // len(candles)) + 1
+            candles = candles * repeat_factor
+
+        candles = candles[:TARGET_SIZE]
+
+        print(
+            f"📁 Loaded {original_len} candles from CSV "
+            f"(expanded to {len(candles)})"
+        )
         return candles
 
     # =====================
