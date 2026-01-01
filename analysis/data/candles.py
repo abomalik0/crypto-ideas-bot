@@ -1,3 +1,5 @@
+import csv
+import os
 import requests
 
 BINANCE_URL = "https://api.binance.com/api/v3/klines"
@@ -11,43 +13,57 @@ TF_MAP = {
     "1d": "1d",
 }
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; CryptoIdeasBot/1.0)",
-    "Accept": "application/json",
-}
-
 
 def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500):
     """
-    Fetch historical candles from Binance.
-    Returns list of dicts: open, high, low, close
+    Priority:
+    1) Load from CSV if exists
+    2) Fallback to Binance API
     """
 
+    # =====================
+    # 1️⃣ Try CSV first
+    # =====================
+    csv_path = f"data/{symbol}_{timeframe}.csv"
+
+    if os.path.exists(csv_path):
+        candles = []
+        with open(csv_path, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                candles.append({
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
+                    "close": float(row["close"]),
+                })
+
+        print(f"📁 Loaded {len(candles)} candles from CSV")
+        return candles
+
+    # =====================
+    # 2️⃣ Fallback Binance
+    # =====================
     interval = TF_MAP.get(timeframe)
     if not interval:
         raise ValueError(f"Unsupported timeframe: {timeframe}")
 
     params = {
-        "symbol": symbol.upper(),
+        "symbol": symbol,
         "interval": interval,
-        "limit": min(limit, 1000),
+        "limit": limit,
     }
 
     try:
-        response = requests.get(
-            BINANCE_URL,
-            params=params,
-            headers=HEADERS,
-            timeout=15
-        )
+        response = requests.get(BINANCE_URL, params=params, timeout=10)
         response.raise_for_status()
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"❌ Binance API error: {e}")
         return []
 
     data = response.json()
-    candles = []
 
+    candles = []
     for c in data:
         candles.append({
             "open": float(c[1]),
@@ -56,4 +72,5 @@ def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500)
             "close": float(c[4]),
         })
 
+    print(f"🌐 Loaded {len(candles)} candles from Binance")
     return candles
