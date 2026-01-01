@@ -23,7 +23,7 @@ from engine_risk import evaluate_risk_level
 from engine_smart_pulse import update_market_pulse
 from engine_smart_events import detect_institutional_events
 from engine_smart_classifier import classify_alert_level
-
+from analysis.schools.swing_detector import detect_swings
 
 def _safe_logger_info(msg: str, *args) -> None:
     try:
@@ -115,7 +115,19 @@ def compute_smart_market_snapshot(user_symbol: str = "BTCUSDT") -> Optional[Dict
         change_pct = float(price_data.get("change_pct") or 0.0)
         high = float(price_data.get("high") or price)
         low = float(price_data.get("low") or price)
+        
+        # =========================
+        # Swing Detection (Harmonic / Structure)
+        # =========================
+        candles = price_data.get("candles", [])
 
+        swings = []
+        if candles and isinstance(candles, list):
+            try:
+                swings = detect_swings(candles, lookback=3)
+            except Exception:
+                swings = []
+        
         metrics = build_symbol_metrics(
             price=price,
             change_pct=change_pct,
@@ -162,6 +174,7 @@ def compute_smart_market_snapshot(user_symbol: str = "BTCUSDT") -> Optional[Dict
             "zones": zones,
             "adaptive_interval": adaptive_interval,
             "reason": reason_text,
+            "swings": swings,
         }
 
         return snapshot
