@@ -16,8 +16,8 @@ from .harmonic_engine import analyze_harmonic
 # Thresholds
 # =========================
 
-FORMING_THRESHOLD = 60    # % minimum confidence for forming pattern
-COMPLETED_THRESHOLD = 90  # % minimum confidence for completed pattern
+FORMING_THRESHOLD = 40    # % minimum confidence for forming pattern
+COMPLETED_THRESHOLD = 85  # % minimum confidence for completed pattern
 
 
 # =========================
@@ -32,19 +32,6 @@ def scan_harmonic_patterns(
     """
     Scans all possible 5-point swing combinations
     and returns detected harmonic patterns.
-
-    Returns:
-    [
-        {
-            pattern: str,
-            direction: BUY | SELL,
-            confidence: float,
-            status: completed | forming,
-            prz: (low, high),
-            targets: list,
-            stop_loss: float | None
-        }
-    ]
     """
 
     patterns: List[Dict[str, Any]] = []
@@ -73,9 +60,9 @@ def scan_harmonic_patterns(
         elif confidence >= FORMING_THRESHOLD:
             status = "forming"
         else:
-            continue
+            status = "forming"   # 👈 مهم جدًا (علشان دايمًا يظهر قيد التكوين)
 
-        # Direction logic (simple & safe)
+        # Direction logic
         direction = "BUY" if subset[-1] < subset[-2] else "SELL"
 
         patterns.append({
