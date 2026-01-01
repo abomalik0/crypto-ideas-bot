@@ -1402,7 +1402,7 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
         swings = snapshot.get("swings", [])
 
         if not isinstance(swings, list) or len(swings) < 5:
-            return "⚠️ لا توجد Swing Points كافية لتحليل Harmonic."
+            return "⚠️ Harmonic: لا توجد Swing Points كافية للتحليل."
 
         patterns = scan_harmonic_patterns(
             symbol=snapshot["symbol"],
@@ -1412,12 +1412,13 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
 
         if not patterns:
             return (
-                "📘 **مدرسة Harmonic Patterns**\n\n"
-                "⚠️ لا يوجد حالياً نموذج هارمونيك مكتمل أو قوي.\n"
-                "الحركة الحالية أقرب للتذبذب أو التجميع."
+                "📘 **مدرسة Harmonic Patterns – نماذج توافقية**\n\n"
+                "⚠️ لا يوجد حالياً نموذج هارمونيك واضح مكتمل أو قيد التكوين.\n"
+                "الحركة أقرب إلى تذبذب عام.\n\n"
+                "⚠️ هذا التحليل تعليمي فقط وليس توصية مباشرة."
             )
 
-        # ترتيب حسب القوة
+        # ترتيب النماذج حسب القوة
         patterns = sorted(
             patterns,
             key=lambda x: x.get("confidence", 0),
@@ -1427,16 +1428,27 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
         top_patterns = patterns[:3]
 
         msg = []
-        msg.append("📘 **مدرسة Harmonic Patterns**\n")
+        msg.append("📘 **مدرسة Harmonic Patterns – نماذج توافقية**\n")
 
         for i, p in enumerate(top_patterns, 1):
-            msg.append(f"🔹 **نموذج #{i}**")
-            msg.append(f"🔷 النموذج: {p.get('pattern')} ({p.get('direction')})")
-            msg.append(f"⭐️ القوة: {p.get('confidence')}%")
-            msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
-            msg.append(f"🎯 Targets: {p.get('targets')}")
-            msg.append(f"🛑 Stop: {p.get('stop_loss')}")
+            status_icon = "✅" if p["status"] == "completed" else "🟡"
+            status_text = "مكتمل" if p["status"] == "completed" else "قيد التكوين"
+
+            msg.append(f"{status_icon} **نموذج #{i}**")
+            msg.append(f"• النموذج: {p['pattern']} ({p['direction']})")
+            msg.append(f"• الحالة: {status_text}")
+            msg.append(f"• القوة: {p['confidence']}%")
+            msg.append(f"• PRZ: {p['prz'][0]} → {p['prz'][1]}")
+
+            if p["status"] == "completed":
+                msg.append(f"• Targets: {p['targets']}")
+                msg.append(f"• Stop Loss: {p['stop_loss']}")
+            else:
+                msg.append("⚠️ لا دخول الآن – في انتظار اكتمال النقطة D")
+
             msg.append("")
+
+        msg.append("⚠️ هذا التحليل تعليمي فقط وليس توصية مباشرة بالشراء أو البيع.")
 
         return "\n".join(msg)
 
