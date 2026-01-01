@@ -1,61 +1,50 @@
-"""
-HARMONIC SCHOOL – MULTI PATTERN SCANNER
-======================================
-
-• Scan ALL possible harmonic patterns
-• Works on swing sequences
-• Uses core harmonic engine
-"""
-
 from typing import List, Dict, Any
-from analysis.schools.harmonic_engine import analyze_harmonic
+from .harmonic_engine import analyze_harmonic
 
+FORMING_THRESHOLD = 60   # %
+COMPLETED_THRESHOLD = 90 # %
 
 def scan_harmonic_patterns(
     symbol: str,
     timeframe: str,
     swings: List[float],
-    min_confidence: float = 60.0,
 ) -> List[Dict[str, Any]]:
-    """
-    Scan all possible harmonic patterns from swings list.
 
-    swings: [p1, p2, p3, p4, p5, p6, ...]
-    """
+    patterns = []
 
-    results: List[Dict[str, Any]] = []
-
-    if not swings or len(swings) < 5:
-        return results
-
-    # Sliding window scan
+    # نلف على كل 5 Swings محتملة
     for i in range(len(swings) - 4):
-        window = swings[i : i + 5]
+        subset = swings[i:i + 5]
 
-        analysis = analyze_harmonic(
+        result = analyze_harmonic(
             symbol=symbol,
             timeframe=timeframe,
-            swings=window,
+            swings=subset,
         )
 
-        if not analysis.get("valid"):
+        if not result.get("valid"):
             continue
 
-        confidence = analysis.get("confidence", 0.0)
-        if confidence < min_confidence:
+        confidence = result.get("confidence", 0)
+
+        if confidence >= COMPLETED_THRESHOLD:
+            status = "completed"
+        elif confidence >= FORMING_THRESHOLD:
+            status = "forming"
+        else:
             continue
 
-        # Determine pattern direction
-        X = analysis["points"]["X"]
-        D = analysis["points"]["D"]
-        direction = "bullish" if D < X else "bearish"
+        patterns.append({
+            "pattern": result["pattern"],
+            "direction": "BUY" if subset[-1] < subset[-2] else "SELL",
+            "confidence": confidence,
+            "status": status,
+            "prz": result.get("prz"),
+            "targets": result.get("targets", []),
+            "stop_loss": result.get("stop_loss"),
+        })
 
-        analysis["direction"] = direction
-        analysis["swing_index"] = i
+    # ترتيب من الأقوى للأضعف
+    patterns.sort(key=lambda x: x["confidence"], reverse=True)
 
-        results.append(analysis)
-
-    # Sort strongest first
-    results.sort(key=lambda x: x.get("confidence", 0), reverse=True)
-
-    return results
+    return patterns
