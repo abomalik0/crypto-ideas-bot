@@ -1375,88 +1375,88 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
 def dispatch_school_report(school: str, snapshot: dict) -> str:
     school = (school or "smc").lower()
 
-    # ======================
+    # =====================
     # SMC
-    # ======================
+    # =====================
     if school == "smc":
         return analyze_smc(snapshot)
 
-    # ======================
+    # =====================
     # ICT
-    # ======================
+    # =====================
     elif school == "ict":
         return analyze_ict(snapshot)
 
-    # ======================
+    # =====================
     # Wyckoff
-    # ======================
+    # =====================
     elif school == "wyckoff":
         return analyze_wyckoff(snapshot)
 
-    # ======================
+    # =====================
     # Harmonic (FULL SCHOOL)
-    # ======================
+    # =====================
     elif school == "harmonic":
-    from analysis.schools.harmonic_scanner import scan_harmonic_patterns
+        from analysis.schools.harmonic_scanner import scan_harmonic_patterns
 
-    swings = snapshot.get("swings", [])
+        swings = snapshot.get("swings", [])
 
-    if not isinstance(swings, list) or len(swings) < 5:
-        return (
-            "📘 مدرسة Harmonic Patterns – نماذج توافقية\n"
-            "⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n\n"
-            "❌ بيانات غير كافية لتحليل الهارمونيك."
+        if not isinstance(swings, list) or len(swings) < 5:
+            return (
+                "📘 مدرسة Harmonic Patterns – نماذج توافقية\n"
+                "⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n\n"
+                "❌ بيانات غير كافية لتحليل الهارمونيك."
+            )
+
+        patterns = scan_harmonic_patterns(
+            symbol=snapshot["symbol"],
+            timeframe=snapshot.get("timeframe", "1h"),
+            swings=swings,
         )
 
-    patterns = scan_harmonic_patterns(
-        symbol=snapshot["symbol"],
-        timeframe=snapshot.get("timeframe", "1h"),
-        swings=swings,
-    )
+        if not patterns:
+            return (
+                "📘 مدرسة Harmonic Patterns – نماذج توافقية\n"
+                "⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n\n"
+                "لا يوجد حالياً نمط هارمونيك واضح مكتمل، "
+                "الحركة أقرب لتذبذب عام."
+            )
 
-    if not patterns:
-        return (
-            "📘 مدرسة Harmonic Patterns – نماذج توافقية\n"
-            "⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n\n"
-            "❌ لا يوجد حالياً نمط هارمونيك واضح (مكتمل أو قيد التكوين)\n"
-            "الحركة الحالية أقرب لتذبذب عام."
-        )
+        msg = []
+        msg.append("📘 مدرسة Harmonic Patterns – نماذج توافقية")
+        msg.append("⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n")
 
-    msg = []
-    msg.append("📘 مدرسة Harmonic Patterns – نماذج توافقية")
-    msg.append("⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n")
+        for i, p in enumerate(patterns[:3], 1):
+            if p["status"] == "completed":
+                msg.append(f"{i}️⃣ 🔥 نموذج مكتمل")
+            else:
+                msg.append(f"{i}️⃣ ⏳ نموذج قيد التكوين")
 
-    for i, p in enumerate(patterns[:3], 1):
-        if p["status"] == "completed":
-            msg.append(f"#{i} 🔥 نموذج مكتمل")
-        else:
-            msg.append(f"#{i} ⏳ نموذج قيد التكوين")
+            msg.append(f"🔹 النموذج: {p['pattern']} ({p['direction']})")
+            msg.append(f"⭐ القوة: {p['confidence']}%")
+            msg.append(f"📍 PRZ: {p['prz'][0]} → {p['prz'][1]}")
 
-        msg.append(f"• النموذج: {p['pattern']} ({p['direction']})")
-        msg.append(f"• القوة: {p['confidence']}%")
-        msg.append(f"• PRZ: {p['prz'][0]} → {p['prz'][1]}")
+            if p["status"] == "completed":
+                msg.append(f"🎯 Targets: {p['targets']}")
+                msg.append(f"🛑 Stop Loss: {p['stop_loss']}")
+            else:
+                msg.append("⏳ في انتظار اكتمال النقطة D")
 
-        if p["status"] == "completed":
-            msg.append(f"• Targets: {p['targets']}")
-            msg.append(f"• Stop Loss: {p['stop_loss']}")
-        else:
-            msg.append("• في انتظار اكتمال النقطة D")
+            msg.append("")
 
-        msg.append("")
+        return "\n".join(msg)
 
-    return "\n".join(msg)
-
-    # ======================
+    # =====================
     # Time
-    # ======================
+    # =====================
     elif school == "time":
         return analyze_time(snapshot)
 
-    # ======================
+    # =====================
     # Unknown
-    # ======================
+    # =====================
     else:
-        return "❌ المدرسة غير مدعومة حاليًا."
+        return "❌ المدرسة غير مدعومة حالياً."
         
 # ==============================
 #   تقرير السوق /market
