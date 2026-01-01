@@ -2,62 +2,59 @@ def backtest_harmonic_patterns(patterns, candles):
     results = []
 
     for p in patterns:
+        status = p["status"]
+        direction = p["direction"]
 
-        # نختبر النماذج المكتملة فقط
-        if p.get("status") != "completed":
-            continue
-
-        # حماية
-        if "d_index" not in p:
-            continue
-
-        d_index = p["d_index"]
-
-        # ندخل من منتصف PRZ
+        # Entry
         entry = sum(p["prz"]) / 2
-        tp = p["targets"][0] if p.get("targets") else None
-        sl = p.get("stop_loss")
 
-        if tp is None or sl is None:
-            continue
+        # TP / SL logic
+        if status == "completed":
+            tp = p["targets"][0]
+            sl = p["stop_loss"]
+        else:
+            # سلوك سعري فقط
+            rr = abs(p["prz"][1] - p["prz"][0])
+            if direction == "BUY":
+                tp = entry + rr
+                sl = entry - rr
+            else:
+                tp = entry - rr
+                sl = entry + rr
 
         hit_tp = False
         hit_sl = False
+        candles_to_hit = 0
 
-        # =========================
-        # نبدأ الباكتيست بعد شمعة D فقط
-        # =========================
-        future_candles = candles[d_index + 1:]
-
-        for c in future_candles:
+        for i, c in enumerate(candles):
             high = c["high"]
             low = c["low"]
 
-            # ===== BUY =====
-            if p["direction"] == "BUY":
+            if direction == "BUY":
                 if low <= sl:
                     hit_sl = True
+                    candles_to_hit = i
                     break
                 if high >= tp:
                     hit_tp = True
+                    candles_to_hit = i
                     break
-
-            # ===== SELL =====
-            elif p["direction"] == "SELL":
+            else:
                 if high >= sl:
                     hit_sl = True
+                    candles_to_hit = i
                     break
                 if low <= tp:
                     hit_tp = True
+                    candles_to_hit = i
                     break
 
         results.append({
             "pattern": p["pattern"],
-            "direction": p["direction"],
-            "entry": entry,
-            "tp": tp,
-            "sl": sl,
-            "result": "WIN" if hit_tp else "LOSS" if hit_sl else "OPEN"
+            "status": status,
+            "direction": direction,
+            "result": "WIN" if hit_tp else "LOSS" if hit_sl else "OPEN",
+            "candles_to_hit": candles_to_hit if hit_tp or hit_sl else None
         })
 
     return results
