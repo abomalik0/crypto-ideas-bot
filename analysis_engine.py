@@ -1385,13 +1385,13 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
         return analyze_wyckoff(snapshot)
 
     elif school == "harmonic":
-    from analysis.harmonic_engine import analyze_harmonic
-    return analyze_harmonic(
-        symbol=snapshot["symbol"],
-        timeframe=snapshot.get("timeframe", "1h"),
-        swings=snapshot.get("swings", [])
-    )
-    
+        from analysis.harmonic_engine import analyze_harmonic
+        return analyze_harmonic(
+            symbol=snapshot["symbol"],
+            timeframe=snapshot.get("timeframe", "1h"),
+            swings=snapshot.get("swings", [])
+        )
+
     elif school == "time":
         return analyze_time(snapshot)
 
