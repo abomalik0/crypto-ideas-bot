@@ -1474,7 +1474,7 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
         msg.append("📘 مدرسة Harmonic Patterns – نماذج توافقية")
         msg.append("⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n")
 
-        for i, p in enumerate(patterns[:3], 1):
+        for i, p in enumerate(patterns[:5], 1):
 
             # فلترة: confirmed و completed فقط
             if p.get("status") not in ("confirmed", "completed"):
