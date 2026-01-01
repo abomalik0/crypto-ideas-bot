@@ -9,7 +9,36 @@ LAST_CONFIRMED_HARMONIC = {}
 # Harmonic Alert Cache
 # =====================
 LAST_HARMONIC_ALERT = {}
+def check_and_send_harmonic_alert(p: dict, snapshot: dict):
+    """
+    Send alert once per confirmed harmonic pattern
+    """
+    if p.get("status") != "confirmed":
+        return None
 
+    symbol = snapshot.get("symbol")
+    timeframe = snapshot.get("timeframe", "1h")
+
+    key = f"{symbol}_{timeframe}_{p['pattern']}_{p['direction']}"
+
+    if LAST_HARMONIC_ALERT.get(key):
+        return None  # already alerted
+
+    LAST_HARMONIC_ALERT[key] = {
+        "time": datetime.utcnow(),
+        "price": snapshot.get("core", {}).get("price"),
+    }
+
+    msg = []
+    msg.append("🚨 Harmonic Alert (Confirmed)")
+    msg.append(f"📌 {symbol} | TF: {timeframe}")
+    msg.append(f"🔹 Pattern: {p['pattern']} ({p['direction']})")
+    msg.append(f"⭐ Confidence: {p['confidence']}%")
+    msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
+    msg.append(f"📐 C: {p['point_c']} | D: {p['point_d']}")
+    msg.append("⚠️ تنبيه تعليمى وليس توصية مباشرة")
+
+    return "\n".join(msg)
 # ==============================
 #   تجهيز رمز العملة + المنصات
 # ==============================
@@ -1428,38 +1457,42 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
 
         for i, p in enumerate(patterns[:3], 1):
 
-            # ❗ فلترة: اعرض confirmed و completed فقط
-            if p["status"] not in ("confirmed", "completed"):
-                continue
+    # فلترة: confirmed و completed فقط
+    if p["status"] not in ("confirmed", "completed"):
+        continue
 
-            # =====================
-            # Status Header
-            # =====================
-            if p["status"] == "completed":
-                msg.append(f"#{i} 🔥 نموذج مكتمل")
-            else:
-                msg.append(f"#{i} ✅ نموذج مؤكَّد")
+    # 🚨 Harmonic Alert (confirmed فقط)
+    alert_msg = check_and_send_harmonic_alert(p, snapshot)
+    if alert_msg:
+        send_alert(alert_msg)
 
-            # =====================
-            # Core Info
-            # =====================
-            msg.append(f"🔹 النموذج: {p['pattern']} ({p['direction']})")
-            msg.append(f"⭐ القوة: {p['confidence']}%")
-            msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
-            msg.append(f"📐 C: {p['point_c']} | D: {p['point_d']}")
+    # =====================
+    # Status Header
+    # =====================
+    if p["status"] == "completed":
+        msg.append(f"#{i} 🔥 نموذج مكتمل")
+    else:
+        msg.append(f"#{i} ✅ نموذج مؤكَّد")
 
-            # =====================
-            # Trade Info
-            # =====================
-            if p["status"] == "completed":
-                msg.append(f"🎯 Targets: {p['targets']}")
-                msg.append(f"🛑 Stop Loss: {p['stop_loss']}")
-                msg.append("✅ صالح للإدارة بعد التأكيد")
-            else:
-                msg.append("⚠️ تأكيد مبدئي – انتظر سلوك سعري مناسب")
+    # =====================
+    # Core Info
+    # =====================
+    msg.append(f"🔹 النموذج: {p['pattern']} ({p['direction']})")
+    msg.append(f"⭐ القوة: {p['confidence']}%")
+    msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
+    msg.append(f"📐 C: {p['point_c']} | D: {p['point_d']}")
 
-            msg.append("")
+    # =====================
+    # Trade Info
+    # =====================
+    if p["status"] == "completed":
+        msg.append(f"🎯 Targets: {p['targets']}")
+        msg.append(f"🛑 Stop Loss: {p['stop_loss']}")
+        msg.append("✅ صالح للإدارة بعد التأكيد")
+    else:
+        msg.append("⚠️ تأكيد مبدئي – انتظر سلوك سعري مناسب")
 
+    msg.append("")
         return "\n".join(msg)
 
     # =====================
