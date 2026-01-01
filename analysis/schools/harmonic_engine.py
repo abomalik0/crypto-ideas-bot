@@ -27,6 +27,24 @@ def _in_range(value: float, low: float, high: float, tolerance: float = 0.03) ->
     return (low - tolerance) <= value <= (high + tolerance)
 
 
+def _determine_direction(C: float, D: float) -> str:
+    if D < C:
+        return "bullish"
+    elif D > C:
+        return "bearish"
+    return "neutral"
+
+
+def _strength_label(confidence: float) -> str:
+    if confidence >= 85:
+        return "🔥 قوي جدًا"
+    elif confidence >= 70:
+        return "✅ قوي"
+    elif confidence >= 55:
+        return "⚠️ متوسط"
+    return "❌ ضعيف"
+
+
 # =========================
 # Harmonic Pattern Rules
 # =========================
@@ -125,20 +143,33 @@ def analyze_harmonic(
             "reason": "No complete harmonic pattern detected",
         }
 
+    direction = _determine_direction(C, D)
+    strength = _strength_label(confidence)
+
     # =========================
-    # PRZ + Targets
+    # PRZ + Targets + Stop
     # =========================
 
     prz_low = round(D * 0.995, 2)
     prz_high = round(D * 1.005, 2)
 
-    targets = [
+    bullish_targets = [
         round(D + abs(CD) * 0.382, 2),
         round(D + abs(CD) * 0.618, 2),
         round(D + abs(CD) * 1.0, 2),
     ]
 
-    stop_loss = round(D - abs(CD) * 0.236, 2)
+    bearish_targets = [
+        round(D - abs(CD) * 0.382, 2),
+        round(D - abs(CD) * 0.618, 2),
+        round(D - abs(CD) * 1.0, 2),
+    ]
+
+    stop_loss = (
+        round(D - abs(CD) * 0.236, 2)
+        if direction == "bullish"
+        else round(D + abs(CD) * 0.236, 2)
+    )
 
     return {
         "valid": True,
@@ -147,6 +178,8 @@ def analyze_harmonic(
         "timeframe": timeframe,
         "pattern": detected_pattern,
         "confidence": confidence,
+        "strength": strength,
+        "direction": direction,
         "points": {
             "X": round(X, 2),
             "A": round(A, 2),
@@ -156,6 +189,6 @@ def analyze_harmonic(
         },
         "ratios": {k: round(v, 3) for k, v in ratios.items()},
         "prz": (prz_low, prz_high),
-        "targets": targets,
+        "targets": bullish_targets if direction == "bullish" else bearish_targets,
         "stop_loss": stop_loss,
     }
