@@ -1428,7 +1428,6 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
 # ============================
 
 def dispatch_school_report(school: str, snapshot: dict) -> str:
-def dispatch_school_report(school: str, snapshot: dict) -> str:
     school = (school or "smc").lower()
 
     # =====================
