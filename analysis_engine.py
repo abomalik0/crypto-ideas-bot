@@ -1375,17 +1375,28 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
 def dispatch_school_report(school: str, snapshot: dict) -> str:
     school = (school or "smc").lower()
 
+    # ======================
+    # SMC
+    # ======================
     if school == "smc":
         return analyze_smc(snapshot)
 
+    # ======================
+    # ICT
+    # ======================
     elif school == "ict":
         return analyze_ict(snapshot)
 
+    # ======================
+    # Wyckoff
+    # ======================
     elif school == "wyckoff":
         return analyze_wyckoff(snapshot)
 
+    # ======================
+    # Harmonic (FULL SCHOOL)
+    # ======================
     elif school == "harmonic":
-        # ✅ لازم كل ده يكون جوه الـ elif (4 مسافات)
         from analysis.schools.harmonic_scanner import scan_harmonic_patterns
 
         swings = snapshot.get("swings", [])
@@ -1401,26 +1412,43 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
 
         if not patterns:
             return (
-                "📘 مدرسة Harmonic Patterns\n\n"
-                "⚠️ لا يوجد حاليًا نموذج هارمونيك مكتمل أو قوي.\n"
-                "الحركة الحالية أقرب للتذبذب أو التكوين."
+                "📘 **مدرسة Harmonic Patterns**\n\n"
+                "⚠️ لا يوجد حالياً نموذج هارمونيك مكتمل أو قوي.\n"
+                "الحركة الحالية أقرب للتذبذب أو التجميع."
             )
 
-        # 🔥 أقوى نموذج (أعلى Confidence)
-        top = patterns[0]
-
-        return (
-            "📘 مدرسة Harmonic Patterns\n\n"
-            f"🔷 النموذج: {top['pattern']} ({top['direction']})\n"
-            f"⭐️ القوة: {top['confidence']}%\n"
-            f"🎯 PRZ: {top['prz'][0]} → {top['prz'][1]}\n"
-            f"🎯 Targets: {top['targets']}\n"
-            f"🛑 Stop: {top['stop_loss']}"
+        # ترتيب حسب القوة
+        patterns = sorted(
+            patterns,
+            key=lambda x: x.get("confidence", 0),
+            reverse=True
         )
 
+        top_patterns = patterns[:3]
+
+        msg = []
+        msg.append("📘 **مدرسة Harmonic Patterns**\n")
+
+        for i, p in enumerate(top_patterns, 1):
+            msg.append(f"🔹 **نموذج #{i}**")
+            msg.append(f"🔷 النموذج: {p.get('pattern')} ({p.get('direction')})")
+            msg.append(f"⭐️ القوة: {p.get('confidence')}%")
+            msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
+            msg.append(f"🎯 Targets: {p.get('targets')}")
+            msg.append(f"🛑 Stop: {p.get('stop_loss')}")
+            msg.append("")
+
+        return "\n".join(msg)
+
+    # ======================
+    # Time
+    # ======================
     elif school == "time":
         return analyze_time(snapshot)
 
+    # ======================
+    # Unknown
+    # ======================
     else:
         return "❌ المدرسة غير مدعومة حاليًا."
         
