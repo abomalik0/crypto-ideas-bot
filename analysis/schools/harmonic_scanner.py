@@ -16,9 +16,9 @@ from .harmonic_engine import analyze_harmonic
 # Thresholds
 # =========================
 
-FORMING_THRESHOLD = 30     # Minimum confidence to show forming pattern
-CONFIRMED_THRESHOLD = 55   # Confirmation stage
-COMPLETED_THRESHOLD = 80   # Completed harmonic pattern
+FORMING_THRESHOLD = 30      # Minimum confidence to show forming pattern
+CONFIRMED_THRESHOLD = 55    # Confirmed harmonic
+COMPLETED_THRESHOLD = 80    # Completed harmonic
 
 
 # =========================
@@ -41,6 +41,7 @@ def scan_harmonic_patterns(
             direction: BUY | SELL,
             confidence: float,
             status: forming | confirmed | completed,
+            confirmed: bool,
             prz: (low, high),
             point_c: float,
             point_d: float,
@@ -64,7 +65,6 @@ def scan_harmonic_patterns(
     for i in range(len(swings) - 4):
         subset = swings[i:i + 5]
 
-        # Analyze harmonic structure
         result = analyze_harmonic(
             symbol=symbol,
             timeframe=timeframe,
@@ -91,21 +91,23 @@ def scan_harmonic_patterns(
         # =========================
         # Direction Logic
         # =========================
-        # D < C → BUY (Bullish reversal)
-        # D > C → SELL (Bearish reversal)
         direction = "BUY" if subset[-1] < subset[-2] else "SELL"
 
         # =========================
-        # Confirmation Logic (Price Action)
+        # Confirmation Logic (Strong)
         # =========================
-        if status == "forming":
-            last_price = subset[-1]
-            prev_price = subset[-2]
+        point_c = subset[3]
+        point_d = subset[4]
+        confirmed = False
 
-            if direction == "BUY" and last_price > prev_price:
-                status = "confirmed"
-            elif direction == "SELL" and last_price < prev_price:
-                status = "confirmed"
+        if direction == "BUY" and point_d > point_c:
+            confirmed = True
+        elif direction == "SELL" and point_d < point_c:
+            confirmed = True
+
+        # Adjust status based on confirmation
+        if confirmed and status == "forming":
+            status = "confirmed"
 
         # =========================
         # Store Pattern
@@ -115,9 +117,10 @@ def scan_harmonic_patterns(
             "direction": direction,
             "confidence": confidence,
             "status": status,
+            "confirmed": confirmed,
             "prz": result.get("prz"),
-            "point_c": subset[3],
-            "point_d": subset[4],
+            "point_c": point_c,
+            "point_d": point_d,
             "targets": result.get("targets", []) if status == "completed" else [],
             "stop_loss": result.get("stop_loss") if status == "completed" else None,
         }
