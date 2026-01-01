@@ -1421,6 +1421,9 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
 
         for i, p in enumerate(patterns[:3], 1):
 
+    if p["status"] not in ("confirmed", "completed"):
+        continue
+
             # =====================
             # Status Header
             # =====================
