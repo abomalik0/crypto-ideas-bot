@@ -16,8 +16,8 @@ from .harmonic_engine import analyze_harmonic
 # Thresholds
 # =========================
 
-FORMING_THRESHOLD = 40     # Minimum confidence to show forming pattern
-COMPLETED_THRESHOLD = 85   # Minimum confidence to mark pattern as completed
+FORMING_THRESHOLD = 30     # Minimum confidence to show forming pattern
+COMPLETED_THRESHOLD = 80   # Minimum confidence to mark pattern as completed
 
 
 # =========================
