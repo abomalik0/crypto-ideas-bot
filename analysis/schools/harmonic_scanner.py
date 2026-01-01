@@ -3,7 +3,7 @@ HARMONIC SCANNER
 ================
 
 • Scan multiple swing windows
-• Detect completed & forming harmonic patterns
+• Detect forming & completed harmonic patterns
 • Rank patterns by confidence
 • Pure harmonic logic (no SMC / ICT)
 """
@@ -33,14 +33,16 @@ def scan_harmonic_patterns(
     Scan all possible 5-swing combinations
     and return detected harmonic patterns.
 
-    Output structure:
+    Output:
     [
         {
             pattern: str,
             direction: BUY | SELL,
             confidence: float,
-            status: completed | forming,
+            status: forming | completed,
             prz: (low, high),
+            point_c: float,
+            point_d: float,
             targets: list,
             stop_loss: float | None
         }
@@ -49,11 +51,15 @@ def scan_harmonic_patterns(
 
     patterns: List[Dict[str, Any]] = []
 
-    # Safety check
+    # =========================
+    # Safety Check
+    # =========================
     if not isinstance(swings, list) or len(swings) < 5:
         return patterns
 
-    # Loop over all possible 5-swing windows
+    # =========================
+    # Loop on swing windows
+    # =========================
     for i in range(len(swings) - 4):
         subset = swings[i:i + 5]
 
@@ -64,7 +70,7 @@ def scan_harmonic_patterns(
             swings=subset,
         )
 
-        # Skip invalid structures
+        # Skip invalid results
         if not result or not result.get("valid"):
             continue
 
@@ -78,16 +84,16 @@ def scan_harmonic_patterns(
         elif confidence >= FORMING_THRESHOLD:
             status = "forming"
         else:
-            # أقل من كده → لسه محاولة تكوين
-            status = "forming"
+            continue  # Ignore weak patterns
 
         # =========================
         # Direction Logic
         # =========================
+        # آخر حركة: لو D أقل من C → BUY (انعكاس صاعد)
         direction = "BUY" if subset[-1] < subset[-2] else "SELL"
 
         # =========================
-        # Store Result
+        # Store Pattern
         # =========================
         patterns.append({
             "pattern": result.get("pattern"),
@@ -95,6 +101,8 @@ def scan_harmonic_patterns(
             "confidence": confidence,
             "status": status,
             "prz": result.get("prz"),
+            "point_c": subset[3],
+            "point_d": subset[4],
             "targets": result.get("targets", []) if status == "completed" else [],
             "stop_loss": result.get("stop_loss") if status == "completed" else None,
         })
