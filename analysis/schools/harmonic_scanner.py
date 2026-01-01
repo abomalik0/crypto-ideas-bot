@@ -65,6 +65,7 @@ def scan_harmonic_patterns(
     for i in range(len(swings) - 4):
         subset = swings[i:i + 5]
 
+        # Analyze harmonic structure
         result = analyze_harmonic(
             symbol=symbol,
             timeframe=timeframe,
@@ -91,10 +92,12 @@ def scan_harmonic_patterns(
         # =========================
         # Direction Logic
         # =========================
+        # D < C → BUY
+        # D > C → SELL
         direction = "BUY" if subset[-1] < subset[-2] else "SELL"
 
         # =========================
-        # Confirmation Logic (Strong)
+        # Confirmation Logic
         # =========================
         point_c = subset[3]
         point_d = subset[4]
@@ -105,7 +108,7 @@ def scan_harmonic_patterns(
         elif direction == "SELL" and point_d < point_c:
             confirmed = True
 
-        # Adjust status based on confirmation
+        # Upgrade forming → confirmed if price confirms
         if confirmed and status == "forming":
             status = "confirmed"
 
