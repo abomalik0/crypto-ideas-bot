@@ -2,21 +2,22 @@
 
 from collections import defaultdict
 
+from analysis.data.candles import get_historical_candles
 from analysis.schools.harmonic_scanner import scan_harmonic_patterns
 from analysis.schools.harmonic_backtest import backtest_harmonic_patterns
-from analysis.data.candles import get_historical_candles
+from analysis.schools.swing_detector import detect_swings
 
 
 def run_harmonic_backtest(
     symbol="BTCUSDT",
     timeframe="1h",
-    limit=500
+    limit=800
 ):
     print("\n🔍 Running Harmonic Backtest")
-    print("=" * 40)
-    print(f"Symbol: {symbol}")
-    print(f"Timeframe: {timeframe}")
-    print("=" * 40)
+    print("=" * 50)
+    print(f"Symbol    : {symbol}")
+    print(f"Timeframe : {timeframe}")
+    print("=" * 50)
 
     # =====================
     # 1) Get candles
@@ -34,13 +35,23 @@ def run_harmonic_backtest(
     print(f"📊 Candles loaded: {len(candles)}")
 
     # =====================
-    # 2) Scan patterns
+    # 2) Detect swings
+    # =====================
+    swings = detect_swings(candles)
+
+    if not swings or len(swings) < 5:
+        print("❌ Not enough swings detected")
+        return
+
+    print(f"📈 Swings detected: {len(swings)}")
+
+    # =====================
+    # 3) Scan harmonic patterns
     # =====================
     patterns = scan_harmonic_patterns(
         symbol=symbol,
         timeframe=timeframe,
-        swings=None,
-        candles=candles
+        swings=swings
     )
 
     if not patterns:
@@ -50,7 +61,7 @@ def run_harmonic_backtest(
     print(f"📐 Harmonic patterns found: {len(patterns)}")
 
     # =====================
-    # 3) Backtest
+    # 4) Backtest
     # =====================
     results = backtest_harmonic_patterns(patterns, candles)
 
@@ -59,7 +70,7 @@ def run_harmonic_backtest(
         return
 
     # =====================
-    # 4) Global stats
+    # 5) Global stats
     # =====================
     wins = sum(1 for r in results if r["result"] == "WIN")
     losses = sum(1 for r in results if r["result"] == "LOSS")
@@ -67,7 +78,7 @@ def run_harmonic_backtest(
     win_rate = (wins / total * 100) if total else 0
 
     # =====================
-    # 5) Pattern stats
+    # 6) Breakdown stats
     # =====================
     pattern_stats = defaultdict(lambda: {"WIN": 0, "LOSS": 0})
     direction_stats = defaultdict(lambda: {"WIN": 0, "LOSS": 0})
@@ -77,21 +88,21 @@ def run_harmonic_backtest(
         direction_stats[r["direction"]][r["result"]] += 1
 
     # =====================
-    # 6) Report
+    # 7) Summary report
     # =====================
     print("\n📊 BACKTEST SUMMARY")
-    print("=" * 40)
+    print("=" * 50)
     print(f"Total trades : {total}")
     print(f"Wins         : {wins}")
     print(f"Losses       : {losses}")
     print(f"Win rate     : {win_rate:.2f}%")
-    print("=" * 40)
+    print("=" * 50)
 
     # =====================
-    # 7) Pattern breakdown
+    # 8) Pattern performance
     # =====================
     print("\n📐 PERFORMANCE BY PATTERN")
-    print("-" * 40)
+    print("-" * 50)
     for pattern, stat in pattern_stats.items():
         p_total = stat["WIN"] + stat["LOSS"]
         if p_total == 0:
@@ -104,10 +115,10 @@ def run_harmonic_backtest(
         )
 
     # =====================
-    # 8) Direction breakdown
+    # 9) Direction performance
     # =====================
     print("\n📈 PERFORMANCE BY DIRECTION")
-    print("-" * 40)
+    print("-" * 50)
     for direction, stat in direction_stats.items():
         d_total = stat["WIN"] + stat["LOSS"]
         if d_total == 0:
@@ -120,14 +131,12 @@ def run_harmonic_backtest(
         )
 
     # =====================
-    # 9) Detailed trades (اختياري)
+    # 10) Sample trades
     # =====================
-    print("\n🧾 SAMPLE TRADES")
-    print("-" * 40)
-    for r in results[:10]:  # أول 10 صفقات بس
-        print(
-            f"{r['pattern']} | {r['direction']} | {r['result']}"
-        )
+    print("\n🧾 SAMPLE TRADES (First 10)")
+    print("-" * 50)
+    for r in results[:10]:
+        print(f"{r['pattern']} | {r['direction']} | {r['result']}")
 
     print("\n✅ Backtest finished\n")
 
