@@ -5,7 +5,7 @@ from collections import defaultdict
 from analysis.data.candles import get_historical_candles
 from analysis.schools.harmonic_scanner import scan_harmonic_patterns
 from analysis.schools.harmonic_backtest import backtest_harmonic_patterns
-from analysis.schools.swing_detector import detect_swings
+from analysis.schools.swing_engine import detect_swings
 
 
 def run_harmonic_backtest(
@@ -14,13 +14,13 @@ def run_harmonic_backtest(
     limit=800
 ):
     print("\n🔍 Running Harmonic Backtest")
-    print("=" * 50)
+    print("=" * 60)
     print(f"Symbol    : {symbol}")
     print(f"Timeframe : {timeframe}")
-    print("=" * 50)
+    print("=" * 60)
 
     # =====================
-    # 1) Get candles
+    # 1) Load candles
     # =====================
     candles = get_historical_candles(
         symbol=symbol,
@@ -35,9 +35,13 @@ def run_harmonic_backtest(
     print(f"📊 Candles loaded: {len(candles)}")
 
     # =====================
-    # 2) Detect swings
+    # 2) Detect swings (IMPORTANT)
     # =====================
-    swings = detect_swings(candles)
+    swings = detect_swings(
+        candles,
+        lookback=3,
+        min_move=0.002
+    )
 
     if not swings or len(swings) < 5:
         print("❌ Not enough swings detected")
@@ -61,7 +65,7 @@ def run_harmonic_backtest(
     print(f"📐 Harmonic patterns found: {len(patterns)}")
 
     # =====================
-    # 4) Backtest
+    # 4) Backtest patterns
     # =====================
     results = backtest_harmonic_patterns(patterns, candles)
 
@@ -70,7 +74,7 @@ def run_harmonic_backtest(
         return
 
     # =====================
-    # 5) Global stats
+    # 5) Global statistics
     # =====================
     wins = sum(1 for r in results if r["result"] == "WIN")
     losses = sum(1 for r in results if r["result"] == "LOSS")
@@ -91,18 +95,18 @@ def run_harmonic_backtest(
     # 7) Summary report
     # =====================
     print("\n📊 BACKTEST SUMMARY")
-    print("=" * 50)
+    print("=" * 60)
     print(f"Total trades : {total}")
     print(f"Wins         : {wins}")
     print(f"Losses       : {losses}")
     print(f"Win rate     : {win_rate:.2f}%")
-    print("=" * 50)
+    print("=" * 60)
 
     # =====================
-    # 8) Pattern performance
+    # 8) Performance by pattern
     # =====================
     print("\n📐 PERFORMANCE BY PATTERN")
-    print("-" * 50)
+    print("-" * 60)
     for pattern, stat in pattern_stats.items():
         p_total = stat["WIN"] + stat["LOSS"]
         if p_total == 0:
@@ -115,10 +119,10 @@ def run_harmonic_backtest(
         )
 
     # =====================
-    # 9) Direction performance
+    # 9) Performance by direction
     # =====================
     print("\n📈 PERFORMANCE BY DIRECTION")
-    print("-" * 50)
+    print("-" * 60)
     for direction, stat in direction_stats.items():
         d_total = stat["WIN"] + stat["LOSS"]
         if d_total == 0:
@@ -134,11 +138,11 @@ def run_harmonic_backtest(
     # 10) Sample trades
     # =====================
     print("\n🧾 SAMPLE TRADES (First 10)")
-    print("-" * 50)
+    print("-" * 60)
     for r in results[:10]:
         print(f"{r['pattern']} | {r['direction']} | {r['result']}")
 
-    print("\n✅ Backtest finished\n")
+    print("\n✅ Backtest finished successfully\n")
 
 
 # =====================
