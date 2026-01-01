@@ -1397,60 +1397,54 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
     # Harmonic (FULL SCHOOL)
     # ======================
     elif school == "harmonic":
-        from analysis.schools.harmonic_scanner import scan_harmonic_patterns
+    from analysis.schools.harmonic_scanner import scan_harmonic_patterns
 
-        swings = snapshot.get("swings", [])
+    swings = snapshot.get("swings", [])
 
-        if not isinstance(swings, list) or len(swings) < 5:
-            return "⚠️ Harmonic: لا توجد Swing Points كافية للتحليل."
-
-        patterns = scan_harmonic_patterns(
-            symbol=snapshot["symbol"],
-            timeframe=snapshot.get("timeframe", "1h"),
-            swings=swings,
+    if not isinstance(swings, list) or len(swings) < 5:
+        return (
+            "📘 مدرسة Harmonic Patterns – نماذج توافقية\n"
+            "⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n\n"
+            "❌ بيانات غير كافية لتحليل الهارمونيك."
         )
 
-        if not patterns:
-            return (
-                "📘 **مدرسة Harmonic Patterns – نماذج توافقية**\n\n"
-                "⚠️ لا يوجد حالياً نموذج هارمونيك واضح مكتمل أو قيد التكوين.\n"
-                "الحركة أقرب إلى تذبذب عام.\n\n"
-                "⚠️ هذا التحليل تعليمي فقط وليس توصية مباشرة."
-            )
+    patterns = scan_harmonic_patterns(
+        symbol=snapshot["symbol"],
+        timeframe=snapshot.get("timeframe", "1h"),
+        swings=swings,
+    )
 
-        # ترتيب النماذج حسب القوة
-        patterns = sorted(
-            patterns,
-            key=lambda x: x.get("confidence", 0),
-            reverse=True
+    if not patterns:
+        return (
+            "📘 مدرسة Harmonic Patterns – نماذج توافقية\n"
+            "⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n\n"
+            "❌ لا يوجد حالياً نمط هارمونيك واضح (مكتمل أو قيد التكوين)\n"
+            "الحركة الحالية أقرب لتذبذب عام."
         )
 
-        top_patterns = patterns[:3]
+    msg = []
+    msg.append("📘 مدرسة Harmonic Patterns – نماذج توافقية")
+    msg.append("⚠️ هذا التحليل تعليمى فقط وليس توصية مباشرة.\n")
 
-        msg = []
-        msg.append("📘 **مدرسة Harmonic Patterns – نماذج توافقية**\n")
+    for i, p in enumerate(patterns[:3], 1):
+        if p["status"] == "completed":
+            msg.append(f"#{i} 🔥 نموذج مكتمل")
+        else:
+            msg.append(f"#{i} ⏳ نموذج قيد التكوين")
 
-        for i, p in enumerate(top_patterns, 1):
-            status_icon = "✅" if p["status"] == "completed" else "🟡"
-            status_text = "مكتمل" if p["status"] == "completed" else "قيد التكوين"
+        msg.append(f"• النموذج: {p['pattern']} ({p['direction']})")
+        msg.append(f"• القوة: {p['confidence']}%")
+        msg.append(f"• PRZ: {p['prz'][0]} → {p['prz'][1]}")
 
-            msg.append(f"{status_icon} **نموذج #{i}**")
-            msg.append(f"• النموذج: {p['pattern']} ({p['direction']})")
-            msg.append(f"• الحالة: {status_text}")
-            msg.append(f"• القوة: {p['confidence']}%")
-            msg.append(f"• PRZ: {p['prz'][0]} → {p['prz'][1]}")
+        if p["status"] == "completed":
+            msg.append(f"• Targets: {p['targets']}")
+            msg.append(f"• Stop Loss: {p['stop_loss']}")
+        else:
+            msg.append("• في انتظار اكتمال النقطة D")
 
-            if p["status"] == "completed":
-                msg.append(f"• Targets: {p['targets']}")
-                msg.append(f"• Stop Loss: {p['stop_loss']}")
-            else:
-                msg.append("⚠️ لا دخول الآن – في انتظار اكتمال النقطة D")
+        msg.append("")
 
-            msg.append("")
-
-        msg.append("⚠️ هذا التحليل تعليمي فقط وليس توصية مباشرة بالشراء أو البيع.")
-
-        return "\n".join(msg)
+    return "\n".join(msg)
 
     # ======================
     # Time
