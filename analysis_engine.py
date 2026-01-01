@@ -1437,6 +1437,7 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
             msg.append(f"🔹 النموذج: {p['pattern']} ({p['direction']})")
             msg.append(f"⭐ القوة: {p['confidence']}%")
             msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
+            msg.append(f"📍 C: {p['point_c']} | D: {p['point_d']}")
 
             # =====================
             # Trade Info
@@ -1444,8 +1445,9 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
             if p["status"] == "completed":
                 msg.append(f"🎯 Targets: {p['targets']}")
                 msg.append(f"🛑 Stop Loss: {p['stop_loss']}")
+                msg.append("✅ صالح للدراسة بعد إدارة مخاطرة")
             elif p["status"] == "confirmed":
-                msg.append("📌 تم كسر نقطة C – تأكيد مبدئي")
+                msg.append("⚠️ السعر أكد الاتجاه – انتظار دخول مناسب")
             else:
                 msg.append("⌛ في انتظار تأكيد الحركة السعرية")
 
