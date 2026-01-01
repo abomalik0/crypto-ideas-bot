@@ -11,11 +11,16 @@ TF_MAP = {
     "1d": "1d",
 }
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; CryptoIdeasBot/1.0)",
+    "Accept": "application/json",
+}
+
 
 def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500):
     """
-    Returns candles as list of dicts:
-    open, high, low, close
+    Fetch historical candles from Binance.
+    Returns list of dicts: open, high, low, close
     """
 
     interval = TF_MAP.get(timeframe)
@@ -25,15 +30,24 @@ def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500)
     params = {
         "symbol": symbol.upper(),
         "interval": interval,
-        "limit": limit,
+        "limit": min(limit, 1000),
     }
 
-    response = requests.get(BINANCE_URL, params=params, timeout=10)
-    response.raise_for_status()
+    try:
+        response = requests.get(
+            BINANCE_URL,
+            params=params,
+            headers=HEADERS,
+            timeout=15
+        )
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Binance API error: {e}")
+        return []
 
     data = response.json()
-
     candles = []
+
     for c in data:
         candles.append({
             "open": float(c[1]),
