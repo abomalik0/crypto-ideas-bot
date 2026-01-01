@@ -1,11 +1,8 @@
-# analysis/swing_detector.py
-
-from typing import List, Dict
-
-def detect_swings(candles: List[Dict], lookback: int = 3) -> List[float]:
+def detect_swings(candles, lookback=3, min_move=0.002):
     """
-    Detect swing highs & lows
-    Returns list of prices [X, A, B, C, D]
+    Strong swing detector (professional style)
+    - lookback: عدد الشموع يمين وشمال
+    - min_move: أقل حركة (0.2%)
     """
 
     swings = []
@@ -14,20 +11,28 @@ def detect_swings(candles: List[Dict], lookback: int = 3) -> List[float]:
         high = candles[i]["high"]
         low = candles[i]["low"]
 
-        is_swing_high = all(
-            high > candles[i - j]["high"] and high > candles[i + j]["high"]
-            for j in range(1, lookback + 1)
+        is_high = all(
+            high > candles[i - j]["high"] for j in range(1, lookback + 1)
+        ) and all(
+            high > candles[i + j]["high"] for j in range(1, lookback + 1)
         )
 
-        is_swing_low = all(
-            low < candles[i - j]["low"] and low < candles[i + j]["low"]
-            for j in range(1, lookback + 1)
+        is_low = all(
+            low < candles[i - j]["low"] for j in range(1, lookback + 1)
+        ) and all(
+            low < candles[i + j]["low"] for j in range(1, lookback + 1)
         )
 
-        if is_swing_high:
-            swings.append(high)
+        if is_high or is_low:
+            value = high if is_high else low
 
-        elif is_swing_low:
-            swings.append(low)
+            if not swings:
+                swings.append(value)
+            else:
+                last = swings[-1]
+                move = abs(value - last) / last
 
-    return swings[-5:]
+                if move >= min_move:
+                    swings.append(value)
+
+    return swings
