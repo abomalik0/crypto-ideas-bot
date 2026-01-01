@@ -1,8 +1,15 @@
-from analysis.schools.smc.report import generate_smc_report
+"""
+Schools Registry
+================
+• Minimal registry for backtesting
+• Harmonic only
+"""
 
-SCHOOL_REGISTRY = {
-    "smc": generate_smc_report,
-}
+# ❌ ممنوع استيراد SMC / ICT أثناء الباكتيست
+# from analysis.schools.smc.report import generate_smc_report
+
+# ✅ لو حابب تسيبها فاضية
+SCHOOL_REGISTRY = {}
 
 def run_school(school: str, symbol: str, snapshot: dict) -> str:
     school = (school or "").lower().strip()
