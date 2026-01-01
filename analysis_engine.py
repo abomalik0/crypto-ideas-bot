@@ -1385,36 +1385,38 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
         return analyze_wyckoff(snapshot)
 
     elif school == "harmonic":
-    from analysis.schools.harmonic_scanner import scan_harmonic_patterns
+        # ✅ لازم كل ده يكون جوه الـ elif (4 مسافات)
+        from analysis.schools.harmonic_scanner import scan_harmonic_patterns
 
-    swings = snapshot.get("swings", [])
-    if not isinstance(swings, list) or len(swings) < 5:
-        return "⚠️ لا توجد Swing Points كافية لتحليل Harmonic."
+        swings = snapshot.get("swings", [])
 
-    patterns = scan_harmonic_patterns(
-        symbol=snapshot["symbol"],
-        timeframe=snapshot.get("timeframe", "1h"),
-        swings=swings,
-    )
+        if not isinstance(swings, list) or len(swings) < 5:
+            return "⚠️ لا توجد Swing Points كافية لتحليل Harmonic."
 
-    if not patterns:
-        return (
-            "📘 مدرسة Harmonic Patterns\n\n"
-            "⚠️ لا يوجد حاليًا أي نموذج هارمونيك مكتمل أو قوي.\n"
-            "الحركة الحالية أقرب للتذبذب أو التكوين."
+        patterns = scan_harmonic_patterns(
+            symbol=snapshot["symbol"],
+            timeframe=snapshot.get("timeframe", "1h"),
+            swings=swings,
         )
 
-    # أقوى نموذج
-    top = patterns[0]
+        if not patterns:
+            return (
+                "📘 مدرسة Harmonic Patterns\n\n"
+                "⚠️ لا يوجد حاليًا نموذج هارمونيك مكتمل أو قوي.\n"
+                "الحركة الحالية أقرب للتذبذب أو التكوين."
+            )
 
-    return (
-        "📘 مدرسة Harmonic Patterns\n\n"
-        f"🧩 النموذج: {top['pattern']} ({top['direction']})\n"
-        f"🎯 القوة: {top['confidence']}%\n"
-        f"📍 PRZ: {top['prz'][0]} → {top['prz'][1]}\n"
-        f"🎯 Targets: {top['targets']}\n"
-        f"🛑 Stop: {top['stop_loss']}"
-    )
+        # 🔥 أقوى نموذج (أعلى Confidence)
+        top = patterns[0]
+
+        return (
+            "📘 مدرسة Harmonic Patterns\n\n"
+            f"🔷 النموذج: {top['pattern']} ({top['direction']})\n"
+            f"⭐️ القوة: {top['confidence']}%\n"
+            f"🎯 PRZ: {top['prz'][0]} → {top['prz'][1]}\n"
+            f"🎯 Targets: {top['targets']}\n"
+            f"🛑 Stop: {top['stop_loss']}"
+        )
 
     elif school == "time":
         return analyze_time(snapshot)
