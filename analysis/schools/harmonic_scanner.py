@@ -89,13 +89,13 @@ def scan_harmonic_patterns(
         # =========================
         # Direction Logic
         # =========================
-        # آخر حركة: لو D أقل من C → BUY (انعكاس صاعد)
+        # لو D أقل من C → BUY (انعكاس صاعد)
         direction = "BUY" if subset[-1] < subset[-2] else "SELL"
 
         # =========================
         # Store Pattern
         # =========================
-        patterns.append({
+        pattern_data = {
             "pattern": result.get("pattern"),
             "direction": direction,
             "confidence": confidence,
@@ -105,7 +105,9 @@ def scan_harmonic_patterns(
             "point_d": subset[4],
             "targets": result.get("targets", []) if status == "completed" else [],
             "stop_loss": result.get("stop_loss") if status == "completed" else None,
-        })
+        }
+
+        patterns.append(pattern_data)
 
     # =========================
     # Sort strongest first
