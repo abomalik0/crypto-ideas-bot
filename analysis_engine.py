@@ -1428,6 +1428,7 @@ def format_analysis(user_symbol: str, school: str = "smc") -> str:
 # ============================
 
 def dispatch_school_report(school: str, snapshot: dict) -> str:
+def dispatch_school_report(school: str, snapshot: dict) -> str:
     school = (school or "smc").lower()
 
     # =====================
@@ -1480,7 +1481,7 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
             if p.get("status") not in ("confirmed", "completed"):
                 continue
 
-            # 🚨 Harmonic Alert (مرة واحدة فقط – بالكاش)
+            # 🚨 Harmonic Alert (confirmed فقط – مرة واحدة بالكاش + cooldown)
             alert_msg = check_and_send_harmonic_alert(p, snapshot)
             if alert_msg:
                 send_alert(alert_msg)
