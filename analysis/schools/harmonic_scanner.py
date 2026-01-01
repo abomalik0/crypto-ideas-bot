@@ -3,7 +3,7 @@ HARMONIC SCANNER
 ================
 
 • Scan multiple swing windows
-• Detect forming & completed harmonic patterns
+• Detect forming, confirmed & completed harmonic patterns
 • Rank patterns by confidence
 • Pure harmonic logic (no SMC / ICT)
 """
@@ -17,7 +17,8 @@ from .harmonic_engine import analyze_harmonic
 # =========================
 
 FORMING_THRESHOLD = 30     # Minimum confidence to show forming pattern
-COMPLETED_THRESHOLD = 80   # Minimum confidence to mark pattern as completed
+CONFIRMED_THRESHOLD = 55   # Confirmation stage
+COMPLETED_THRESHOLD = 80   # Completed harmonic pattern
 
 
 # =========================
@@ -39,7 +40,7 @@ def scan_harmonic_patterns(
             pattern: str,
             direction: BUY | SELL,
             confidence: float,
-            status: forming | completed,
+            status: forming | confirmed | completed,
             prz: (low, high),
             point_c: float,
             point_d: float,
@@ -70,28 +71,41 @@ def scan_harmonic_patterns(
             swings=subset,
         )
 
-        # Skip invalid results
         if not result or not result.get("valid"):
             continue
 
         confidence = float(result.get("confidence", 0.0))
 
         # =========================
-        # Pattern Status
+        # Base Status by Confidence
         # =========================
         if confidence >= COMPLETED_THRESHOLD:
             status = "completed"
+        elif confidence >= CONFIRMED_THRESHOLD:
+            status = "confirmed"
         elif confidence >= FORMING_THRESHOLD:
             status = "forming"
         else:
-            continue  # Ignore weak patterns
+            continue
 
         # =========================
         # Direction Logic
         # =========================
-        # لو D أقل من C → BUY (انعكاس صاعد)
-        # لو D أعلى من C → SELL (انعكاس هابط)
+        # D < C → BUY (Bullish reversal)
+        # D > C → SELL (Bearish reversal)
         direction = "BUY" if subset[-1] < subset[-2] else "SELL"
+
+        # =========================
+        # Confirmation Logic (Price Action)
+        # =========================
+        if status == "forming":
+            last_price = subset[-1]
+            prev_price = subset[-2]
+
+            if direction == "BUY" and last_price > prev_price:
+                status = "confirmed"
+            elif direction == "SELL" and last_price < prev_price:
+                status = "confirmed"
 
         # =========================
         # Store Pattern
