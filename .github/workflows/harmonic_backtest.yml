@@ -21,6 +21,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
+      # 🔽 الخطوة الجديدة (مهمة)
+      - name: Download candles
+        env:
+          PYTHONPATH: .
+        run: |
+          python analysis/data/download_candles.py
+
+      # ▶️ الباكتيست
       - name: Run Harmonic Backtest
         env:
           PYTHONPATH: .
