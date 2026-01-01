@@ -4,6 +4,12 @@ from datetime import datetime
 import config
 from engine_schools import pick_school_report
 LAST_CONFIRMED_HARMONIC = {}
+
+# =====================
+# Harmonic Alert Cache
+# =====================
+LAST_HARMONIC_ALERT = {}
+
 # ==============================
 #   تجهيز رمز العملة + المنصات
 # ==============================
@@ -1431,7 +1437,7 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
             # =====================
             if p["status"] == "completed":
                 msg.append(f"#{i} 🔥 نموذج مكتمل")
-            elif p["status"] == "confirmed":
+            else:
                 msg.append(f"#{i} ✅ نموذج مؤكَّد")
 
             # =====================
