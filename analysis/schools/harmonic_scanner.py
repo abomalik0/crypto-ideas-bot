@@ -16,9 +16,9 @@ from .harmonic_engine import analyze_harmonic
 # Thresholds (RELAXED)
 # =========================
 
-FORMING_THRESHOLD = 20       # كان 30 → أخف
-CONFIRMED_THRESHOLD = 45     # كان 55
-COMPLETED_THRESHOLD = 70     # كان 80
+FORMING_THRESHOLD = 15       # كان 30 → أخف
+CONFIRMED_THRESHOLD = 35     # كان 55
+COMPLETED_THRESHOLD = 65     # كان 80
 
 
 # =========================
