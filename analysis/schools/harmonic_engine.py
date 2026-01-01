@@ -1,77 +1,72 @@
 """
-HARMONIC SCHOOL – FULL PROFESSIONAL ENGINE
-=========================================
+HARMONIC SCHOOL – CORE ENGINE
+============================
 
-• Detects ALL harmonic patterns
-• Exact Fibonacci validation
-• PRZ zones
-• Targets + Stop Loss
-• Bullish & Bearish scenarios
-• Multi-Timeframe logic
+• Detect harmonic patterns using swing points
+• Validate Fibonacci ratios
+• Build PRZ zones
+• Generate targets & stop loss
+• Pure Harmonic logic only (no SMC / no ICT)
 """
 
-from typing import Dict, List, Any
+from typing import List, Dict, Any
 import math
 
 
 # =========================
-# Fibonacci helpers
+# Helpers
 # =========================
 
-def fib_ratio(a: float, b: float) -> float:
-    return abs(b / a) if a != 0 else 0
+def _fib_ratio(a: float, b: float) -> float:
+    if a == 0:
+        return 0.0
+    return abs(b / a)
 
 
-def in_range(val: float, low: float, high: float) -> bool:
-    return low <= val <= high
+def _in_range(value: float, low: float, high: float, tolerance: float = 0.03) -> bool:
+    return (low - tolerance) <= value <= (high + tolerance)
 
 
 # =========================
-# Pattern definitions
+# Harmonic Pattern Rules
 # =========================
 
-HARMONIC_PATTERNS = {
+HARMONIC_RULES = {
     "Gartley": {
         "AB": (0.618, 0.618),
         "BC": (0.382, 0.886),
         "CD": (1.27, 1.618),
-        "XA": 0.786,
+        "AD": (0.786, 0.786),
     },
     "Bat": {
-        "AB": (0.382, 0.5),
+        "AB": (0.382, 0.50),
         "BC": (0.382, 0.886),
         "CD": (1.618, 2.618),
-        "XA": 0.886,
+        "AD": (0.886, 0.886),
     },
-    "Alt Bat": {
-        "AB": (0.382, 0.5),
+    "Butterfly": {
+        "AB": (0.786, 0.786),
         "BC": (0.382, 0.886),
-        "CD": (2.0, 3.618),
-        "XA": 1.13,
+        "CD": (1.618, 2.618),
+        "AD": (1.27, 1.618),
     },
     "Crab": {
         "AB": (0.382, 0.618),
         "BC": (0.382, 0.886),
         "CD": (2.618, 3.618),
-        "XA": 1.618,
+        "AD": (1.618, 1.618),
     },
     "Deep Crab": {
         "AB": (0.886, 0.886),
         "BC": (0.382, 0.886),
         "CD": (2.618, 3.618),
-        "XA": 1.618,
-    },
-    "AB=CD": {
-        "AB": (1.0, 1.0),
-        "BC": (0.382, 0.886),
-        "CD": (1.0, 1.272),
-        "XA": None,
+        "AD": (1.618, 1.618),
     },
 }
 
 
 # =========================
-# Main Harmonic Engine
+# Core Harmonic Analyzer
 # =========================
 
 def analyze_harmonic(
@@ -83,96 +78,84 @@ def analyze_harmonic(
     swings = [X, A, B, C, D]
     """
 
-    if len(swings) < 5:
-        return {"error": "Not enough swing points"}
+    if not swings or len(swings) < 5:
+        return {
+            "valid": False,
+            "school": "harmonic",
+            "reason": "Not enough swing points",
+        }
 
-    X, A, B, C, D = swings
+    X, A, B, C, D = swings[-5:]
 
     XA = A - X
     AB = B - A
     BC = C - B
     CD = D - C
+    AD = D - X
 
-    ab_ratio = fib_ratio(XA, AB)
-    bc_ratio = fib_ratio(AB, BC)
-    cd_ratio = fib_ratio(BC, CD)
+    ratios = {
+        "AB": _fib_ratio(XA, AB),
+        "BC": _fib_ratio(AB, BC),
+        "CD": _fib_ratio(BC, CD),
+        "AD": _fib_ratio(XA, AD),
+    }
 
-    detected = None
-    accuracy = 0
+    detected_pattern = None
+    confidence = 0.0
 
-    for name, rules in HARMONIC_PATTERNS.items():
-        ok = True
+    for name, rules in HARMONIC_RULES.items():
         score = 0
-        total = 0
+        total = len(rules)
 
-        if rules["AB"]:
-            total += 1
-            if in_range(ab_ratio, *rules["AB"]):
-                score += 1
-
-        if rules["BC"]:
-            total += 1
-            if in_range(bc_ratio, *rules["BC"]):
-                score += 1
-
-        if rules["CD"]:
-            total += 1
-            if in_range(cd_ratio, *rules["CD"]):
-                score += 1
-
-        if rules["XA"]:
-            total += 1
-            xa_ret = abs((D - X) / XA) if XA != 0 else 0
-            if abs(xa_ret - rules["XA"]) <= 0.05:
+        for leg, (low, high) in rules.items():
+            if _in_range(ratios.get(leg, 0), low, high):
                 score += 1
 
         if score >= total - 1:
-            detected = name
-            accuracy = round((score / total) * 100, 1)
+            detected_pattern = name
+            confidence = round((score / total) * 100, 1)
             break
+
+    if not detected_pattern:
+        return {
+            "valid": False,
+            "school": "harmonic",
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "reason": "No complete harmonic pattern detected",
+        }
 
     # =========================
     # PRZ + Targets
     # =========================
 
-    prz = {
-        "zone": (round(D * 0.995, 2), round(D * 1.005, 2)),
-        "confidence": accuracy,
-    }
+    prz_low = round(D * 0.995, 2)
+    prz_high = round(D * 1.005, 2)
 
-    bullish = {
-        "entry": prz["zone"],
-        "targets": [
-            round(D + abs(CD) * 0.382, 2),
-            round(D + abs(CD) * 0.618, 2),
-            round(D + abs(CD) * 1.0, 2),
-        ],
-        "stop_loss": round(D - abs(CD) * 0.236, 2),
-    }
+    targets = [
+        round(D + abs(CD) * 0.382, 2),
+        round(D + abs(CD) * 0.618, 2),
+        round(D + abs(CD) * 1.0, 2),
+    ]
 
-    bearish = {
-        "entry": prz["zone"],
-        "targets": [
-            round(D - abs(CD) * 0.382, 2),
-            round(D - abs(CD) * 0.618, 2),
-            round(D - abs(CD) * 1.0, 2),
-        ],
-        "stop_loss": round(D + abs(CD) * 0.236, 2),
-    }
+    stop_loss = round(D - abs(CD) * 0.236, 2)
 
     return {
+        "valid": True,
         "school": "harmonic",
         "symbol": symbol,
         "timeframe": timeframe,
-        "pattern": detected,
-        "accuracy": accuracy,
-        "wave_structure": {
-            "XA": round(XA, 2),
-            "AB": round(AB, 2),
-            "BC": round(BC, 2),
-            "CD": round(CD, 2),
+        "pattern": detected_pattern,
+        "confidence": confidence,
+        "points": {
+            "X": round(X, 2),
+            "A": round(A, 2),
+            "B": round(B, 2),
+            "C": round(C, 2),
+            "D": round(D, 2),
         },
-        "prz": prz,
-        "bullish": bullish,
-        "bearish": bearish,
-  }
+        "ratios": {k: round(v, 3) for k, v in ratios.items()},
+        "prz": (prz_low, prz_high),
+        "targets": targets,
+        "stop_loss": stop_loss,
+    }
