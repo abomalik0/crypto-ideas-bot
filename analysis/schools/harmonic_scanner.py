@@ -90,6 +90,7 @@ def scan_harmonic_patterns(
         # Direction Logic
         # =========================
         # لو D أقل من C → BUY (انعكاس صاعد)
+        # لو D أعلى من C → SELL (انعكاس هابط)
         direction = "BUY" if subset[-1] < subset[-2] else "SELL"
 
         # =========================
