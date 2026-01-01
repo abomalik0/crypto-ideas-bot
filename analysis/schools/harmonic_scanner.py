@@ -45,6 +45,7 @@ def scan_harmonic_patterns(
             prz: (low, high),
             point_c: float,
             point_d: float,
+            d_index: int,
             targets: list,
             stop_loss: float | None
         }
@@ -64,6 +65,9 @@ def scan_harmonic_patterns(
     # =========================
     for i in range(len(swings) - 4):
         subset = swings[i:i + 5]
+
+        # 🔹 D index = آخر swing في المجموعة
+        d_index = i + 4
 
         # Analyze harmonic structure
         result = analyze_harmonic(
@@ -124,6 +128,10 @@ def scan_harmonic_patterns(
             "prz": result.get("prz"),
             "point_c": point_c,
             "point_d": point_d,
+
+            # ✅ الإضافة المهمة للباكتيست
+            "d_index": d_index,
+
             "targets": result.get("targets", []) if status == "completed" else [],
             "stop_loss": result.get("stop_loss") if status == "completed" else None,
         }
