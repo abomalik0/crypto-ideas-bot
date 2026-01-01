@@ -3,16 +3,22 @@ from datetime import datetime
 
 import config
 from engine_schools import pick_school_report
+
 LAST_CONFIRMED_HARMONIC = {}
 
 # =====================
 # Harmonic Alert Cache
 # =====================
 LAST_HARMONIC_ALERT = {}
+HARMONIC_ALERT_COOLDOWN = 4 * 60 * 60  # 4 ساعات
+
+
 def check_and_send_harmonic_alert(p: dict, snapshot: dict):
     """
-    Send alert once per confirmed harmonic pattern
+    Send alert once per confirmed harmonic pattern with cooldown
     """
+
+    # نرسل تنبيه للـ confirmed فقط
     if p.get("status") != "confirmed":
         return None
 
@@ -21,17 +27,29 @@ def check_and_send_harmonic_alert(p: dict, snapshot: dict):
 
     key = f"{symbol}_{timeframe}_{p['pattern']}_{p['direction']}"
 
-    if LAST_HARMONIC_ALERT.get(key):
-        return None  # already alerted
+    # =====================
+    # Cooldown check
+    # =====================
+    last = LAST_HARMONIC_ALERT.get(key)
+    if last:
+        elapsed = (datetime.utcnow() - last["time"]).total_seconds()
+        if elapsed < HARMONIC_ALERT_COOLDOWN:
+            return None
 
+    # =====================
+    # Save alert state
+    # =====================
     LAST_HARMONIC_ALERT[key] = {
         "time": datetime.utcnow(),
         "price": snapshot.get("core", {}).get("price"),
     }
 
+    # =====================
+    # Alert message
+    # =====================
     msg = []
     msg.append("🚨 Harmonic Alert (Confirmed)")
-    msg.append(f"📌 {symbol} | TF: {timeframe}")
+    msg.append(f"📊 {symbol} | TF: {timeframe}")
     msg.append(f"🔹 Pattern: {p['pattern']} ({p['direction']})")
     msg.append(f"⭐ Confidence: {p['confidence']}%")
     msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
@@ -39,6 +57,7 @@ def check_and_send_harmonic_alert(p: dict, snapshot: dict):
     msg.append("⚠️ تنبيه تعليمى وليس توصية مباشرة")
 
     return "\n".join(msg)
+    
 # ==============================
 #   تجهيز رمز العملة + المنصات
 # ==============================
