@@ -1421,18 +1421,31 @@ def dispatch_school_report(school: str, snapshot: dict) -> str:
 
         for i, p in enumerate(patterns[:3], 1):
 
+            # =====================
+            # Status Header
+            # =====================
             if p["status"] == "completed":
                 msg.append(f"#{i} 🔥 نموذج مكتمل")
+            elif p["status"] == "confirmed":
+                msg.append(f"#{i} ✅ نموذج مؤكَّد")
             else:
                 msg.append(f"#{i} ⏳ نموذج قيد التكوين")
 
+            # =====================
+            # Core Info
+            # =====================
             msg.append(f"🔹 النموذج: {p['pattern']} ({p['direction']})")
             msg.append(f"⭐ القوة: {p['confidence']}%")
             msg.append(f"🎯 PRZ: {p['prz'][0]} → {p['prz'][1]}")
 
+            # =====================
+            # Trade Info
+            # =====================
             if p["status"] == "completed":
                 msg.append(f"🎯 Targets: {p['targets']}")
                 msg.append(f"🛑 Stop Loss: {p['stop_loss']}")
+            elif p["status"] == "confirmed":
+                msg.append("📌 تم كسر نقطة C – تأكيد مبدئي")
             else:
                 msg.append("⌛ في انتظار تأكيد الحركة السعرية")
 
