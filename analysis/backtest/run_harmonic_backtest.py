@@ -29,7 +29,7 @@ def run_harmonic_backtest(
         limit=limit
     )
 
-    if not candles or len(candles) < 10:
+    if not candles or len(candles) < 50:
         print("❌ Not enough candle data")
         return
 
