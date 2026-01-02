@@ -1,40 +1,12 @@
-"""
-HARMONIC BACKTEST ENGINE
-=======================
-
-• Walk-forward backtest (after point D only)
-• Entry from PRZ
-• Uses real TP / SL for completed patterns
-• Uses simplified RR for forming / confirmed
-• No repainting – realistic execution
-"""
-
-from typing import List, Dict, Any
-
-
-def backtest_harmonic_patterns(
-    patterns: List[Dict[str, Any]],
-    candles: List[Dict[str, float]],
-) -> List[Dict[str, Any]]:
-
+def backtest_harmonic_patterns(patterns, candles):
     results = []
 
-    if not patterns or not candles:
-        return results
+    MAX_BARS = 50  # ⏱️ Timeout بعد 50 شمعة
 
     for p in patterns:
-        status = p.get("status")
-        direction = p.get("direction")
-        d_index = p.get("d_index")
-
-        # =====================
-        # Safety checks
-        # =====================
-        if d_index is None or d_index >= len(candles) - 1:
-            continue
-
-        if "prz" not in p or not p["prz"]:
-            continue
+        status = p["status"]
+        direction = p["direction"]
+        d_index = p.get("d_index", 0)
 
         # =====================
         # Entry from PRZ
@@ -43,34 +15,33 @@ def backtest_harmonic_patterns(
         entry = (prz_low + prz_high) / 2
 
         # =====================
-        # TP / SL Logic
+        # TP / SL
         # =====================
-        if (
-            status == "completed"
-            and p.get("targets")
-            and p.get("stop_loss")
-        ):
-            # 🎯 حقيقي من الهارمونيك
-            tp = p["targets"][0]     # Target 1 فقط
+        if status == "completed" and p.get("targets") and p.get("stop_loss"):
+            tp = p["targets"][0]
             sl = p["stop_loss"]
         else:
-            # 🧪 RR مبسط للاختبار
             rr = abs(prz_high - prz_low)
             if direction == "BUY":
                 tp = entry + rr
                 sl = entry - rr
-            else:  # SELL
+            else:
                 tp = entry - rr
                 sl = entry + rr
 
         hit_tp = False
         hit_sl = False
+        timed_out = False
         candles_to_hit = None
 
         # =====================
-        # Walk Forward (AFTER D)
+        # Walk forward (بعد D فقط)
         # =====================
         for i in range(d_index + 1, len(candles)):
+            if i - d_index > MAX_BARS:
+                timed_out = True
+                break
+
             c = candles[i]
             high = c["high"]
             low = c["low"]
@@ -95,17 +66,15 @@ def backtest_harmonic_patterns(
                     break
 
         # =====================
-        # Final Result
+        # Result
         # =====================
         if hit_tp:
             result = "WIN"
-        elif hit_sl:
-            result = "LOSS"
         else:
-            result = "OPEN"
+            result = "LOSS"  # SL أو Timeout
 
         results.append({
-            "pattern": p.get("pattern"),
+            "pattern": p["pattern"],
             "status": status,
             "direction": direction,
             "entry": round(entry, 2),
@@ -113,6 +82,7 @@ def backtest_harmonic_patterns(
             "sl": round(sl, 2),
             "result": result,
             "candles_to_hit": candles_to_hit,
+            "timed_out": timed_out,
             "confidence": round(p.get("confidence", 0), 1),
         })
 
