@@ -11,12 +11,13 @@ from analysis.schools.swing_engine import detect_swings
 def run_harmonic_backtest(
     symbol="BTCUSDT",
     timeframe="1h",
-    limit=800
+    limit=2000  # ✅ اختبار قوي على 2000 شمعة
 ):
     print("\n🔍 Running Harmonic Backtest")
     print("=" * 60)
     print(f"Symbol    : {symbol}")
     print(f"Timeframe : {timeframe}")
+    print(f"Candles   : {limit}")
     print("=" * 60)
 
     # =====================
@@ -74,7 +75,7 @@ def run_harmonic_backtest(
         return
 
     # =====================
-    # 5) Global statistics (IMPORTANT)
+    # 5) Global statistics
     # =====================
     closed_trades = [r for r in results if r["result"] in ("WIN", "LOSS")]
 
@@ -162,5 +163,5 @@ if __name__ == "__main__":
     run_harmonic_backtest(
         symbol="BTCUSDT",
         timeframe="1h",
-        limit=800
+        limit=2000  # ✅ هنا التعديل النهائي
     )
