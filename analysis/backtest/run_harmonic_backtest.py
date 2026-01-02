@@ -35,7 +35,7 @@ def run_harmonic_backtest(
     print(f"📊 Candles loaded: {len(candles)}")
 
     # =====================
-    # 2) Detect swings (IMPORTANT)
+    # 2) Detect swings
     # =====================
     swings = detect_swings(
         candles,
@@ -65,7 +65,7 @@ def run_harmonic_backtest(
     print(f"📐 Harmonic patterns found: {len(patterns)}")
 
     # =====================
-    # 4) Backtest patterns
+    # 4) Backtest
     # =====================
     results = backtest_harmonic_patterns(patterns, candles)
 
@@ -74,12 +74,16 @@ def run_harmonic_backtest(
         return
 
     # =====================
-    # 5) Global statistics
+    # 5) Global statistics (IMPORTANT)
     # =====================
-    wins = sum(1 for r in results if r["result"] == "WIN")
-    losses = sum(1 for r in results if r["result"] == "LOSS")
+    closed_trades = [r for r in results if r["result"] in ("WIN", "LOSS")]
+
+    wins = sum(1 for r in closed_trades if r["result"] == "WIN")
+    losses = sum(1 for r in closed_trades if r["result"] == "LOSS")
     total = wins + losses
     win_rate = (wins / total * 100) if total else 0
+
+    open_trades = len(results) - total
 
     # =====================
     # 6) Breakdown stats
@@ -87,7 +91,7 @@ def run_harmonic_backtest(
     pattern_stats = defaultdict(lambda: {"WIN": 0, "LOSS": 0})
     direction_stats = defaultdict(lambda: {"WIN": 0, "LOSS": 0})
 
-    for r in results:
+    for r in closed_trades:
         pattern_stats[r["pattern"]][r["result"]] += 1
         direction_stats[r["direction"]][r["result"]] += 1
 
@@ -96,10 +100,12 @@ def run_harmonic_backtest(
     # =====================
     print("\n📊 BACKTEST SUMMARY")
     print("=" * 60)
-    print(f"Total trades : {total}")
-    print(f"Wins         : {wins}")
-    print(f"Losses       : {losses}")
-    print(f"Win rate     : {win_rate:.2f}%")
+    print(f"Total patterns   : {len(patterns)}")
+    print(f"Closed trades    : {total}")
+    print(f"Open trades      : {open_trades}")
+    print(f"Wins             : {wins}")
+    print(f"Losses           : {losses}")
+    print(f"Win rate         : {win_rate:.2f}%")
     print("=" * 60)
 
     # =====================
@@ -140,7 +146,11 @@ def run_harmonic_backtest(
     print("\n🧾 SAMPLE TRADES (First 10)")
     print("-" * 60)
     for r in results[:10]:
-        print(f"{r['pattern']} | {r['direction']} | {r['result']}")
+        print(
+            f"{r['pattern']} | {r['status']} | "
+            f"{r['direction']} | {r['result']} | "
+            f"conf={r['confidence']}"
+        )
 
     print("\n✅ Backtest finished successfully\n")
 
