@@ -14,10 +14,23 @@ TF_MAP = {
     "1d": "1d",
 }
 
+# ✅ Headers مهمة لتفادي 451 على GitHub Actions
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; HarmonicBot/1.0)",
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
-def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500):
+
+def get_historical_candles(
+    symbol: str,
+    timeframe: str = "1h",
+    limit: int = 500
+):
     """
-    Load candles with pagination (Binance max = 1000 per request)
+    Load historical candles with:
+    1) CSV priority
+    2) Binance API pagination (max 1000 / request)
     """
 
     MAX_PER_REQUEST = 1000
@@ -68,7 +81,12 @@ def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500)
             params["endTime"] = end_time
 
         try:
-            r = requests.get(BINANCE_URL, params=params, timeout=10)
+            r = requests.get(
+                BINANCE_URL,
+                params=params,
+                headers=HEADERS,   # ⭐ الحل هنا
+                timeout=10
+            )
             r.raise_for_status()
         except Exception as e:
             print(f"❌ Binance API error: {e}")
@@ -87,10 +105,15 @@ def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500)
                 "close": float(c[4]),
             })
 
+        # ⏪ بنضيف البيانات القديمة في الأول
         all_candles = candles + all_candles
-        end_time = data[0][0] - 1  # ⏪ move backward
+        end_time = data[0][0] - 1
 
-        time.sleep(0.2)  # Binance safety
+        time.sleep(0.25)  # Binance safety
+
+    if not all_candles:
+        print("❌ No candles loaded from Binance")
+        return []
 
     print(f"🌐 Loaded {len(all_candles)} candles from Binance")
 
