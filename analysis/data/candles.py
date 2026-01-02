@@ -1,5 +1,6 @@
 import csv
 import os
+import time
 import requests
 
 BINANCE_URL = "https://api.binance.com/api/v3/klines"
@@ -14,14 +15,12 @@ TF_MAP = {
 }
 
 
-def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 2000):
+def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 500):
     """
-    Priority:
-    1) Load from CSV if exists AND large enough
-    2) Fallback to Binance API
+    Load candles with pagination (Binance max = 1000 per request)
     """
 
-    MIN_CSV_SIZE = 300  # أقل عدد شموع مقبول للهارمونيك
+    MAX_PER_REQUEST = 1000
 
     # =====================
     # 1️⃣ Try CSV first
@@ -40,45 +39,59 @@ def get_historical_candles(symbol: str, timeframe: str = "1h", limit: int = 2000
                     "close": float(row["close"]),
                 })
 
-        if len(candles) >= MIN_CSV_SIZE:
+        if len(candles) >= limit:
             print(f"📁 Loaded {len(candles)} candles from CSV")
-            return candles
-        else:
-            print(
-                f"⚠️ CSV too small ({len(candles)} candles) "
-                f"→ switching to Binance"
-            )
+            return candles[:limit]
+
+        print(f"⚠️ CSV too small ({len(candles)} candles) → switching to Binance")
 
     # =====================
-    # 2️⃣ Fallback Binance
+    # 2️⃣ Binance Pagination
     # =====================
     interval = TF_MAP.get(timeframe)
     if not interval:
         raise ValueError(f"Unsupported timeframe: {timeframe}")
 
-    params = {
-        "symbol": symbol,
-        "interval": interval,
-        "limit": limit,
-    }
+    all_candles = []
+    end_time = None
 
-    try:
-        response = requests.get(BINANCE_URL, params=params, timeout=10)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"❌ Binance API error: {e}")
-        return []
+    while len(all_candles) < limit:
+        fetch_limit = min(MAX_PER_REQUEST, limit - len(all_candles))
 
-    data = response.json()
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "limit": fetch_limit,
+        }
 
-    candles = []
-    for c in data:
-        candles.append({
-            "open": float(c[1]),
-            "high": float(c[2]),
-            "low": float(c[3]),
-            "close": float(c[4]),
-        })
+        if end_time:
+            params["endTime"] = end_time
 
-    print(f"🌐 Loaded {len(candles)} candles from Binance")
-    return candles
+        try:
+            r = requests.get(BINANCE_URL, params=params, timeout=10)
+            r.raise_for_status()
+        except Exception as e:
+            print(f"❌ Binance API error: {e}")
+            break
+
+        data = r.json()
+        if not data:
+            break
+
+        candles = []
+        for c in data:
+            candles.append({
+                "open": float(c[1]),
+                "high": float(c[2]),
+                "low": float(c[3]),
+                "close": float(c[4]),
+            })
+
+        all_candles = candles + all_candles
+        end_time = data[0][0] - 1  # ⏪ move backward
+
+        time.sleep(0.2)  # Binance safety
+
+    print(f"🌐 Loaded {len(all_candles)} candles from Binance")
+
+    return all_candles[-limit:]
