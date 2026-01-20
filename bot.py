@@ -801,23 +801,21 @@ def webhook():
                 except Exception as e:
                     config.logger.exception("Header format error in /btc: %s", e)
 
-        reply = header + base_text
+        reply = header + (base_text or "⚠️ التحليل غير متاح حاليًا، حاول مرة أخرى.")
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
     if lower_text == "/vai":
-        reply = format_analysis("VAIUSDT")
-        send_message(chat_id, reply)
+        reply = format_analysis("VAIUSDT") or "⚠️ التحليل غير متاح حاليًا."
+send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    if lower_text == "/market":
-        reply = services.get_cached_response("market_report", format_market_report)
-        send_message(chat_id, reply)
+    reply = services.get_cached_response("market_report", format_market_report) or "⚠️ تقرير السوق غير متاح حاليًا."
+send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    if lower_text == "/risk_test":
-        reply = services.get_cached_response("risk_test", format_risk_test)
-        send_message(chat_id, reply)
+    reply = services.get_cached_response("risk_test", format_risk_test) or "⚠️ اختبار المخاطر غير متاح حاليًا."
+send_message(chat_id, reply)
         return jsonify(ok=True)
 
     # لوحة مدارس التحليل
