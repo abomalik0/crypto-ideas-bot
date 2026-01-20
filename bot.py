@@ -805,18 +805,29 @@ def webhook():
         send_message(chat_id, reply)
         return jsonify(ok=True)
 
-    if lower_text == "/vai":
-        reply = format_analysis("VAIUSDT") or "⚠️ التحليل غير متاح حاليًا."
-send_message(chat_id, reply)
-        return jsonify(ok=True)
+    # ---------- /vai ----------
+if lower_text == "/vai":
+    reply = format_analysis("VAIUSDT") or "⚠️ التحليل غير متاح حاليًا."
+    send_message(chat_id, reply)
+    return jsonify(ok=True)
 
-    reply = services.get_cached_response("market_report", format_market_report) or "⚠️ تقرير السوق غير متاح حاليًا."
-send_message(chat_id, reply)
-        return jsonify(ok=True)
+# ---------- /market ----------
+if lower_text == "/market":
+    reply = services.get_cached_response(
+        "market_report",
+        format_market_report
+    ) or "⚠️ تقرير السوق غير متاح حاليًا."
+    send_message(chat_id, reply)
+    return jsonify(ok=True)
 
-    reply = services.get_cached_response("risk_test", format_risk_test) or "⚠️ اختبار المخاطر غير متاح حاليًا."
-send_message(chat_id, reply)
-        return jsonify(ok=True)
+# ---------- /risk_test ----------
+if lower_text == "/risk_test":
+    reply = services.get_cached_response(
+        "risk_test",
+        format_risk_test
+    ) or "⚠️ اختبار المخاطر غير متاح حاليًا."
+    send_message(chat_id, reply)
+    return jsonify(ok=True)
 
     # لوحة مدارس التحليل
     if lower_text.startswith("/school"):
