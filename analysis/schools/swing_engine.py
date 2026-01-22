@@ -1,31 +1,56 @@
-def detect_swings(candles, lookback=3, min_move=0.002):
+def detect_swings(candles, lookback=3, min_move=0.003):
     """
-    Strong swing detector (professional style)
-    - lookback: عدد الشموع يمين وشمال
-    - min_move: أقل حركة (0.2%)
+    Professional swing detector (Harmonic-ready)
+    - Uses HIGH / LOW (not close)
+    - Enforces alternation (HLHL)
+    - Filters noise
     """
 
     swings = []
-    prices = [c["close"] for c in candles]
 
-    for i in range(lookback, len(prices) - lookback):
-        high = prices[i]
-        low = prices[i]
+    highs = [c["high"] for c in candles]
+    lows  = [c["low"] for c in candles]
 
-        is_high = all(high > prices[i - j] for j in range(1, lookback + 1)) and \
-                  all(high > prices[i + j] for j in range(1, lookback + 1))
+    last_type = None  # "high" or "low"
 
-        is_low = all(low < prices[i - j] for j in range(1, lookback + 1)) and \
-                 all(low < prices[i + j] for j in range(1, lookback + 1))
+    for i in range(lookback, len(candles) - lookback):
 
-        if is_high or is_low:
+        # ---------- Detect swing high ----------
+        is_high = all(
+            highs[i] > highs[i - j] and highs[i] > highs[i + j]
+            for j in range(1, lookback + 1)
+        )
+
+        # ---------- Detect swing low ----------
+        is_low = all(
+            lows[i] < lows[i - j] and lows[i] < lows[i + j]
+            for j in range(1, lookback + 1)
+        )
+
+        # ---------- Process swing high ----------
+        if is_high and last_type != "high":
+            price = highs[i]
+
             if not swings:
-                swings.append(high if is_high else low)
+                swings.append(price)
+                last_type = "high"
             else:
-                last = swings[-1]
-                move = abs(high - last) / last
-
+                move = abs(price - swings[-1]) / swings[-1]
                 if move >= min_move:
-                    swings.append(high if is_high else low)
+                    swings.append(price)
+                    last_type = "high"
+
+        # ---------- Process swing low ----------
+        elif is_low and last_type != "low":
+            price = lows[i]
+
+            if not swings:
+                swings.append(price)
+                last_type = "low"
+            else:
+                move = abs(price - swings[-1]) / swings[-1]
+                if move >= min_move:
+                    swings.append(price)
+                    last_type = "low"
 
     return swings
