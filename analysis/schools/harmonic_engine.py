@@ -3,9 +3,10 @@ HARMONIC SCHOOL – CORE ENGINE
 ============================
 
 • Detect harmonic patterns using swing points
-• Validate Fibonacci ratios (RELAXED)
-• Build PRZ zones
+• Validate Fibonacci ratios (RELAXED – TradingView style)
+• Build PRZ zones (REAL fib-based)
 • Generate targets & stop loss
+• Allow predictive (incomplete) patterns
 • Pure Harmonic logic only
 """
 
@@ -16,7 +17,7 @@ from typing import List, Dict, Any
 # Global Settings
 # =========================
 
-FIB_TOLERANCE = 0.15   # 🔥 relaxed tolerance
+FIB_TOLERANCE = 0.25   # ✅ TradingView-grade tolerance
 
 
 # =========================
@@ -130,30 +131,36 @@ def analyze_harmonic(
             best_score = score
             best_total = total
 
-    if best_score < 2:
+    # ✅ السماح بنماذج استباقية
+    if best_score < 1:
         return {"valid": False}
 
     confidence = round((best_score / best_total) * 100, 1)
     direction = _determine_direction(C, D)
     strength = _strength_label(confidence)
+    predictive = confidence < 80
 
     # =========================
     # PRZ / Targets / Stop
     # =========================
 
-    prz = (round(D * 0.995, 2), round(D * 1.005, 2))
+    # ✅ PRZ حقيقي مبني على XA
+    prz_low = round(D - abs(XA) * 0.03, 6)
+    prz_high = round(D + abs(XA) * 0.03, 6)
+    prz = (prz_low, prz_high)
+
     move = abs(CD)
 
     targets = (
-        [round(D + move * r, 2) for r in (0.382, 0.618, 1.0)]
+        [round(D + move * r, 6) for r in (0.382, 0.618, 1.0)]
         if direction == "bullish"
-        else [round(D - move * r, 2) for r in (0.382, 0.618, 1.0)]
+        else [round(D - move * r, 6) for r in (0.382, 0.618, 1.0)]
     )
 
     stop_loss = (
-        round(D - move * 0.236, 2)
+        round(D - move * 0.236, 6)
         if direction == "bullish"
-        else round(D + move * 0.236, 2)
+        else round(D + move * 0.236, 6)
     )
 
     return {
@@ -165,6 +172,7 @@ def analyze_harmonic(
         "confidence": confidence,
         "strength": strength,
         "direction": direction,
+        "predictive": predictive,
         "points": {"X": X, "A": A, "B": B, "C": C, "D": D},
         "ratios": ratios,
         "prz": prz,
